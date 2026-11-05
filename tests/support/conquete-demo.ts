@@ -12,10 +12,58 @@ const MAP = JSON.parse(readFileSync("public/conquete/map-v1.json", "utf8")) as {
 const CONFIG = readFileSync("config/conquete.json", "utf8");
 
 export const DEMO_ACCOUNTS = ["Fondateur de démo", "Officier de démo", "Membre de démo", "Recrue de démo"];
+/** Les capsules, fictives, des dix autres joueurs. */
+const CAPSULES = [150_000, 0, 5_001, 800, 0, 25_000, 300, 0, 60_001, 2_400];
 
 const providerId = (name: string) => `discord-${createHash("sha256").update(name).digest("hex").slice(0, 12)}`;
 
-export async function seedDemo(pool: pg.Pool): Promise<void> {
+const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
+const DEMO_GIFTS = [50, 120, 250, 500, 800, 1000];
+export const DEMO_GIFT_EVERY_MS = 20_000;
+
+/**
+ * Des dons fictifs qui arrivent pendant qu'on regarde, un toutes les 20 secondes.
+ *  - Par défaut, ce qui marche aujourd'hui : un membre déclare, l'officier de démo valide aussitôt.
+ *  - Avec `--direct`, ce que donnerait un accès d'OpenFront : les dons arrivent tout seuls.
+ */
+export function startDemoGifts(pool: pg.Pool, players: DemoPlayers, direct: boolean): () => void {
+  let turn = 0;
+  let ledger = 1000;
+  const readLedger = (rows: { publicId: string; capsules: number; at: string }[]) =>
+    callRpc(pool, { kind: "service" }, "ingest_openfront_donations", {
+      p_rows: rows.map((r) => ({ id: String(ledger++), hash: createHash("sha256").update(r.publicId).digest("hex"), capsules: r.capsules, at: r.at })),
+    });
+  const started = direct
+    ? // La toute première lecture : l'histoire des dons, qui remplace ce qui avait été validé à la main.
+      readLedger(players.donors.filter((d) => d.capsules > 0).map((d) => ({ publicId: d.publicId, capsules: d.capsules, at: new Date(Date.now() - 3 * 86_400_000).toISOString() })))
+    : Promise.resolve({});
+
+  const gift = async () => {
+    await started;
+    const donor = players.donors[turn % 3 === 0 ? 0 : 1 + (turn * 7) % (players.donors.length - 1)]!;
+    const capsules = DEMO_GIFTS[turn % DEMO_GIFTS.length]!;
+    turn++;
+    if (direct) {
+      await readLedger([{ publicId: donor.publicId, capsules, at: new Date().toISOString() }]);
+      return;
+    }
+    const declared = await callRpc<{ id: number }>(pool, { kind: "user", id: donor.id }, "declare_donation", { p_request_id: randomUUID(), p_capsules: capsules, p_donated_on: today(), p_note: "Don fictif de démonstration" });
+    await callRpc(pool, { kind: "user", id: players.officer }, "review_donation", { p_donation: declared.id, p_approve: true });
+  };
+  const timer = setInterval(() => {
+    gift().catch((e: unknown) => console.warn("Don de démonstration :", e));
+  }, DEMO_GIFT_EVERY_MS);
+  void gift().catch((e: unknown) => console.warn("Don de démonstration :", e));
+  return () => clearInterval(timer);
+}
+
+export interface DemoPlayers {
+  officer: string;
+  /** Tous sauf l'officier qui valide. Le premier est le membre de démo : c'est lui qu'on regarde. */
+  donors: { id: string; publicId: string; capsules: number }[];
+}
+
+export async function seedDemo(pool: pg.Pool): Promise<DemoPlayers> {
   const addUser = async (name: string, role: string, status: string, capsules: number, display = name) => {
     const { rows } = await pool.query<{ id: string }>("insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id", [
       `${providerId(name)}@example.test`,
@@ -27,6 +75,10 @@ export async function seedDemo(pool: pg.Pool): Promise<void> {
          validated_at = case when $3::text = 'validated' then now() end where user_id = $1`,
       [id, role, status, display, capsules, capsules % 2 === 0],
     );
+    if (status === "validated") {
+      // Son identifiant OpenFront fictif, pour que la démo puisse aussi lire ses dons « chez OpenFront ».
+      await pool.query("update public.private_links set openfront_hash = $2 where user_id = $1", [id, createHash("sha256").update(`DEMO-${name}`).digest("hex")]);
+    }
     if (capsules > 0) {
       await pool.query(
         "insert into public.donations (user_id, capsules, donated_on, kind, status, created_by, reviewed_by, reviewed_at, note) values ($1, $2, current_date - 3, 'donation', 'approved', $1, $1, now(), 'Don fictif de démonstration')",
@@ -40,9 +92,7 @@ export async function seedDemo(pool: pg.Pool): Promise<void> {
   const officer = await addUser("Officier de démo", "officer", "validated", 40_001);
   const member = await addUser("Membre de démo", "member", "validated", 1_000);
   const recruit = await addUser("Recrue de démo", "member", "pending", 0);
-  const others = await Promise.all(
-    [150_000, 0, 5_001, 800, 0, 25_000, 300, 0, 60_001, 2_400].map((capsules, i) => addUser(`Joueur de démo ${i + 1}`, "member", "validated", capsules)),
-  );
+  const others = await Promise.all(CAPSULES.map((capsules, i) => addUser(`Joueur de démo ${i + 1}`, "member", "validated", capsules)));
 
   // La liste des membres, fictive elle aussi.
   await callRpc(pool, { kind: "service" }, "sync_clan_roster", {
@@ -97,4 +147,13 @@ export async function seedDemo(pool: pg.Pool): Promise<void> {
       [season, kind, actor, target, place ? byName.get(place)!.id : null, target ? 15_000 : null, target ? 12_869 : null, target ? 10_000 : null, target ? 2131 : null],
     );
   }
+
+  return {
+    officer,
+    donors: [
+      { id: member, publicId: "DEMO-Membre de démo", capsules: 1_000 },
+      { id: founder, publicId: "DEMO-Fondateur de démo", capsules: 12_500 },
+      ...others.map((id, i) => ({ id, publicId: `DEMO-Joueur de démo ${i + 1}`, capsules: CAPSULES[i]! })),
+    ],
+  };
 }

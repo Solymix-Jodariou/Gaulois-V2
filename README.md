@@ -29,6 +29,7 @@ Le site s'ouvre sur http://localhost:4321. Aucun secret n'est nécessaire.
 | `npm run data:fetch` | Collecte les données dans `data/` |
 | `npm run data:carte` | Met à jour seulement la carte des clans, sans attendre le délai d'une journée |
 | `npm run conquete:map` | Régénère la carte du jeu depuis Natural Earth |
+| `npm run conquete:terrain` | Régénère l'image du relief de la carte, depuis Natural Earth |
 | `npm run conquete:job` | La tâche quotidienne du jeu. Sans ses réglages, elle ne fait rien. |
 | `npm run build` | Génère le favicon, l'image de partage et les fichiers du film, puis construit `dist/` |
 | `npm run preview` | Sert le dossier `dist/` |

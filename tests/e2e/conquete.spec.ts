@@ -277,9 +277,13 @@ test("phase 1 : le départ, puis les terres libres voisines", async () => {
   await expect(astra.getByTestId("my-troops")).toHaveText(fr(70_000));
   await expect(astra.getByTestId("game-feed").locator("li").first()).toContainText("Astra s'installe à Paris.");
 
-  // La carte prend la couleur du joueur.
+  // La carte prend la couleur du joueur : ses terres sont une seule masse, à son nom et avec ses troupes.
   const paris = astra.locator(`[data-t="${byName("Paris").id}"]`);
   await expect(paris).toHaveClass(/is-mine/);
+  const owner = await paris.getAttribute("data-owner");
+  await expect(astra.locator(`.conq-owner[data-owner="${owner}"]`)).toHaveAttribute("style", /fill/);
+  await expect(astra.getByTestId("owner-labels").locator(`[data-owner="${owner}"]`)).toContainText("Astra");
+  await expect(astra.getByTestId("owner-labels").locator(`[data-owner="${owner}"]`)).toContainText(fr(5_000));
 
   // Une terre libre voisine : le prix du terrain, puis le reste en garnison.
   const list = astra.getByTestId("target-list");
@@ -304,6 +308,76 @@ test("phase 1 : le départ, puis les terres libres voisines", async () => {
   await expect(visitor.getByTestId("territory-garrison")).toHaveText(fr(5_000));
   await expect(visitor.getByTestId("action-panel").getByTestId("sign-in")).toBeVisible();
   await expect(visitor.getByTestId("action-submit")).toHaveCount(0);
+});
+
+test("un don validé arrive en troupes sous les yeux du joueur, sans recharger la page", async () => {
+  await astra.goto("/conquete");
+  const before = digits(await astra.getByTestId("my-troops").textContent());
+  await expect(astra.getByTestId("donation-rule")).toContainText("100 troupes en renfort");
+  await expect(astra.getByTestId("checked-at")).toContainText("Actualisé à");
+
+  // Le fond de la carte est le relief, dans la bonne taille selon l'écran, et il se charge.
+  const relief = astra.locator(".conq-terrain");
+  const href = (await relief.getAttribute("href"))!;
+  expect(href).toMatch(/\/conquete\/terrain-v1(-small)?\.webp$/);
+  expect((await astra.request.get(href)).status()).toBe(200);
+
+  // Un visiteur regarde aussi, sans compte.
+  await visitor.goto("/conquete");
+  await expect(visitor.getByTestId("season-phase")).toContainText("Phase 1");
+
+  // Astra déclare dans un autre onglet, comme un vrai joueur qui revient du jeu.
+  const tab = await astra.context().newPage();
+  await tab.goto("/compte");
+  await tab.getByLabel("Capsules données").fill("250");
+  await tab.getByRole("button", { name: "Déclarer ce don" }).click();
+  await expect(tab.getByText("vos troupes arriveront à ce moment-là")).toBeVisible();
+  await tab.close();
+  // Rien ne bouge tant qu'un officier n'a pas validé.
+  expect(digits(await astra.getByTestId("my-troops").textContent())).toBe(before);
+
+  await openAdmin(founder, "Dons");
+  const row = founder.getByTestId("pending-donation").filter({ hasText: "250 capsules" });
+  await row.getByRole("button", { name: "Valider" }).click();
+  await expect(founder.getByText(`Don validé. ${fr(25_000)} troupes arrivent dans sa réserve.`)).toBeVisible();
+
+  // Dans les 15 secondes, sans rien toucher.
+  await expect(astra.getByTestId("my-troops")).toHaveText(fr(before + 25_000), { timeout: 20_000 });
+  await expect(astra.getByTestId("donation-flash")).toContainText("Astra offre 250 capsules");
+  await expect(astra.getByTestId("game-feed").locator("li").first()).toContainText(`+${fr(25_000)} troupes en renfort`);
+  // Le visiteur le voit passer aussi.
+  await expect(visitor.getByTestId("donation-flash")).toContainText("offre 250 capsules", { timeout: 20_000 });
+
+  // Le compte du joueur le dit aussi.
+  await astra.goto("/compte");
+  await expect(astra.getByTestId("donation-row").first()).toContainText(`+${fr(25_000)}`);
+
+  // Un don annulé reprend ses troupes.
+  const [donation] = await sql("select id from public.donations where capsules = 250");
+  expect(await directCall(founder, "cancel_donation", { p_donation: donation!["id"], p_reason: "Vérification du parcours" }).then((r) => r.body)).toMatchObject({ ok: true, troops_taken: 25_000 });
+  await astra.goto("/conquete");
+  await expect(astra.getByTestId("my-troops")).toHaveText(fr(before));
+  await expect(astra.getByTestId("game-feed").locator("li").first()).toContainText("a été annulé par un officier");
+});
+
+test("le classement retrouve un joueur sur la carte", async () => {
+  await astra.goto("/conquete");
+  const svg = astra.locator(".conq-map-view svg");
+  await expect(svg).toHaveAttribute("data-zoomed", "false");
+  const find = astra.getByTestId("rank-biggest").getByRole("button", { name: /Astra.*trouver sur la carte/ });
+  await find.click();
+  await expect(svg).toHaveAttribute("data-zoomed", "true");
+  await expect(astra.getByTestId("territory-name")).toBeVisible();
+  await expect(astra.locator(".conq-hex.is-selected.is-mine")).toHaveCount(1);
+
+  // On s'éloigne, puis on redemande le même joueur : la carte y retourne.
+  const group = astra.locator(".conq-map-view svg > g");
+  const there = await group.getAttribute("transform");
+  await astra.locator(".conq-map-view").focus();
+  for (let i = 0; i < 3; i++) await astra.keyboard.press("ArrowLeft");
+  expect(await group.getAttribute("transform")).not.toBe(there);
+  await find.click();
+  await expect.poll(() => group.getAttribute("transform")).toBe(there);
 });
 
 test("la carte se manipule à la souris, sans bloquer la page", async () => {
@@ -554,12 +628,37 @@ test("en fin de saison, le classement et la carte sont figés et restent consult
   await expect(closed.getByTestId("final-biggest")).toContainText("Astra");
   await expect(closed.getByTestId("final-conquerors")).toContainText("Astra");
   await expect(closed.getByTestId("final-donors")).toContainText("Astra");
-  await expect(closed.locator(`[data-t="${byName("Paris").id}"]`)).toHaveAttribute("style", /fill/);
+  // La carte figée garde les couleurs et les noms de ses propriétaires.
+  const owner = await closed.locator(`[data-t="${byName("Paris").id}"]`).getAttribute("data-owner");
+  expect(owner).toBeTruthy();
+  await expect(closed.locator(`.conq-owner[data-owner="${owner}"]`)).toHaveAttribute("style", /fill/);
+  await expect(closed.getByTestId("owner-labels").locator(`[data-owner="${owner}"]`)).toContainText("Astra");
   await expect(visitor.getByTestId("action-panel")).toHaveCount(0);
 
   // Plus aucune action possible, même en appelant le serveur directement.
   const res = await directCall(astra, "reinforce", { p_request_id: crypto.randomUUID(), p_territory: byName("Paris").id, p_troops: 1 });
   expect(res.body).toMatchObject({ ok: false, error: "no_active_season" });
+});
+
+test("le jour où OpenFront donne un accès, les dons se lisent tout seuls et remplacent les déclarations", async () => {
+  // La collecte, avec la clé de service, envoie ce qu'elle a lu chez OpenFront.
+  const past = new Date(Date.now() - 86_400_000).toISOString();
+  expect(await service("ingest_openfront_donations", { p_rows: [{ id: "9001", hash: hash("PUB-ASTRA"), capsules: 12_345, at: past }, { id: "9002", hash: hash("PUB-ANON"), capsules: 7, at: past }] })).toMatchObject({ ok: true, new: 2 });
+
+  await astra.goto("/compte");
+  await expect(astra.getByTestId("my-capsules")).toHaveText(fr(12_345));
+  await expect(astra.getByTestId("declare-form")).toHaveCount(0);
+  await expect(astra.getByTestId("my-donations")).toContainText("lues chez OpenFront");
+  // Même en appelant le serveur directement, plus rien ne se déclare.
+  expect((await directCall(astra, "declare_donation", { p_request_id: crypto.randomUUID(), p_capsules: 5, p_donated_on: new Date().toISOString().slice(0, 10) })).body).toMatchObject({ ok: false, error: "donations_synced" });
+
+  await visitor.goto("/dons");
+  await expect(visitor.getByTestId("donors-read-at")).toContainText("Dons lus chez OpenFront");
+  await expect(visitor.getByTestId("donor-row").first()).toContainText(fr(12_345));
+
+  await openAdmin(founder, "Dons");
+  await expect(founder.getByTestId("admin-donations")).toContainText("lus directement chez OpenFront");
+  await expect(founder.getByTestId("enter-donation")).toHaveCount(0);
 });
 
 test("effacer son compte supprime ses données, tout de suite", async () => {

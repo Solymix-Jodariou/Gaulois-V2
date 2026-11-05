@@ -25,7 +25,7 @@ const SOURCE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/m
 const CACHE = ".cache/natural-earth";
 const FILES = ["ne_110m_land", "ne_50m_land", "ne_10m_populated_places", "ne_10m_geography_regions_polys", "ne_50m_lakes"] as const;
 /** Finesse des côtes des territoires, en unités de la carte : invisible même au zoom maximal. */
-const COAST_TOLERANCE = 0.05;
+const COAST_TOLERANCE = 0.08;
 /** En dessous, un îlot ou un éclat de côte n'est pas colorié (unités² de la carte ; 1 unité² ≈ 4 000 km²). */
 const MIN_RING_AREA = 0.1;
 /** Routes de haute mer, pour que le monde ne soit pas une simple chaîne : [lon, lat] de chaque côté. */

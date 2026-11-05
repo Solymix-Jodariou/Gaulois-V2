@@ -53,6 +53,7 @@ const errors = await runConquestJob({
   passphrase,
   webhook: process.env["DISCORD_WEBHOOK_URL"] || null,
   delayMs: 300,
+  donationsKey: process.env["OPENFRONT_DONATIONS_KEY"] || null,
 });
 
 if (errors.length > 0) process.exitCode = 1;

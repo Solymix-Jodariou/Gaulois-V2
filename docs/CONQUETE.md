@@ -9,7 +9,7 @@ C'est la seule partie du site qui a un serveur, une base de données et une conn
 ## Architecture
 
 ```text
-Navigateur ──────────► GitHub Pages : le site statique, la carte (public/conquete/map-v1.json)
+Navigateur ──────────► GitHub Pages : le site statique, la carte (map-v1.json, terrain-v1.webp)
     │
     └── supabase-js ──► Supabase : connexion Discord, Postgres, droits d'accès, fichiers
                             ▲
@@ -25,13 +25,16 @@ GitHub Action ──────────────┘  une fois par jour :
 
 **Pas de tâche planifiée pour jouer :** la réserve se calcule à la demande, d'après le temps écoulé. La guerre commence à la première action après sa date.
 
+**Le direct :** chaque page ouverte demande toutes les 15 secondes le « pouls » de la partie (`get_game_pulse`) : 120 octets de données, mesurés sur la démo. Elle ne relit la carte que si ce pouls a changé, ou toutes les 5 minutes pour la réserve qui monte seule. Un onglet caché ne demande rien. Une relecture complète pèse environ 13 Ko : toutes les 15 secondes, 30 joueurs présents 2 heures par jour dépasseraient à eux seuls les 5 Go mensuels du forfait gratuit.
+
 | Dossier | Contenu |
 |---|---|
 | `supabase/migrations/` | Le schéma, les règles et les droits. `…_droits.sql` liste qui peut appeler quoi. |
 | `config/conquete.json` | Les réglages par défaut |
 | `src/lib/conquete/` | Formules pour l'écran, appels au serveur, messages d'erreur, tâche quotidienne |
 | `src/components/conquete/` | Les écrans |
-| `scripts/generate-conquete-map.ts` | La génération de la carte |
+| `scripts/generate-conquete-map.ts` | La génération de la carte : hexagones, voisins, noms, contours aux côtes |
+| `scripts/generate-conquete-terrain.ts` | La génération de l'image du relief |
 | `scripts/conquete-job.ts` | La tâche quotidienne |
 | `tests/db/` | Les règles, les droits et les attaques simultanées, sur un vrai Postgres |
 | `tests/e2e/conquete.spec.ts` | Le parcours complet dans un navigateur |
@@ -116,8 +119,8 @@ Relancez ensuite **Données et site** dans l'onglet **Actions**. Le lien « Conq
 
 Dans `/admin`, **Saisons**. Avant la première saison :
 
-- **Saisissez les totaux de départ** des donneurs, relevés dans « Top donateurs » : onglet **Dons**, « Saisir un don ou un total de départ ».
-- **Calibrez `capsuleFactor`** d'après les vrais montants, que le site ne peut pas lire. Les 2000 actuels sont une estimation.
+- **Saisissez les totaux de départ** des donneurs, relevés dans « Top donateurs » : onglet **Dons**, « Saisir un don ou un total de départ ». Un total de départ ne donne pas de troupes : il ne compte que pour la capacité.
+- **Relisez `capsuleFactor` et `troopsPerCapsule`** : voir « Les dons arrivent en troupes ».
 
 ## Vérifier les membres : la limite à connaître
 
@@ -152,7 +155,46 @@ pertes  = mag × rapport × (46,3 + 0,0195 × garnison)
 
 **Pourquoi le ×5 :** sans lui, 62 à 83 % de la garnison suffisent pour gagner, et renforcer ne servirait à rien. Il ne porte que sur la densité : sur tout le calcul, reprendre une terre presque vide coûterait 12 000 troupes.
 
-**Le coefficient 2000 est provisoire,** faute de connaître les vrais dons. À 500 000 capsules, il donne 8,7 fois la capacité d'un joueur sans capsule pour 5 terres. Si les plus gros dons sont bien supérieurs, baissez `capsuleFactor` ou `capsuleExponent`.
+**Le coefficient 2000 tient face aux vrais dons.** Il a été vérifié le 6 novembre 2026 sur les montants de l'onglet Dons du clan, réservés aux membres : ils ne sont pas recopiés ici. Pour un total de 80 000 capsules, la capacité est d'environ 750 000 pour 5 terres, 4,1 fois celle d'un joueur sans capsule. Il reste à éprouver dans une vraie partie.
+
+## Les dons arrivent en troupes
+
+**La règle.** Pendant une saison, chaque capsule donnée arrive en renfort dans la réserve du donneur : 100 troupes par capsule (`troopsPerCapsule`), la règle réelle de la carte du clan. La capacité reste le plafond, comme le demande le cahier des charges : un gros donneur reste avantagé sans écraser les autres. Un don de 250 capsules apporte 25 000 troupes, un don de 10 000 capsules remplit la réserve.
+
+| Cas | Ce qui se passe |
+|---|---|
+| Don fait pendant la saison, joueur déjà sur la carte | Les troupes arrivent à l'instant où le don est validé |
+| Joueur pas encore entré dans la saison | Ses dons de la saison s'ajoutent à ses troupes de départ |
+| Don d'avant le lancement, ou total de départ | Il ne compte que pour la capacité |
+| Réserve pleine | Rien de plus, et le fil le dit. Le don compte toujours pour la capacité et les classements. |
+| Don annulé par un officier | Ses troupes repartent, sans que la réserve passe sous zéro |
+| Donneur anonyme | Il le reste dans le fil et sur Discord |
+
+**Le chemin d'un don.** Tout passe par `internal.grant_donation_troops`, sous le verrou de la saison : un don ne peut pas croiser une attaque.
+
+### Ce qui empêche un vrai temps réel, et pourquoi il n'y a pas de contournement
+
+Le jeu montre les dons à un membre connecté. Le site, lui, ne peut pas les lire. Vérifié le 6 novembre 2026 :
+
+1. `GET /clans/GAL/donations` répond 401 sans compte. Aucune route de dons n'est publique.
+2. Cette route n'accepte les appels de navigateur que depuis `https://openfront.io` : notre site ne peut pas l'appeler, même avec un compte.
+3. **Les conditions d'utilisation d'OpenFront ferment les deux raccourcis.** La section 5 interdit d'accéder au service par un moyen automatisé qu'il ne fournit pas : c'est le cas d'un robot connecté avec le compte d'un membre. La section 6.5 interdit tout script ou extension qui lit le client du jeu, « quel que soit son but », sauf accord écrit d'OpenFront : c'est le cas d'un script dans le navigateur d'un officier.
+
+**Le risque serait pour le compte utilisé, et peut-être pour le clan.** Le site ne fait donc ni l'un ni l'autre. La bonne voie est l'accord d'OpenFront : le message est prêt en fin de page.
+
+**Aujourd'hui,** le délai est donc celui de l'officier : le membre déclare, l'officier vérifie dans l'onglet Dons du jeu et valide, et les troupes arrivent à cet instant. Tous les joueurs le voient dans les 15 secondes.
+
+### Le jour où OpenFront donne un accès
+
+Toute la chaîne est prête et testée, avec des dons fictifs :
+
+1. Placez la clé donnée par OpenFront dans le secret GitHub `OPENFRONT_DONATIONS_KEY`, **et rien d'autre : jamais la session d'un joueur.** Si l'accès prend une autre forme, seule `fetchDonations` dans `src/lib/conquete/job.ts` est à adapter.
+2. La tâche planifiée lit l'histoire des dons, puis seulement les nouveaux. Du donneur, elle ne garde qu'une empreinte : ni identifiant, ni pseudo. Le Plutonium est ignoré.
+3. **La première lecture remplace les déclarations,** qu'elle contient déjà : les dons validés à la main passent à « remplacé », les totaux sont recalculés, et ces dons d'avant ne redonnent pas de troupes. Les déclarations et la saisie se ferment ensuite. **Revenir en arrière demande une intervention à la main dans la base.**
+4. Un don dont l'auteur n'a pas de compte validé attend dans le grand livre, et lui revient à sa validation.
+5. **Mettez à jour la page de confidentialité :** elle décrit aujourd'hui des dons déclarés.
+
+**Limite restante :** la tâche planifiée de GitHub tourne environ une fois par heure, avec du retard. Pour lire chaque minute, il faudra une fonction planifiée chez Supabase (`pg_cron` et Edge Function). Elle n'est pas écrite : elle dépend de la réponse d'OpenFront et de son accord sur la fréquence, et elle ne peut pas être essayée sans le vrai Supabase.
 
 ## Les réglages
 
@@ -166,6 +208,7 @@ pertes  = mag × rapport × (46,3 + 0,0195 × garnison)
 | `regen.base`, `exponent`, `divisor` | 10, 0,73, 4 | La formule `troopIncreaseRate` |
 | `regen.tickMinutes` | 60 | Minutes entre deux pas de régénération |
 | `startShare` | 0,25 | Troupes de départ : part de la capacité sans territoire |
+| `troopsPerCapsule` | 100 | Troupes reçues par capsule donnée pendant la saison |
 | `terrain.plains`, `highland`, `mountain` | 80, 100, 120 | Force du terrain |
 | `neutralDivisor` | 5 | Prix d'une terre libre par tuile : `mag ÷ ce nombre` |
 | `combat.ratioMin`, `ratioMax` | 0,6, 2 | Les bornes du rapport |
@@ -186,7 +229,12 @@ pertes  = mag × rapport × (46,3 + 0,0195 × garnison)
 - **Relief :** déduit des zones de montagne et de plateau de Natural Earth. 56 % de plaines, 30 % de collines, 14 % de montagnes.
 - **Noms :** la plus grande ville de chaque hexagone, en français. Les lieux en guerre ou disputés sont remplacés par un nom géographique neutre, dans `scripts/conquete-map-names.ts`. **Cette liste date du 5 novembre 2026 : à relire par le clan avant la mise en ligne.**
 
-Pour régénérer : `npm run conquete:map`. Le téléchargement pèse environ 26 Mo et reste hors de Git, dans `.cache/natural-earth/`. Tant que la carte n'est pas en ligne, on peut la régénérer librement. Ensuite, créez une nouvelle version (`VERSION` dans le script) pour ne pas toucher aux saisons passées.
+- **Contours :** chaque hexagone s'arrête aux côtes de Natural Earth (1:50 m) et aux grands lacs. Ce n'est qu'un dessin : un territoire reste un hexagone pour les règles, et toute sa case reste cliquable.
+- **Relief :** l'image `HYP_50M_SR` de Natural Earth (domaine public), reprojetée en Equal Earth pour tomber exactement sous les hexagones, avec notre propre océan. Aucune image d'OpenFront n'est utilisée. Les couleurs de l'image sont celles du vrai climat : ce sont les repères ^ et ^^ qui disent le relief au sens des règles.
+
+Le navigateur charge `terrain-v1-small.webp` (63 Ko) sur un petit écran, et `terrain-v1.webp` (207 Ko) sur un grand ou dès qu'on zoome. Le fichier de la carte pèse 298 Ko, 98 Ko une fois compressé.
+
+Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terrain` pour le relief. Les téléchargements pèsent environ 26 et 50 Mo et restent hors de Git, dans `.cache/natural-earth/`. Tant que la carte n'est pas en ligne, on peut la régénérer librement. Ensuite, créez une nouvelle version (`VERSION` dans le script) pour ne pas toucher aux saisons passées. Changer les contours ne change pas le fichier SQL de la carte, tant que les hexagones restent les mêmes.
 
 ## Base de données
 
@@ -197,7 +245,8 @@ Pour régénérer : `npm run conquete:map`. Le téléchargement pèse environ 26
 | `clan_roster` | Liste officielle, en empreintes | Personne : serveur seul |
 | `membership_requests` | Demandes et décisions | Soi-même, officiers |
 | `admin_log` | Qui, quoi, quand. Ne se modifie ni ne s'efface. | Admins |
-| `donations` | Dons, capture, statut, validateur | Soi-même, officiers |
+| `donations` | Dons, capture, statut, validateur, troupes données | Soi-même, officiers |
+| `openfront_donations` | Grand livre des dons lus chez OpenFront, vide tant qu'il n'y a pas d'accès. Montant, date, empreinte du donneur. | Personne : serveur seul |
 | `file_cleanup` | Captures à effacer | Personne : serveur seul |
 | `seasons` | Phase, dates, réglages, classement et carte figés | Par fonction |
 | `territories` | Noms, relief, voisins | Membres connectés |
@@ -205,7 +254,7 @@ Pour régénérer : `npm run conquete:map`. Le téléchargement pèse environ 26
 | `players` | Réserve, compteurs du jour, prises et pertes | Soi-même, officiers |
 | `game_events` | Fil d'actualité | Par fonction |
 | `action_limits`, `action_requests` | Limite de requêtes, demandes déjà traitées | Personne : serveur seul |
-| `app_state` | Dernière relecture de la liste, dernière sauvegarde | Personne : serveur seul |
+| `app_state` | Dernière relecture de la liste, dernière sauvegarde, lecture des dons | Personne : serveur seul |
 
 Personne n'écrit directement dans aucune table : ni visiteur, ni membre, ni officier. Les fonctions publiques ne montrent jamais l'identifiant technique d'un compte, seulement un numéro de joueur.
 
@@ -252,6 +301,8 @@ npx tsx tests/support/conquete-stack.ts --demo
 
 Ouvrez ensuite `http://127.0.0.1:4322/conquete`. La page de connexion propose un fondateur, un officier, un membre et une recrue de démonstration : ouvrez-en deux dans deux navigateurs pour voir les deux côtés. Tout est fictif, reste sur votre PC et disparaît à l'arrêt.
 
+Toutes les 20 secondes, un don fictif est déclaré puis validé par l'officier de démonstration : connecté comme membre de démonstration, on voit sa réserve monter sans recharger la page. Avec `--direct` en plus de `--demo`, les dons arrivent directement, comme si OpenFront avait donné un accès.
+
 ## Les tests
 
 ```bash
@@ -272,12 +323,13 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 
 ## Ce qui a été vérifié, et ce qui ne l'a pas été
 
-**Vérifié pour de vrai, en local :** les formules et leur accord entre l'écran et le serveur sur 390 combats ; les droits de chaque rôle ; les attaques simultanées, sur de vraies connexions ; la lecture de la vraie liste des membres d'OpenFront par la tâche quotidienne (763 membres le 5 novembre 2026) ; la sauvegarde et sa relecture ; le parcours complet dans Chromium ; l'accessibilité WCAG AA (axe) et l'absence de débordement à 375 px ; la fluidité de la carte avec un processeur simulé 6 fois plus lent (60 images par seconde en médiane).
+**Vérifié pour de vrai, en local :** les formules et leur accord entre l'écran et le serveur sur 390 combats ; les droits de chaque rôle ; les attaques simultanées, sur de vraies connexions ; la lecture de la vraie liste des membres d'OpenFront par la tâche quotidienne (763 membres le 5 novembre 2026) ; la sauvegarde et sa relecture ; le parcours complet dans Chromium ; l'accessibilité WCAG AA (axe) et l'absence de débordement à 375 px ; la fluidité de la carte avec son relief, sur un processeur simulé 6 fois plus lent (une image toutes les 16,7 ms en médiane, 33 ms pour les 5 % les plus lentes) ; les dons convertis en troupes, sur un vrai Postgres, attaques simultanées comprises.
 
 **Pas vérifié :**
 
 - **Le vrai Supabase et la vraie connexion Discord.** Il faut leurs comptes. Le schéma tourne sur Postgres 18 avec une imitation des rôles de Supabase. Le comportement réel de leur API, de leur connexion et de leur stockage de fichiers reste à éprouver : c'est l'objet de l'étape 6.
 - **Une vraie partie entre joueurs.** L'équilibre vient de calculs, pas de parties jouées. Les réglages pourront changer après la première saison.
+- **La lecture des vrais dons chez OpenFront.** Sans accès, `fetchDonations` n'a jamais tourné contre leur API : elle suit leur schéma public (`ClanApiSchemas.ts`) et n'est testée que contre une imitation.
 - **Un vrai téléphone, Firefox et Safari.** La fluidité est mesurée sur un processeur ralenti, sans vrai téléphone.
 - **Les annonces sur un vrai Discord,** testées seulement contre une imitation.
 - **Le droit.** La page de confidentialité décrit honnêtement ce qui est conservé, mais elle n'a pas été relue par un juriste.
@@ -296,6 +348,8 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 >
 > How we would use it: our server validates the token once with `POST /public/identity_token/validate`, checks the public ID against `/public/clan/GAL/members`, then discards the token. We store neither the token nor the public ID, only a hash, and members without a public username stay anonymous.
 >
-> One more question, if it is possible: donations (`/clans/:tag/donations`) are only visible to signed-in members, which we respect. Would you consider a read-only way for a clan to expose its own donation leaderboard to its site, for members who agree? Today our officers enter them by hand.
+> One more question, and the most important one for us. In this game, a member's capsule donations to the clan turn into troops, ideally right away. Donations (`/clans/:tag/donations`) are only visible to signed-in members, and your terms (sections 5 and 6.5) rule out reading them with a player's session or a script, so we do not do that: today our officers enter each donation by hand.
+>
+> Would you consider giving a clan a read-only way to read its own donation ledger, for example an API key limited to `/clans/GAL/donations`? We would only keep the amount, the date and a hash of the donor's public ID, and we would poll at whatever rate suits you. If you prefer another way, such as a webhook, we can adapt.
 >
 > Thanks a lot for the game and for the public API!

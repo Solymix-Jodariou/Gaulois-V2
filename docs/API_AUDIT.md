@@ -388,6 +388,14 @@ Le code du jeu (`packages/shared/src/ClanApiSchemas.ts`) confirme que ces listes
 
 **Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Un membre déclare son don, un officier le vérifie dans l'onglet Dons du jeu.
 
+**Vérifié de plus le 6 novembre 2026, quand la question du temps réel s'est posée :**
+
+- **Depuis un navigateur :** la réponse CORS de `/clans/GAL/donations` n'autorise que `https://openfront.io`. Notre site ne peut pas l'appeler, même avec un compte.
+- **Avec un compte, depuis un serveur :** la session d'un joueur repose sur un jeton court et un cookie de renouvellement (`src/client/Auth.ts`). Techniquement possible, mais [les conditions d'utilisation](https://openfront.io/terms-of-service.html) l'interdisent : la section 5 vise tout moyen automatisé que le service ne fournit pas.
+- **Avec un script chez un officier :** la section 6.5 interdit tout script ou extension qui lit le client du jeu ou son trafic, quel que soit le but, sauf accord écrit d'OpenFront.
+
+Le site ne fait donc ni l'un ni l'autre, et demande l'accord d'OpenFront : voir [CONQUETE.md](CONQUETE.md). Le trésor public (`softBalance` de `/clans/GAL`) ne permet pas d'attribuer un don : il bouge aussi avec les parts de victoire et les dépenses.
+
 **Conséquence pour la vérification : la liste des membres ne prouve rien.** Elle est publique, donc n'importe qui peut y trouver le pseudo d'un membre. Le site s'en sert comme d'un contrôle, et un officier confirme.
 
 D'après la documentation du jeu, un jeton d'identité dure 10 minutes, n'est valable que pour le site choisi, ne contient que le `publicId` et ne permet pas de se connecter à OpenFront.

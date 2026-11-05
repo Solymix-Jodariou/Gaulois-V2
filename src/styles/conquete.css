@@ -1,4 +1,8 @@
 /* La Conquête des Gaulois : ces styles ne sont chargés que sur les pages du jeu. */
+/* La carte mérite la place : le jeu prend plus de largeur que les autres pages sur un grand écran. */
+.conq-wrap {
+  max-width: 100rem;
+}
 .conq-nav {
   display: flex;
   flex-wrap: wrap;
@@ -58,12 +62,33 @@
 }
 .conq-board {
   display: grid;
+  grid-template-areas: "map" "side" "feed";
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   margin-top: 1rem;
 }
+.conq-board-map {
+  grid-area: map;
+  min-width: 0;
+}
+.conq-side {
+  grid-area: side;
+}
+.conq-board-feed {
+  grid-area: feed;
+  min-width: 0;
+}
+.conq-feed-box {
+  max-height: 28rem;
+  overflow-y: auto;
+  border-radius: 0.5rem;
+}
+/* Sur grand écran, le fil se glisse sous la carte, à côté de la colonne d'action. */
 @media (min-width: 64rem) {
   .conq-board {
-    grid-template-columns: minmax(0, 1fr) 21rem;
+    grid-template-areas: "map side" "feed side";
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    grid-template-rows: auto 1fr;
     align-items: start;
   }
 }
@@ -72,12 +97,13 @@
   overflow: hidden;
   border: 1px solid var(--color-line);
   border-radius: 1rem;
-  background: #050a1e;
+  /* Notre mer, la même que celle de l'image du relief : aucun bord visible autour de la carte. */
+  background: #1c4e7e;
 }
 .conq-map-view svg {
   display: block;
   width: 100%;
-  height: clamp(18rem, 36vw, 30rem);
+  height: clamp(18rem, 42vw, 38rem);
   cursor: pointer;
   user-select: none;
   /* Non zoomée, la carte laisse la page défiler au doigt. */
@@ -88,48 +114,94 @@
   touch-action: none;
 }
 .conq-land {
-  fill: #101b3d;
+  fill: #5d7a5c;
+}
+.conq-terrain,
+.conq-grid,
+.conq-routes,
+.conq-owners,
+.conq-borders,
+.conq-relief,
+.conq-names,
+.conq-labels {
+  pointer-events: none;
+}
+/* La grille : assez fine pour laisser voir le relief, là seulement où elle se lit. */
+.conq-grid {
+  display: none;
+  fill: none;
+  stroke: rgb(255 255 255 / 0.2);
+  stroke-width: 0.6px;
+  vector-effect: non-scaling-stroke;
+}
+svg[data-grid="true"] .conq-grid {
+  display: block;
 }
 .conq-routes path {
   fill: none;
   stroke: var(--color-warn);
-  stroke-width: 0.6;
-  stroke-dasharray: 2 2;
-  opacity: 0.75;
+  stroke-width: 1.2px;
+  stroke-dasharray: 5 5;
+  opacity: 0.8;
+  vector-effect: non-scaling-stroke;
 }
+/* Les terres d'un joueur : une seule masse translucide, le relief reste visible dessous. */
+.conq-owner {
+  fill-opacity: 0.62;
+}
+.conq-borders path {
+  fill: none;
+  stroke-width: 1.4px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.conq-borders path.is-mine {
+  stroke: #fff;
+  stroke-width: 2.2px;
+}
+/* La case qu'on vise : invisible au repos, elle couvre tout l'hexagone pour rester facile à toucher. */
 .conq-hex {
-  fill: #2a3b70;
-  stroke: #050a1e;
-  stroke-width: 0.45;
+  fill: transparent;
+  stroke: transparent;
+  pointer-events: all;
+  vector-effect: non-scaling-stroke;
 }
 .conq-hex:hover {
+  fill: rgb(255 255 255 / 0.16);
   stroke: #fff;
-  stroke-width: 0.8;
+  stroke-width: 1.4px;
 }
 .conq-hex.is-target {
+  fill: rgb(255 200 87 / 0.14);
   stroke: var(--color-warn);
-  stroke-width: 0.9;
+  stroke-width: 1.6px;
+}
+.conq-hex.is-target:hover {
+  fill: rgb(255 200 87 / 0.32);
 }
 .conq-hex.is-protected {
-  stroke-dasharray: 1.6 1.2;
-}
-.conq-hex.is-mine {
-  stroke: #fff;
-  stroke-width: 1.1;
+  stroke: rgb(255 255 255 / 0.75);
+  stroke-width: 1.1px;
+  stroke-dasharray: 3 3;
 }
 .conq-hex.is-selected {
+  fill: rgb(255 255 255 / 0.22);
   stroke: #fff;
-  stroke-width: 1.8;
+  stroke-width: 2.6px;
+  stroke-dasharray: none;
 }
 .conq-relief {
+  display: none;
   fill: none;
-  stroke: rgb(255 255 255 / 0.55);
-  stroke-width: 0.45;
-  pointer-events: none;
+  stroke: rgb(255 255 255 / 0.7);
+  stroke-width: 0.9px;
+  vector-effect: non-scaling-stroke;
+}
+svg[data-marks="true"] .conq-relief {
+  display: block;
 }
 .conq-names {
   display: none;
-  pointer-events: none;
 }
 svg[data-names="true"] .conq-names {
   display: block;
@@ -144,6 +216,21 @@ svg[data-names="true"] .conq-names {
   stroke: rgb(5 10 30 / 0.85);
   stroke-width: 0.3px;
 }
+/* Sur ses terres : le nom du joueur, ses troupes juste dessous. */
+.conq-labels text {
+  fill: #fff;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgb(5 10 30 / 0.8);
+  stroke-width: 0.14em;
+  stroke-linejoin: round;
+}
+.conq-labels .conq-label-troops {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
 .conq-tip {
   position: absolute;
   z-index: 2;
@@ -155,12 +242,84 @@ svg[data-names="true"] .conq-names {
   font-size: 0.8125rem;
   pointer-events: none;
 }
+/* Les commandes se posent sur la carte, en bas à droite. */
 .conq-map-tools {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  z-index: 1;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.625rem;
+  background: rgb(6 11 34 / 0.88);
+}
+.conq-tool {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 0.4375rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+}
+.conq-tool:hover {
+  background: var(--color-surface-2);
+}
+.conq-tool-wide {
+  padding-inline: 0.625rem;
+  font-size: 0.8125rem;
+}
+.conq-zoom {
+  min-width: 2.25rem;
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--color-muted);
+}
+/* Sur téléphone, la carte est petite : les commandes s'y font discrètes. */
+@media (max-width: 30rem) {
+  .conq-zoom {
+    display: none;
+  }
+  .conq-tool {
+    min-width: 2rem;
+    min-height: 2rem;
+  }
+  .conq-tool-wide {
+    padding-inline: 0.375rem;
+    font-size: 0.75rem;
+  }
+}
+/* Un don vient d'arriver : l'annonce se pose en haut de la carte, sans rien cacher d'important. */
+.conq-flash {
+  position: absolute;
+  pointer-events: none;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 1;
+  max-width: min(26rem, calc(100% - 1rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-warn);
+  border-radius: 0.625rem;
+  background: rgb(6 11 34 / 0.92);
+  font-size: 0.875rem;
+  font-weight: 600;
+  animation: conq-flash-in 0.35s ease-out;
+}
+.conq-flash:empty {
+  display: none;
+}
+@keyframes conq-flash-in {
+  from {
+    opacity: 0;
+    translate: 0 -0.5rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conq-flash {
+    animation: none;
+  }
 }
 .conq-legend {
   display: flex;
@@ -178,7 +337,7 @@ svg[data-names="true"] .conq-names {
   width: 0.875rem;
   height: 0.875rem;
   border-radius: 0.25rem;
-  background: #2a3b70;
+  background: #8fae7f;
 }
 .conq-swatch.is-mine {
   border: 2px solid #fff;
@@ -253,6 +412,27 @@ svg[data-names="true"] .conq-names {
 }
 .conq-rank:not(:has(.conq-dot)) {
   grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+}
+.conq-rank-button {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: inherit;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding-block: 0.125rem;
+  border-radius: 0.375rem;
+  text-align: left;
+  cursor: pointer;
+}
+.conq-rank-button:hover {
+  background: var(--color-surface-2);
+}
+.conq-rank-bar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 0.1875rem;
+  border-radius: 0.125rem;
 }
 .conq-rank.is-me {
   border-radius: 0.375rem;

@@ -19,8 +19,8 @@ const VECTOR_URL = "https://raw.githubusercontent.com/nvkelso/natural-earth-vect
 const PIXELS_PER_UNIT = 6;
 
 /** Notre mer : un bleu profond, plus clair près des côtes. */
-const DEEP = [24, 66, 112] as const;
-const SHORE = [58, 124, 168] as const;
+const DEEP = [28, 78, 126] as const;
+const SHORE = [72, 142, 186] as const;
 
 async function download(url: string, path: string) {
   if (existsSync(path)) return;
@@ -86,7 +86,7 @@ const far = await maskImage.clone().blur(PIXELS_PER_UNIT * 7).raw().toBuffer();
 // Deux fois plus fin que l'image finale : assez pour rester net, sans scintiller.
 const sourceWidth = 5400;
 const sourceHeight = 2700;
-const source = await sharp(tif, { limitInputPixels: false, unlimited: true }).removeAlpha().resize(sourceWidth, sourceHeight, { fit: "fill", kernel: "lanczos3" }).modulate({ saturation: 1.18, brightness: 1.04 }).raw().toBuffer();
+const source = await sharp(tif, { limitInputPixels: false, unlimited: true }).removeAlpha().resize(sourceWidth, sourceHeight, { fit: "fill", kernel: "lanczos3" }).modulate({ saturation: 1.32, brightness: 1.05 }).raw().toBuffer();
 
 const sample = (lon: number, lat: number, out: number[]) => {
   const fx = ((lon + 180) / 360) * sourceWidth - 0.5;

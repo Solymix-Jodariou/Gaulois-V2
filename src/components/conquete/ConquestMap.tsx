@@ -1,13 +1,29 @@
+import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef } from "preact/hooks";
-import { hexPath } from "../../lib/conquete/geo";
+import { basePath } from "../../lib/conquete/api";
+import { playerBorder, playerColor } from "../../lib/conquete/feed";
+import { WORLD_VIEW, hexPath } from "../../lib/conquete/geo";
+import { labelFontSize, outlinesOf, ownerLabels, ownerLayers, shortName } from "../../lib/conquete/shapes";
 import type { GameMap, TerritoryState } from "../../lib/conquete/types";
-import { playerColor } from "../../lib/conquete/feed";
+import { fmtDec1, fmtInt } from "../../lib/format";
 
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 9;
-/** Au-delà, les noms deviennent lisibles et s'affichent. */
+/** Au-delà, les noms des territoires deviennent lisibles et s'affichent. */
 const NAMES_ZOOM = 3.2;
+/** Au-delà, les petits repères du relief s'affichent : la vue d'ensemble reste nette. */
+const MARKS_ZOOM = 1.7;
+/** Sous cette largeur à l'écran, en pixels, la grille des hexagones ne ferait que griser le relief. */
+const GRID_MIN_HEX_PX = 11;
+/** Une étiquette plus petite que ça ne se lirait pas : elle attend qu'on zoome. */
+const LABEL_MIN_PX = 9;
+/** Et plus grande, elle cacherait la carte : elle cesse de grandir avec le zoom. */
+const LABEL_MAX_PX = 30;
 const TAP_DISTANCE = 8;
+/** La finesse de l'image légère, en pixels par unité de la carte : au-delà, la version complète prend le relais. */
+const LIGHT_RELIEF_PX_PER_UNIT = 3.3;
+/** Le premier affichage se décide sur la largeur de la fenêtre : les petits écrans n'ont que l'image légère à charger. */
+const FULL_RELIEF_WINDOW_PX = 1200;
 
 interface Props {
   map: GameMap;
@@ -16,9 +32,15 @@ interface Props {
   /** Les territoires sur lesquels le joueur peut agir. */
   targets: ReadonlySet<number>;
   me: number | null;
+  /** Le nom affiché sur les terres d'un joueur. */
+  nameOf: (owner: number) => string;
   /** Le texte du survol. */
   describe: (id: number) => string;
   onSelect: (id: number) => void;
+  /** Change à chaque demande de « trouver » un territoire, même s'il est déjà choisi : la carte y retourne. */
+  focus?: number;
+  /** Ce qui se pose par-dessus la carte : l'annonce d'un don, par exemple. */
+  children?: ComponentChildren;
 }
 
 /**
@@ -26,28 +48,37 @@ interface Props {
  * depuis la liste des territoires, au clavier. Le déplacement et le zoom ne repassent pas
  * par Preact : seul le groupe bouge, et la carte reste fluide sur téléphone.
  */
-export default function ConquestMap({ map, states, selected, targets, me, describe, onSelect }: Props) {
+export default function ConquestMap({ map, states, selected, targets, me, nameOf, describe, onSelect, focus = 0, children }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
+  const relief = useRef<SVGImageElement>(null);
+  const labelsGroup = useRef<SVGGElement>(null);
+  const zoomValue = useRef<HTMLSpanElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const view = useRef({ k: 1, x: 0, y: 0 });
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef({ moved: 0, pinch: 0 });
   /** Le territoire qu'on vient de toucher sur la carte : inutile de la déplacer sous le doigt du joueur. */
   const tapped = useRef<number | null>(null);
+  const lastFocus = useRef(focus);
+  const sharp = useRef(false);
 
   const { minX, minY, maxX, maxY } = map.bounds;
   const width = maxX - minX;
   const height = maxY - minY;
 
-  const shapes = useMemo(() => map.territories.map((t) => ({ t, d: hexPath(t.x, t.y, map.hexSize * 0.97) })), [map]);
-  const relief = useMemo(() => {
+  const reliefFile = (small: boolean) => `${basePath()}/conquete/terrain-${map.version}${small ? "-small" : ""}.webp`;
+  const firstRelief = useMemo(() => reliefFile(window.innerWidth * window.devicePixelRatio < FULL_RELIEF_WINDOW_PX), [map]);
+
+  const hexes = useMemo(() => map.territories.map((t) => ({ t, d: hexPath(t.x, t.y, map.hexSize) })), [map]);
+  const grid = useMemo(() => map.territories.map((t) => t.shape).join(""), [map]);
+  const marks = useMemo(() => {
     const mark = (x: number, y: number, s: number) => `M${x - s} ${y + s * 0.5}L${x} ${y - s * 0.6}L${x + s} ${y + s * 0.5}`;
     let hills = "";
     let peaks = "";
     for (const t of map.territories) {
-      if (t.terrain === "highland") hills += mark(t.x, t.y, 1.2);
-      if (t.terrain === "mountain") peaks += mark(t.x - 1.1, t.y + 0.3, 1.25) + mark(t.x + 1.1, t.y + 0.3, 1.25);
+      if (t.terrain === "highland") hills += mark(t.x, t.y - 2.6, 0.95);
+      if (t.terrain === "mountain") peaks += mark(t.x - 0.9, t.y - 2.5, 0.95) + mark(t.x + 0.9, t.y - 2.5, 0.95);
     }
     return { hills, peaks };
   }, [map]);
@@ -64,13 +95,55 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
     });
   }, [map, minX, maxX]);
 
-  const apply = () => {
+  const layers = useMemo(() => ownerLayers(outlinesOf(map), states), [map, states]);
+  const labels = useMemo(
+    () =>
+      ownerLabels(map, states).map((label) => {
+        const name = nameOf(label.owner);
+        return { ...label, name: shortName(name), size: labelFontSize(name, label) };
+      }),
+    [map, states, nameOf],
+  );
+
+  /** Pixels à l'écran pour une unité de la carte, sans zoom. */
+  const screenScale = () => {
+    const rect = svg.current?.getBoundingClientRect();
+    return rect && rect.width > 0 ? Math.min(rect.width / width, rect.height / height) : 1;
+  };
+
+  /** Ce qui dépend du niveau de zoom : changé seulement quand il change, pas à chaque image d'un déplacement. */
+  const applyDetail = () => {
+    const node = svg.current;
+    if (!node) return;
+    const { k } = view.current;
+    const scale = screenScale() * k;
+    node.dataset["names"] = String(k >= NAMES_ZOOM);
+    node.dataset["marks"] = String(k >= MARKS_ZOOM);
+    node.dataset["grid"] = String(Math.sqrt(3) * map.hexSize * scale >= GRID_MIN_HEX_PX);
+    for (const label of labelsGroup.current?.children ?? []) {
+      const px = Number(label.getAttribute("data-size")) * scale;
+      (label as SVGElement).style.display = px >= LABEL_MIN_PX ? "" : "none";
+      const x = label.getAttribute("data-x");
+      const y = label.getAttribute("data-y");
+      const shrink = LABEL_MAX_PX / px;
+      if (shrink < 1) label.setAttribute("transform", `translate(${x} ${y}) scale(${shrink}) translate(${-Number(x)} ${-Number(y)})`);
+      else label.removeAttribute("transform");
+    }
+    if (zoomValue.current) zoomValue.current.textContent = `×${fmtDec1(k)}`;
+    // On zoome, ou l'écran est plus grand que prévu : l'image complète arrive, chargée avant d'être montrée.
+    if (!sharp.current && relief.current?.getAttribute("href")?.endsWith("-small.webp") && scale * window.devicePixelRatio > LIGHT_RELIEF_PX_PER_UNIT) {
+      sharp.current = true;
+      const image = new Image();
+      image.onload = () => relief.current?.setAttribute("href", image.src);
+      image.src = reliefFile(false);
+    }
+  };
+
+  const apply = (zoomChanged = true) => {
     const { k, x, y } = view.current;
     group.current?.setAttribute("transform", `translate(${x} ${y}) scale(${k})`);
-    if (svg.current) {
-      svg.current.dataset["zoomed"] = String(k > 1.01);
-      svg.current.dataset["names"] = String(k >= NAMES_ZOOM);
-    }
+    if (svg.current) svg.current.dataset["zoomed"] = String(k > 1.01);
+    if (zoomChanged) applyDetail();
   };
 
   const clamp = () => {
@@ -108,12 +181,14 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
     view.current.x += dx;
     view.current.y += dy;
     clamp();
-    apply();
+    apply(false);
   };
 
   /** Amène un territoire choisi depuis la liste dans la vue. */
   useEffect(() => {
-    if (selected === null || tapped.current === selected) return;
+    const asked = focus !== lastFocus.current;
+    lastFocus.current = focus;
+    if (selected === null || (tapped.current === selected && !asked)) return;
     const t = map.territories[selected - 1];
     if (!t) return;
     const v = view.current;
@@ -122,8 +197,8 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
     v.y = minY + height / 2 - t.y * v.k;
     clamp();
     apply();
-    // Ne recentre que lorsque le choix change : le joueur garde la main sur le déplacement.
-  }, [selected, map]);
+    // Ne recentre que lorsque le choix change, ou sur demande : le joueur garde la main sur le déplacement.
+  }, [selected, focus, map]);
 
   useEffect(() => {
     apply();
@@ -137,9 +212,19 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
       zoomAt(e.deltaY < 0 ? 1.25 : 0.8, x, y);
     };
     node.addEventListener("wheel", onWheel, { passive: false });
-    return () => node.removeEventListener("wheel", onWheel);
+    const resized = new ResizeObserver(() => applyDetail());
+    resized.observe(node);
+    return () => {
+      node.removeEventListener("wheel", onWheel);
+      resized.disconnect();
+    };
     // Les bornes ne changent pas pour une même carte.
   }, [map]);
+
+  /** De nouvelles étiquettes : on leur applique le niveau de zoom en cours. */
+  useEffect(() => {
+    applyDetail();
+  }, [labels]);
 
   const showTip = (e: PointerEvent) => {
     const node = tip.current;
@@ -218,7 +303,7 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
 
   return (
     <div class="conq-map" data-testid="conquest-map">
-      <div class="conq-map-view" tabIndex={0} role="group" aria-label="Carte des territoires. Flèches pour se déplacer, plus et moins pour zoomer. Tous les territoires sont aussi dans la liste juste en dessous." onKeyDown={onKeyDown}>
+      <div class="conq-map-view" tabIndex={0} role="group" aria-label="Carte des territoires. Flèches pour se déplacer, plus et moins pour zoomer. Tous les territoires sont aussi dans la liste juste à côté." onKeyDown={onKeyDown}>
         <svg
           ref={svg}
           viewBox={`${minX} ${minY} ${width} ${height}`}
@@ -235,12 +320,35 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
         >
           <g ref={group}>
             <path class="conq-land" d={map.land}></path>
+            <image
+              ref={relief}
+              class="conq-terrain"
+              href={firstRelief}
+              x={WORLD_VIEW.minX}
+              y={WORLD_VIEW.minY}
+              width={WORLD_VIEW.maxX - WORLD_VIEW.minX}
+              height={WORLD_VIEW.maxY - WORLD_VIEW.minY}
+              preserveAspectRatio="none"
+            />
+            <path class="conq-grid" d={grid}></path>
             <g class="conq-routes">
               {routes.map((d) => (
                 <path key={d} d={d}></path>
               ))}
             </g>
-            {shapes.map(({ t, d }) => {
+            <g class="conq-owners">
+              {layers.map((layer) => (
+                <path key={layer.owner} class="conq-owner" data-owner={layer.owner} d={layer.fill} style={{ fill: playerColor(layer.owner) }}></path>
+              ))}
+            </g>
+            <g class="conq-borders">
+              {layers.map((layer) => (
+                <path key={layer.owner} class={layer.owner === me ? "is-mine" : undefined} d={layer.border} style={layer.owner === me ? undefined : { stroke: playerBorder(layer.owner) }}></path>
+              ))}
+            </g>
+            <path class="conq-relief" d={marks.hills}></path>
+            <path class="conq-relief" d={marks.peaks}></path>
+            {hexes.map(({ t, d }) => {
               const state = states.get(t.id);
               const mine = state !== undefined && state.owner === me;
               const isProtected = state?.protected_until ? Date.parse(state.protected_until) > Date.now() : false;
@@ -248,14 +356,12 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
                 <path
                   key={t.id}
                   data-t={t.id}
+                  data-owner={state?.owner}
                   d={d}
                   class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected"].filter(Boolean).join(" ")}
-                  style={state ? { fill: playerColor(state.owner) } : undefined}
                 ></path>
               );
             })}
-            <path class="conq-relief" d={relief.hills}></path>
-            <path class="conq-relief" d={relief.peaks}></path>
             <g class="conq-names" aria-hidden="true">
               {map.territories.map((t) => (
                 <text key={t.id} x={t.x} y={t.y + 3.2}>
@@ -263,22 +369,38 @@ export default function ConquestMap({ map, states, selected, targets, me, descri
                 </text>
               ))}
             </g>
+            <g ref={labelsGroup} class="conq-labels" aria-hidden="true" data-testid="owner-labels">
+              {labels.map((label) => (
+                <g key={label.owner} data-size={label.size} data-x={label.x} data-y={label.y} data-owner={label.owner}>
+                  <text x={label.x} y={label.y - label.size * 0.08} font-size={label.size}>
+                    {label.name}
+                  </text>
+                  <text class="conq-label-troops" x={label.x} y={label.y + label.size * 0.86} font-size={label.size * 0.82}>
+                    {fmtInt(label.garrison)}
+                  </text>
+                </g>
+              ))}
+            </g>
           </g>
         </svg>
         <div ref={tip} class="conq-tip" hidden></div>
+        {children}
+        <div class="conq-map-tools">
+          <button type="button" class="conq-tool" onClick={() => zoomCentre(1 / 1.4)} aria-label="Dézoomer">
+            −
+          </button>
+          <span ref={zoomValue} class="conq-zoom tnum" aria-hidden="true">
+            ×1
+          </span>
+          <button type="button" class="conq-tool" onClick={() => zoomCentre(1.4)} aria-label="Zoomer">
+            +
+          </button>
+          <button type="button" class="conq-tool conq-tool-wide" onClick={reset}>
+            Monde<span class="sr-only"> : vue d'ensemble</span>
+          </button>
+        </div>
       </div>
-      <div class="conq-map-tools">
-        <button type="button" class="chip" onClick={() => zoomCentre(1.4)} aria-label="Zoomer">
-          +
-        </button>
-        <button type="button" class="chip" onClick={() => zoomCentre(1 / 1.4)} aria-label="Dézoomer">
-          −
-        </button>
-        <button type="button" class="chip" onClick={reset}>
-          Vue d'ensemble
-        </button>
-        <span class="text-xs text-muted">Glisser pour se déplacer. Ctrl + molette ou deux doigts pour zoomer.</span>
-      </div>
+      <p class="mt-2 text-xs text-muted">Glisser pour se déplacer. Ctrl + molette ou deux doigts pour zoomer. Le nombre sous un nom : ses troupes en garnison.</p>
     </div>
   );
 }

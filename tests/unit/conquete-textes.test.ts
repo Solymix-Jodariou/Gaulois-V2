@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CONFIG_LABELS, flattenConfig, withValue } from "../../src/lib/conquete/config-labels";
 import { ERROR_MESSAGES, errorMessage } from "../../src/lib/conquete/errors";
 import { feedDetail, feedText, playerColor } from "../../src/lib/conquete/feed";
-import { DEFAULT_CONFIG, capacity, neutralCost, resolveAttack, settle, startingTroops } from "../../src/lib/conquete/rules";
+import { DEFAULT_CONFIG, capacity, donationTroops, neutralCost, resolveAttack, settle, startingTroops } from "../../src/lib/conquete/rules";
 import type { EventKind, FeedRow } from "../../src/lib/conquete/types";
 
 const SQL = readdirSync("supabase/migrations")
@@ -72,7 +72,16 @@ describe("les réglages", () => {
 });
 
 describe("le fil d'actualité", () => {
-  const base: FeedRow = { id: 1, at: "2026-11-06T12:00:00.000Z", kind: "attack_won", sent: 15_000, losses: 12_869, garrison_before: 10_000, garrison_after: 2131, actor: "Astra", target: "Brenn", territory: "Paris", territory_id: 1 };
+  const base: FeedRow = { id: 1, at: "2026-11-06T12:00:00.000Z", kind: "attack_won", sent: 15_000, losses: 12_869, garrison_before: 10_000, garrison_after: 2131, capsules: null, actor: "Astra", target: "Brenn", territory: "Paris", territory_id: 1 };
+
+  it("annonce un don et ses troupes, sans nommer un donneur anonyme", () => {
+    const gift: FeedRow = { ...base, kind: "donation", capsules: 250, sent: 25_000, territory: null, target: null };
+    expect(flat(feedText(gift))).toBe(`Astra offre 250 capsules au clan : +${fr(25_000)} troupes en renfort.`);
+    expect(flat(feedText({ ...gift, actor: null }))).toBe(`Un membre anonyme offre 250 capsules au clan : +${fr(25_000)} troupes en renfort.`);
+    expect(feedText({ ...gift, capsules: 1, sent: 100 })).toBe("Astra offre 1 capsule au clan : +100 troupes en renfort.");
+    expect(flat(feedText({ ...gift, sent: 0 }))).toBe("Astra offre 250 capsules au clan : sa réserve est déjà pleine.");
+    expect(flat(feedText({ ...gift, kind: "donation_cancelled", sent: 4000 }))).toBe(`Un don de 250 capsules a été annulé par un officier : ${fr(4000)} troupes repartent.`);
+  });
 
   it("raconte « X a pris Paris à Y »", () => {
     expect(feedText(base)).toBe("Astra a pris Paris à Brenn.");
@@ -86,7 +95,7 @@ describe("le fil d'actualité", () => {
   });
 
   it("a un texte pour chaque événement", () => {
-    const kinds: EventKind[] = ["season_started", "war_started", "season_closed", "start", "expand", "attack_won", "attack_lost", "player_excluded"];
+    const kinds: EventKind[] = ["season_started", "war_started", "season_closed", "start", "expand", "attack_won", "attack_lost", "player_excluded", "donation", "donation_cancelled"];
     for (const kind of kinds) expect(feedText({ ...base, kind }).length).toBeGreaterThan(5);
     const declared = /kind in \(([^)]*)\)/.exec(SQL)![1]!.match(/'([a-z_]+)'/g)!.map((s) => s.replaceAll("'", ""));
     expect(declared.sort()).toEqual([...kinds].sort());
@@ -139,6 +148,22 @@ describe("les règles écrites pour les membres", () => {
     expect(RULES).toContain(`**protégée pendant ${limits.protectionHours} heures**`);
     expect(limits.lastTerritoryProtected).toBe(true);
     expect(RULES).toContain("**Le dernier territoire d'un joueur ne peut pas être attaqué**");
+  });
+
+  it("expliquent ce qu'un don rapporte en troupes, avec les vrais chiffres", () => {
+    expect(RULES).toContain(`**1 capsule = ${DEFAULT_CONFIG.troopsPerCapsule} troupes**`);
+    const cap = Math.floor(capacity(5, 1250));
+    expect(RULES).toContain(fr(donationTroops(250, 60_000, cap)));
+    expect(RULES).toContain(fr(cap));
+    expect(donationTroops(250, 60_000, cap)).toBe(25_000);
+    const big = Math.floor(capacity(5, 11_000));
+    expect(RULES).toContain(fr(big));
+    expect(RULES).toContain(fr(donationTroops(10_000, 60_000, big)));
+    expect(RULES).toContain("dans la limite de votre capacité");
+  });
+
+  it("disent la vérité sur le délai : un officier valide, OpenFront ne donne pas d'accès", () => {
+    expect(RULES).toContain("dès qu'un officier a validé votre don");
   });
 
   it("rappellent qu'un don est définitif, et que le Plutonium ne compte pas", () => {

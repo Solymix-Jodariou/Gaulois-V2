@@ -10,6 +10,7 @@ const dateTime = new Intl.DateTimeFormat("fr-FR", {
   hour: "2-digit",
   minute: "2-digit",
 });
+const clock = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const dateOnly = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
 const dayShort = new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", day: "numeric", month: "short" });
 
@@ -21,6 +22,7 @@ export const fmtPct = (n: number | null | undefined) =>
   n === null || n === undefined ? NO_DATA : `${dec1.format(n)} %`;
 export const fmtDec1 = (n: number) => dec1.format(n);
 export const fmtDateTime = (iso: string) => dateTime.format(new Date(iso));
+export const fmtClock = (iso: string) => clock.format(new Date(iso));
 export const fmtDate = (iso: string) => dateOnly.format(new Date(iso));
 /** `day` au format AAAA-MM-JJ, sans conversion de fuseau. */
 export const fmtDay = (day: string) => dayShort.format(new Date(`${day}T00:00:00.000Z`));
