@@ -34,6 +34,9 @@ const CARD_TILT = 3;
 const CONQUEST_TILE = 32;
 /** Au-delà de cette hauteur, un bloc apparaît en fondu : son tracé serait trop lourd. */
 const CONQUEST_MAX_HEIGHT = 900;
+/** Délai entre deux blocs qui arrivent ensemble, et attente maximale d'un bloc : il ne doit pas tarder. */
+const CONQUEST_STAGGER_MS = 90;
+const CONQUEST_MAX_WAIT_MS = 400;
 const FLASH_TTL = 0.32;
 const LOCAL_TTL = 0.7;
 
@@ -273,8 +276,8 @@ function init(): void {
   }
 
   function queueConquest(el: HTMLElement, now: number): void {
-    const start = Math.max(now, nextSlot);
-    nextSlot = start + 90;
+    const start = Math.min(Math.max(now, nextSlot), now + CONQUEST_MAX_WAIT_MS);
+    nextSlot = start + CONQUEST_STAGGER_MS;
     conquests.push({
       el,
       start,
@@ -850,7 +853,8 @@ function init(): void {
         const el = entry.target as HTMLElement;
         revealObserver.unobserve(el);
         hiddenBlocks.delete(el);
-        if (el.offsetHeight > CONQUEST_MAX_HEIGHT) {
+        // Un très grand bloc ou une longue liste apparaît en fondu : la conquête y serait trop lente.
+        if (el.offsetHeight > CONQUEST_MAX_HEIGHT || el.matches("astro-island li")) {
           el.classList.add("fx-in");
           el.classList.remove("fx-hidden");
         } else {

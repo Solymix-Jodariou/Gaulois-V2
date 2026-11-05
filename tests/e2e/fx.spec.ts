@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/debuter", "/rejoindre"];
 
@@ -38,6 +38,40 @@ const seesTile = (page: Page, x: number, y: number, color: "blue" | "red") =>
         check();
       }),
     { x, y, color },
+  );
+
+/** Amène un élément au centre de l'écran sans défilement animé : le test ne vise pas une page en mouvement. */
+const centerOnScreen = (locator: Locator) =>
+  locator.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+
+/**
+ * Surveille à chaque image si un élément reçoit une animation lancée par le script.
+ * À démarrer avant le clic : ces animations sont si brèves qu'un contrôle après coup peut les manquer.
+ */
+const seesScriptAnimation = (locator: Locator) =>
+  locator.evaluate(
+    (el) =>
+      new Promise<boolean>((resolve) => {
+        const begin = performance.now();
+        const check = () => {
+          const found = el.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition));
+          if (found) return resolve(true);
+          if (performance.now() - begin > 4000) return resolve(false);
+          requestAnimationFrame(check);
+        };
+        check();
+      }),
+  );
+
+/** Attend que tous les blocs à l'écran soient entièrement révélés : avant, une case peut ne pas réagir au survol. */
+const blocksSettled = (page: Page) =>
+  page.waitForFunction(
+    () =>
+      ![...document.querySelectorAll<HTMLElement>(".stage, main .card")].some((el) => {
+        const r = el.getBoundingClientRect();
+        const onScreen = r.width > 0 && r.top < window.innerHeight * 0.9 && r.bottom > 0;
+        return onScreen && (el.classList.contains("fx-hidden") || el.style.clipPath !== "");
+      }),
   );
 
 /** Attend que les composants interactifs de la page aient démarré. */
@@ -178,8 +212,8 @@ test.describe("à la souris", () => {
 
   test("les blocs s'inclinent et un halo suit le curseur, puis tout revient", async ({ page }) => {
     const stage = page.locator(".stage-blue");
-    await stage.scrollIntoViewIfNeeded();
-    await expect.poll(() => stage.evaluate((el: HTMLElement) => el.style.clipPath), { timeout: 4000 }).toBe("");
+    await centerOnScreen(stage);
+    await blocksSettled(page);
     const box = (await stage.boundingBox())!;
     await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.2, { steps: 4 });
     await expect.poll(() => stage.evaluate((el: HTMLElement) => el.style.transform)).toContain("perspective");
@@ -195,8 +229,8 @@ test.describe("à la souris", () => {
 
   test("une onde traverse le bloc cliqué", async ({ page }) => {
     const stage = page.locator(".stage-blue");
-    await stage.scrollIntoViewIfNeeded();
-    await expect.poll(() => stage.evaluate((el: HTMLElement) => el.style.clipPath), { timeout: 4000 }).toBe("");
+    await centerOnScreen(stage);
+    await blocksSettled(page);
     const box = (await stage.boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     const painted = () =>
@@ -223,12 +257,15 @@ test.describe("à la souris", () => {
     const box = (await logo.boundingBox())!;
     const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 
+    const pulse = seesScriptAnimation(logo);
     await page.mouse.click(center.x, center.y);
-    expect(await logo.evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    expect(await pulse).toBe(true);
+    await expect.poll(() => logo.evaluate((el) => el.getAnimations().length)).toBe(0);
 
     await watchContextMenu(page);
+    const spin = seesScriptAnimation(logo);
     await page.mouse.click(center.x, center.y, { button: "right" });
-    expect(await logo.evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    expect(await spin).toBe(true);
     expect(await menuPrevented(page)).toBe(true);
   });
 
@@ -248,7 +285,7 @@ test.describe("à la souris", () => {
           setTimeout(() => resolve(false), 5000);
         }),
     );
-    await stage.scrollIntoViewIfNeeded();
+    await centerOnScreen(stage);
     expect(await sawTiles).toBe(true);
     await expect.poll(() => stage.evaluate((el: HTMLElement) => el.style.clipPath), { timeout: 3000 }).toBe("");
     await expect(stage).not.toHaveClass(/fx-hidden/);
@@ -258,7 +295,7 @@ test.describe("à la souris", () => {
   test("les compteurs finissent sur la valeur collectée", async ({ page }) => {
     const value = page.getByTestId("stat-card").nth(2).locator("[data-count]");
     const expected = await value.getAttribute("data-count");
-    await value.scrollIntoViewIfNeeded();
+    await centerOnScreen(value);
     await expect.poll(async () => (await value.textContent())?.replace(/\D/g, ""), { timeout: 3000 }).toBe(expected);
   });
 
@@ -275,8 +312,8 @@ test.describe("à la souris", () => {
     await hydrated(page);
     const bars = page.locator("[data-ripple-group] [data-ripple]");
     await expect(bars).toHaveCount(30);
-    await bars.nth(15).scrollIntoViewIfNeeded();
-    await page.waitForTimeout(1200);
+    await centerOnScreen(bars.nth(15));
+    await blocksSettled(page);
     const box = (await bars.nth(15).boundingBox())!;
 
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 3 });
@@ -285,15 +322,18 @@ test.describe("à la souris", () => {
     expect(Number((await label.textContent())?.replace(/\D/g, ""))).toBeGreaterThanOrEqual(0);
     await expect(page.locator(".chart-cursor")).toBeVisible();
 
+    const wave = seesScriptAnimation(bars.nth(20));
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    await expect.poll(() => bars.nth(16).evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    expect(await wave).toBe(true);
 
     await page.mouse.move(4, 4);
     await expect(label).toBeHidden();
 
+    // Le balayage repart : l'élément est recréé à chaque changement de période.
+    const firstSweep = await page.locator(".chart-sweep").elementHandle();
     await page.getByRole("button", { name: "7 jours" }).click();
     await expect(bars).toHaveCount(7);
-    expect(await page.locator(".chart-sweep").evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    expect(await page.locator(".chart-sweep").evaluate((el, old) => el !== old, firstSweep)).toBe(true);
   });
 
   test("les chiffres défilent et finissent sur la bonne valeur", async ({ page }) => {
@@ -310,7 +350,8 @@ test.describe("à la souris", () => {
     await page.waitForLoadState("networkidle");
     const table = page.getByTestId("heatmap");
     const cell = table.locator("td[data-tip]").nth(100);
-    await cell.scrollIntoViewIfNeeded();
+    await centerOnScreen(cell);
+    await blocksSettled(page);
     await cell.hover();
 
     const tip = page.locator("#fx-tip");
@@ -320,8 +361,9 @@ test.describe("à la souris", () => {
     // Un jour : 24 cases et son en-tête. Une heure : 7 cases et son en-tête.
     expect(await table.locator(".fx-cross").count()).toBeGreaterThanOrEqual(32);
 
+    const wave = seesScriptAnimation(table.locator("td[data-tip]").nth(3));
     await cell.click();
-    await expect.poll(() => table.locator("td[data-tip]").nth(3).evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    expect(await wave).toBe(true);
 
     await page.mouse.move(4, 4);
     await expect(tip).toBeHidden();
@@ -340,7 +382,7 @@ test.describe("à la souris", () => {
     await page.goto("/debuter");
     await hydrated(page);
     const replay = page.getByTestId("attack-replay");
-    await replay.scrollIntoViewIfNeeded();
+    await centerOnScreen(replay);
     const troops = page.getByTestId("replay-troops");
     const number = async () => Number((await troops.textContent())?.replace(/\D/g, "") ?? 0);
     await expect.poll(number, { timeout: 2000 }).toBeGreaterThan(0);
@@ -363,13 +405,23 @@ test.describe("à la souris", () => {
     await expect(page.getByTestId("member-row").first()).toBeVisible();
     await page.waitForTimeout(800);
     // Trier par parties garde en grande partie les mêmes lignes : elles changent seulement de place.
-    await page.getByRole("button", { name: /Parties/ }).click();
-    const gliding = await page.evaluate(() =>
-      [...document.querySelectorAll("tbody tr[data-key]")].filter((row) =>
-        row.getAnimations().some((animation) => !(animation instanceof CSSAnimation)),
-      ).length,
+    const glided = page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          const begin = performance.now();
+          const check = () => {
+            const found = [...document.querySelectorAll("tbody tr[data-key]")].some((row) =>
+              row.getAnimations().some((a) => !(a instanceof CSSAnimation) && !(a instanceof CSSTransition)),
+            );
+            if (found) return resolve(true);
+            if (performance.now() - begin > 4000) return resolve(false);
+            requestAnimationFrame(check);
+          };
+          check();
+        }),
     );
-    expect(gliding).toBeGreaterThan(0);
+    await page.getByRole("button", { name: /Parties/ }).click();
+    expect(await glided).toBe(true);
   });
 
   test("le bouton pause arrête tout, et le choix est conservé", async ({ page }) => {
@@ -431,7 +483,7 @@ for (const path of PAGES) {
               .filter((el) => getComputedStyle(el).opacity !== "1" || el.style.clipPath !== "")
               .map((el) => el.className),
           ),
-        { timeout: 8000 },
+        { timeout: 2500 },
       )
       .toEqual([]);
     expect(errors).toEqual([]);
