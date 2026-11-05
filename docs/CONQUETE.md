@@ -58,7 +58,9 @@ Dans Supabase, **Authentication → Providers → Discord** : activez-le et coll
 Toujours dans Supabase, **Authentication → URL Configuration** :
 
 - **Site URL :** `https://solymix-jodariou.github.io/Gaulois-V2/`
-- **Redirect URLs :** ajoutez `https://solymix-jodariou.github.io/Gaulois-V2/compte` et `https://solymix-jodariou.github.io/Gaulois-V2/admin`
+- **Redirect URLs :** ajoutez `https://solymix-jodariou.github.io/Gaulois-V2/compte`, `https://solymix-jodariou.github.io/Gaulois-V2/admin` et `https://solymix-jodariou.github.io/Gaulois-V2/direction`
+
+Dans **Authentication → Providers → Email**, coupez l'inscription par e-mail : le site ne s'en sert pas. Une fois tout installé, `npm run verifier:ligne` contrôle ces réglages : voir [DIRECTION.md](DIRECTION.md).
 
 ### 3. Installer le schéma
 

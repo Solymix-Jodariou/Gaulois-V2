@@ -28,6 +28,7 @@ grant execute on function public.get_game_pulse() to anon, authenticated;
 grant execute on function public.get_feed(bigint, bigint, integer) to anon, authenticated;
 grant execute on function public.get_season_history() to anon, authenticated;
 grant execute on function public.get_closed_season(bigint) to anon, authenticated;
+grant execute on function public.get_site_news() to anon, authenticated;
 
 -- Tout compte connecté, même en attente de validation.
 grant execute on function public.get_me() to authenticated;
@@ -56,6 +57,11 @@ grant execute on function public.cancel_donation(bigint, text) to authenticated;
 grant execute on function public.exclude_player(integer, text) to authenticated;
 grant execute on function public.reinstate_player(integer) to authenticated;
 grant execute on function public.list_excluded_players() to authenticated;
+grant execute on function public.get_direction_overview() to authenticated;
+grant execute on function public.save_announcement(bigint, text, text, text) to authenticated;
+grant execute on function public.delete_announcement(bigint) to authenticated;
+grant execute on function public.save_event(bigint, text, text, text, timestamptz) to authenticated;
+grant execute on function public.delete_event(bigint) to authenticated;
 
 -- Admins et au-dessus : la fonction le vérifie elle-même.
 grant execute on function public.set_member_role(uuid, public.site_role) to authenticated;
@@ -68,6 +74,9 @@ grant execute on function public.start_season(bigint, timestamptz) to authentica
 grant execute on function public.set_war_date(bigint, timestamptz) to authenticated;
 grant execute on function public.close_season(bigint) to authenticated;
 grant execute on function public.list_seasons() to authenticated;
+
+-- Fondateur seulement : la fonction le vérifie elle-même.
+grant execute on function public.transfer_founder(uuid) to authenticated;
 
 -- Clé de service seulement : la collecte, jamais le navigateur.
 grant execute on function public.bootstrap_founder(text) to service_role;

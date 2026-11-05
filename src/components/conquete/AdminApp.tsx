@@ -94,6 +94,11 @@ function Requests() {
               <p class={r.in_roster ? "conq-success" : "conq-problem"} data-testid="request-roster">
                 {r.in_roster ? `Dans la liste${r.roster_username ? ` : ${r.roster_username}` : ", membre sans pseudo public"}` : `Absent de la liste${r.claimed_text ? ` : a indiqué « ${r.claimed_text} »` : ""}`}
               </p>
+              {(r.game_role === "leader" || r.game_role === "officer") && (
+                <p class="mt-1 text-sm" data-testid="request-game-role">
+                  {r.game_role === "leader" ? "Chef" : "Officier"} dans le jeu, d'après la liste publique. Ce rang ne donne aucun droit ici : à vous de le nommer après vérification.
+                </p>
+              )}
               {r.note && <p class="mt-1 text-sm">« {r.note} »</p>}
               <p class="tnum mt-1 text-xs text-muted">
                 Demandé le {fmtDateTime(r.created_at)}

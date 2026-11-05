@@ -148,7 +148,9 @@ begin
   perform internal.require_rank(2);
   select coalesce(jsonb_agg(row_to_json(t)), '[]') into v_rows from (
     select r.id, p.gaul_number as number, p.display_name as name, l.discord_name, l.discord_id,
-      r.in_roster, r.roster_username, r.claimed_text, r.note, r.status, r.reason, r.created_at, r.decided_at
+      r.in_roster, r.roster_username, r.claimed_text, r.note, r.status, r.reason, r.created_at, r.decided_at,
+      -- Le rang dans le jeu, pour aider l'officier. La liste est publique : il ne donne aucun droit.
+      (select c.game_role from public.clan_roster c where c.public_id_hash = r.openfront_hash) as game_role
     from public.membership_requests r
     join public.profiles p on p.user_id = r.user_id
     left join public.private_links l on l.user_id = r.user_id

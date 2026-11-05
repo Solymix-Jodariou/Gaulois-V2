@@ -9,7 +9,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { resolveAttack, troopsToWin, type Terrain } from "../../src/lib/conquete/rules";
 
-const API = "http://127.0.0.1:54399";
+const API = `http://127.0.0.1:${process.env["GAL_TEST_SUPABASE_PORT"] ?? 54399}`;
 const MAP = JSON.parse(readFileSync("public/conquete/map-v1.json", "utf8")) as {
   territories: { id: number; name: string; terrain: Terrain; neighbours: number[] }[];
 };

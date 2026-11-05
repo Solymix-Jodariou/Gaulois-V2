@@ -12,6 +12,9 @@ export const SUPABASE_KEY = import.meta.env.PUBLIC_SUPABASE_KEY ?? "";
 /** Sans ces deux réglages, le site reste entièrement statique et le jeu n'apparaît pas. */
 export const GAME_ENABLED = SUPABASE_URL !== "" && SUPABASE_KEY !== "";
 
+/** Là où la session est gardée dans le navigateur. */
+export const SESSION_KEY = "gal-conquete-session";
+
 export const PROOFS_BUCKET = "donation-proofs";
 export const PROOF_MAX_BYTES = 2 * 1024 * 1024;
 export const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp"];
@@ -32,7 +35,7 @@ let client: Promise<SupabaseClient> | null = null;
 export function supabase(): Promise<SupabaseClient> {
   client ??= import("@supabase/supabase-js").then(({ createClient }) =>
     createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true, storageKey: "gal-conquete-session" },
+      auth: { flowType: "pkce", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true, storageKey: SESSION_KEY },
     }),
   );
   return client;

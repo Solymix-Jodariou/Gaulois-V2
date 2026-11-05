@@ -12,8 +12,9 @@ import { DEMO_ACCOUNTS, seedDemo } from "./conquete-demo";
 import { TEMPLATE_DB, connection, startDatabaseServer } from "./database";
 import { startFakeSupabase } from "./fake-supabase";
 
-export const SUPABASE_PORT = 54399;
-export const SITE_PORT = 4322;
+// Réglables : deux dossiers de travail peuvent ainsi lancer leurs tests en même temps.
+export const SUPABASE_PORT = Number(process.env["GAL_TEST_SUPABASE_PORT"] ?? 54399);
+export const SITE_PORT = Number(process.env["GAL_TEST_SITE_PORT"] ?? 4322);
 const OUT_DIR = "dist-conquete";
 
 const database = await startDatabaseServer();

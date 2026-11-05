@@ -16,6 +16,7 @@
     "data:carte": "tsx scripts/fetch-data.ts --carte",
     "conquete:map": "tsx scripts/generate-conquete-map.ts",
     "conquete:job": "tsx scripts/conquete-job.ts",
+    "verifier:ligne": "tsx scripts/verifier-mise-en-ligne.ts",
     "lint": "eslint .",
     "typecheck": "astro check && tsc --noEmit",
     "test": "vitest run",

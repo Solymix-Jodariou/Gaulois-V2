@@ -201,6 +201,8 @@ export interface RequestRow {
   reason: string | null;
   created_at: string;
   decided_at: string | null;
+  /** Le rang dans la liste officielle du jeu. Une indication pour l'officier, jamais un droit. */
+  game_role: string | null;
 }
 
 export interface MemberRow {

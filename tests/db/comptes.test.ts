@@ -19,7 +19,9 @@ describe("la première connexion", () => {
 
   it("garde le dernier pseudo Discord connu", async () => {
     const id = await db.addUser("Ancien");
-    await db.sql("update auth.users set raw_user_meta_data = $2 where id = $1", [id, JSON.stringify({ full_name: "Nouveau" })]);
+    // Une nouvelle connexion : Supabase relit Discord, puis note l'heure.
+    await db.sql("update auth.identities set identity_data = identity_data || $2 where user_id = $1", [id, JSON.stringify({ full_name: "Nouveau" })]);
+    await db.sql("update auth.users set last_sign_in_at = now() + interval '1 minute' where id = $1", [id]);
     expect(await db.rpc(asUser(id), "get_me")).toMatchObject({ discord_name: "Nouveau" });
   });
 });
@@ -181,7 +183,7 @@ describe("les règles d'accès à la base", () => {
       cross join pg_roles r
       where n.nspname = 'public' and r.rolname = 'anon' and has_function_privilege('anon', p.oid, 'execute')
       order by 1`);
-    const allowed = new Set(["get_game_state", "get_feed", "get_donor_ranking", "get_season_history", "get_closed_season"]);
+    const allowed = new Set(["get_game_state", "get_feed", "get_donor_ranking", "get_season_history", "get_closed_season", "get_site_news"]);
     expect(open.map((o) => o.name).filter((name) => !allowed.has(name))).toEqual([]);
   });
 });

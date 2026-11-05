@@ -20,8 +20,32 @@ create table auth.users (
   id uuid primary key default gen_random_uuid(),
   email text,
   raw_user_meta_data jsonb not null default '{}',
+  last_sign_in_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+-- L'identité donnée par Discord. Contrairement à raw_user_meta_data, un utilisateur ne peut pas la modifier.
+create table auth.identities (
+  provider_id text not null,
+  user_id uuid not null references auth.users (id) on delete cascade,
+  identity_data jsonb not null,
+  provider text not null,
+  primary key (provider_id, provider)
+);
+
+-- Imite une connexion Discord : Supabase crée le compte, puis l'identité, puis note l'heure de connexion.
+-- Le nom du déclencheur le fait passer après ceux de nos migrations. Un compte sans provider_id imite une inscription par e-mail.
+create function auth.shim_discord_login() returns trigger language plpgsql as $$
+begin
+  if new.raw_user_meta_data ? 'provider_id' then
+    insert into auth.identities (provider_id, user_id, identity_data, provider)
+    values (new.raw_user_meta_data ->> 'provider_id', new.id, new.raw_user_meta_data, 'discord');
+  end if;
+  update auth.users set last_sign_in_at = now() where id = new.id;
+  return new;
+end $$;
+create trigger zz_shim_discord_login after insert on auth.users
+  for each row execute function auth.shim_discord_login();
 
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claims', true)::jsonb ->> 'sub', '')::uuid

@@ -24,6 +24,12 @@ export const ERROR_MESSAGES: Record<string, string | ((detail: Detail) => string
   invalid_note: "Le message ne doit pas dépasser 300 caractères.",
 
   roster_incomplete: "La liste des membres reçue est incomplète : elle n'a pas été prise en compte.",
+  discord_required: "Connectez-vous avec Discord : c'est là qu'un officier vous reconnaît.",
+  invalid_title: "Donnez un titre, en 120 caractères au plus.",
+  invalid_body: "Écrivez un texte, en 2 000 caractères au plus.",
+  invalid_url: "Le lien doit commencer par https:// et ne contenir aucune espace.",
+  invalid_start: "Choisissez une date à venir.",
+  news_not_found: "Cette publication n'existe plus.",
   already_validated: "Votre compte est déjà validé.",
   invalid_claim: "Indiquez votre pseudo OpenFront ou votre identifiant public.",
   request_open: "Vous avez déjà une demande en cours.",

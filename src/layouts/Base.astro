@@ -3,6 +3,7 @@ import "../styles/global.css";
 import { clan, SITE_DISCLAIMER } from "../../config/clan";
 import { brandFile } from "../lib/brand";
 import { GAME_ENABLED } from "../lib/conquete/api";
+import AuthMenu from "../components/AuthMenu";
 import { loadMeta, loadLinks } from "../lib/data";
 import { fmtDateTime } from "../lib/format";
 
@@ -79,10 +80,11 @@ const tools = loadLinks().tools;
               <span class="text-xl">[{clan.tag}]</span>
             )
           }
-          <span class="hidden sm:inline">{clan.name}</span>
+          <span class:list={[GAME_ENABLED ? "hidden sm:inline xl:hidden" : "hidden sm:inline"]}>{clan.name}</span>
         </a>
 
-        <nav aria-label="Navigation principale" class="hidden lg:block">
+        {/* Le jeu ajoute un lien et le compte : le menu complet demande alors plus de largeur. */}
+        <nav aria-label="Navigation principale" class:list={[GAME_ENABLED ? "hidden xl:block" : "hidden lg:block"]}>
           <ul class="flex items-center gap-1">
             {
               nav.map((n) => (
@@ -91,7 +93,7 @@ const tools = loadLinks().tools;
                     href={`${base}${n.href}`}
                     aria-current={path === n.href ? "page" : undefined}
                     class:list={[
-                      "block rounded px-3 py-2 text-sm font-semibold text-white hover:underline hover:underline-offset-8",
+                      "block whitespace-nowrap rounded px-3 py-2 text-sm font-semibold text-white hover:underline hover:underline-offset-8",
                       path === n.href && "underline decoration-red decoration-2 underline-offset-8",
                     ]}
                   >
@@ -104,9 +106,13 @@ const tools = loadLinks().tools;
         </nav>
 
         <div class="flex items-center gap-2">
-          <a href={clan.links.discord} class="btn btn-secondary hidden !min-h-10 !py-1.5 !text-sm sm:inline-flex" rel="noopener">
-            Discord
-          </a>
+          {/* Avec le bouton de connexion, la place manque sur téléphone : le Discord reste dans la page et le pied de page. */}
+          <span class:list={[GAME_ENABLED ? "hidden md:inline-flex" : "inline-flex"]}>
+            <a href={clan.links.discord} class="btn btn-secondary !min-h-10 !py-1.5 !text-sm" rel="noopener">
+              Discord
+            </a>
+          </span>
+          {GAME_ENABLED && <AuthMenu client:idle />}
           <button
             type="button"
             class="btn btn-ghost fx-toggle !min-h-10 !px-2.5 !py-1.5"
@@ -124,7 +130,7 @@ const tools = loadLinks().tools;
               <path d="M4 2.500v11l9-5.500z"></path>
             </svg>
           </button>
-          <details class="relative lg:hidden" data-menu>
+          <details class:list={["relative", GAME_ENABLED ? "xl:hidden" : "lg:hidden"]} data-menu>
             <summary class="btn btn-ghost !min-h-10 !py-1.5 cursor-pointer list-none text-sm" aria-label="Ouvrir le menu">Menu</summary>
             <nav aria-label="Navigation mobile" class="card absolute right-0 mt-2 w-56 p-2 shadow-xl">
               <ul>

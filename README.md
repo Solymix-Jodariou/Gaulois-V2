@@ -6,6 +6,7 @@ Le site est statique (Astro). Une GitHub Action récupère les données de l'API
 
 - Audit de l'API : [docs/API_AUDIT.md](docs/API_AUDIT.md)
 - Choix de design : [docs/DESIGN.md](docs/DESIGN.md)
+- Connexion Discord, rôles et espace Direction : [docs/DIRECTION.md](docs/DIRECTION.md)
 - La Conquête des Gaulois, seule partie avec un serveur : [docs/CONQUETE.md](docs/CONQUETE.md), et [ses règles](docs/REGLES_CONQUETE.md)
 
 ## Installation

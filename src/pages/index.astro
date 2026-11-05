@@ -2,6 +2,8 @@
 import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
 import GroupPlay from "../components/GroupPlay.astro";
+import NewsBoard from "../components/NewsBoard";
+import { GAME_ENABLED } from "../lib/conquete/api";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
 import { loadAnnouncements, loadClanMapFilm, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
@@ -252,44 +254,13 @@ const onMap = mapFilm?.galSummary ?? null;
     }
 
     <section class="reveal grid gap-6 pt-6 md:grid-cols-2">
-      <div>
-        <h2 class="text-2xl">Annonces</h2>
-        {
-          announcements.length === 0 ? (
-            <p class="card mt-4 p-5 text-muted">Aucune annonce pour le moment.</p>
-          ) : (
-            <ul class="mt-4 space-y-3">
-              {announcements.map((a) => (
-                <li class="card p-5">
-                  <p class="tnum text-sm text-muted">{fmtDate(`${a.date}T12:00:00Z`)}</p>
-                  <h3 class="mt-1 text-lg">{a.title}</h3>
-                  <p class="mt-2 text-muted">{a.body}</p>
-                  {a.url && <a href={a.url} rel="noopener" class="mt-2 inline-block text-blue-text underline">En savoir plus</a>}
-                </li>
-              ))}
-            </ul>
-          )
-        }
-      </div>
-      <div>
-        <h2 class="text-2xl">Événements à venir</h2>
-        {
-          events.length === 0 ? (
-            <p class="card mt-4 p-5 text-muted">Aucun événement prévu pour le moment.</p>
-          ) : (
-            <ul class="mt-4 space-y-3">
-              {events.map((e) => (
-                <li class="card p-5">
-                  <p class="tnum text-sm text-muted">{fmtDateTime(e.start)}</p>
-                  <h3 class="mt-1 text-lg">{e.title}</h3>
-                  {e.description && <p class="mt-2 text-muted">{e.description}</p>}
-                  {e.url && <a href={e.url} rel="noopener" class="mt-2 inline-block text-blue-text underline">En savoir plus</a>}
-                </li>
-              ))}
-            </ul>
-          )
-        }
-      </div>
+      {
+        GAME_ENABLED ? (
+          <NewsBoard client:visible announcements={announcements} events={events} now={Date.now()} live />
+        ) : (
+          <NewsBoard announcements={announcements} events={events} now={Date.now()} />
+        )
+      }
     </section>
 
     <section class="stage stage-night reveal mt-6 grid items-center gap-8 md:grid-cols-2" aria-labelledby="join-title">
