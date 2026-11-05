@@ -1,0 +1,36 @@
+---
+import type { DatasetState } from "../lib/schemas";
+import { fmtDateTime } from "../lib/format";
+
+interface Props {
+  state: DatasetState;
+  maxAgeHours: number;
+  /** Date de la donnée elle-même, si elle diffère de la date de collecte. */
+  asOf?: string | null;
+  asOfLabel?: string;
+}
+const { state, maxAgeHours, asOf = null, asOfLabel = "Données arrêtées au" } = Astro.props;
+const { lastSuccessAt, lastError, lastErrorAt } = state;
+---
+
+<div class="text-sm text-muted tnum" data-last-success={lastSuccessAt ?? undefined} data-max-age-hours={maxAgeHours} data-testid="data-status">
+  {
+    lastSuccessAt ? (
+      <p>
+        {asOf && <>{asOfLabel} {fmtDateTime(asOf)} · </>}
+        Dernière mise à jour : {fmtDateTime(lastSuccessAt)}, heure de Paris.
+      </p>
+    ) : (
+      <p>Aucune donnée collectée pour le moment.</p>
+    )
+  }
+  <p data-stale-msg hidden class="mt-1 font-semibold text-warn" role="status"></p>
+  {
+    lastError && (
+      <p class="mt-1 font-semibold text-warn" role="status">
+        La dernière collecte a échoué{lastErrorAt && ` (${fmtDateTime(lastErrorAt)})`}.
+        {lastSuccessAt ? " Les dernières données valides restent affichées." : ""}
+      </p>
+    )
+  }
+</div>

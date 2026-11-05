@@ -1,0 +1,80 @@
+---
+import Base from "../layouts/Base.astro";
+import DataStatus from "../components/DataStatus.astro";
+import Empty from "../components/Empty.astro";
+import PageHeader from "../components/PageHeader.astro";
+import LeaderboardTable from "../components/LeaderboardTable.tsx";
+import { clan } from "../../config/clan";
+import { loadLeaderboard, loadMeta } from "../lib/data";
+import { fmtDate, fmtScore } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { findClan, neighbours, withOfficialRanks } from "../lib/stats";
+
+const meta = loadMeta();
+const leaderboard = loadLeaderboard();
+const clans = leaderboard ? withOfficialRanks(leaderboard.clans) : [];
+const me = findClan(clans, clan.tag);
+const near = neighbours(clans, clan.tag);
+---
+
+<Base title="Classement" description="Classement officiel des clans OpenFront et position du clan GAL.">
+  <div class="wrap">
+    <PageHeader
+      title="Classement"
+      intro="L'ordre est celui de la liste officielle d'OpenFront, sans aucun recalcul. Le score correspond aux victoires pondérées, avec une demi-vie de 30 jours qui favorise les victoires récentes."
+    >
+      <div class="mt-4">
+        <DataStatus state={meta.leaderboard} maxAgeHours={MAX_AGE_HOURS.leaderboard} asOf={leaderboard?.end} asOfLabel="Classement arrêté au" />
+        {leaderboard && <p class="mt-1 text-sm text-muted">Période : {fmtDate(leaderboard.start)} au {fmtDate(leaderboard.end)}.</p>}
+      </div>
+    </PageHeader>
+
+    {
+      !leaderboard ? (
+        <Empty title="Classement indisponible">Aucun classement valide n'a encore été collecté.</Empty>
+      ) : (
+        <>
+          {me && near ? (
+            <section class="reveal mb-8 grid gap-3 md:grid-cols-3" aria-label={`Position de ${clan.tag}`}>
+              <div class="card card-accent p-5">
+                <p class="text-sm font-semibold text-muted">Position de [{clan.tag}]</p>
+                <p class="tnum mt-2 font-display text-3xl font-extrabold">{me.rank}{me.rank === 1 ? "er" : "e"}</p>
+                <p class="tnum mt-1 text-sm text-muted">Score {fmtScore(me.weightedWins)}</p>
+              </div>
+              <div class="card p-5" data-testid="gap-above">
+                <p class="text-sm font-semibold text-muted">Écart avec le clan au-dessus</p>
+                {near.above ? (
+                  <>
+                    <p class="tnum mt-2 font-display text-3xl font-extrabold">{fmtScore(near.above.gap)}</p>
+                    <p class="mt-1 text-sm text-muted">derrière [{near.above.clan.clanTag}]</p>
+                  </>
+                ) : (
+                  <p class="mt-2 font-display text-lg font-bold">Aucun : {clan.tag} est premier</p>
+                )}
+              </div>
+              <div class="card p-5" data-testid="gap-below">
+                <p class="text-sm font-semibold text-muted">Écart avec le clan en dessous</p>
+                {near.below ? (
+                  <>
+                    <p class="tnum mt-2 font-display text-3xl font-extrabold">{fmtScore(near.below.gap)}</p>
+                    <p class="mt-1 text-sm text-muted">devant [{near.below.clan.clanTag}]</p>
+                  </>
+                ) : (
+                  <p class="mt-2 font-display text-lg font-bold">Aucun : {clan.tag} est dernier de la liste</p>
+                )}
+              </div>
+            </section>
+          ) : (
+            <p class="mb-6 font-semibold text-warn">
+              [{clan.tag}] ne figure pas dans la liste officielle : le clan est hors classement.
+            </p>
+          )}
+          <LeaderboardTable client:load clans={clans} tag={clan.tag} />
+          <p class="mt-4 text-sm text-muted">
+            Stats des parties publiques en équipe, hors classé et hors Humains contre Nations. L'API liste environ les 100 premiers clans.
+          </p>
+        </>
+      )
+    }
+  </div>
+</Base>

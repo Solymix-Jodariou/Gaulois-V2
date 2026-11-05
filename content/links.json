@@ -1,0 +1,29 @@
+{
+  "tools": [
+    {
+      "name": "OFStats",
+      "url": "https://ofstats.io/",
+      "description": "Statistiques communautaires d'OpenFront."
+    },
+    {
+      "name": "TrackerFront",
+      "url": "https://trackerfront.com/",
+      "description": "Suivi communautaire des statistiques."
+    },
+    {
+      "name": "TeamStats",
+      "url": "https://teamstats.pro/",
+      "description": "Statistiques communautaires des parties en équipe."
+    },
+    {
+      "name": "Ranked Leaderboard",
+      "url": "https://op-leaderboard.netlify.app/",
+      "description": "Classement communautaire du mode classé."
+    },
+    {
+      "name": "OpenFront Tools",
+      "url": "https://openfront-tools.frozenpenguin.media/",
+      "description": "Replays et anciennes versions du jeu."
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+---
+import Base from "../layouts/Base.astro";
+import DataStatus from "../components/DataStatus.astro";
+import { clan } from "../../config/clan";
+import { brandFile } from "../lib/brand";
+import { loadAnnouncements, loadEvents, loadLeaderboard, loadMeta } from "../lib/data";
+import { fmtDate, fmtDateTime, fmtInt, fmtPct, fmtScore } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { findClan, winRate, withOfficialRanks } from "../lib/stats";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const meta = loadMeta();
+const leaderboard = loadLeaderboard();
+const me = leaderboard ? findClan(withOfficialRanks(leaderboard.clans), clan.tag) : null;
+const rate = me ? winRate(me.wins, me.games) : null;
+const banner = brandFile("banner");
+const announcements = loadAnnouncements();
+const now = new Date().toISOString();
+const events = loadEvents().filter((e) => e.start >= now);
+
+const cards = [
+  { label: "Rang", value: me ? `${me.rank}${me.rank === 1 ? "er" : "e"}` : null, hint: `sur ${leaderboard?.clans.length ?? "—"} clans listés` },
+  { label: "Score", value: me ? fmtScore(me.weightedWins) : null, count: me?.weightedWins, decimals: 2, hint: "victoires pondérées" },
+  { label: "Parties", value: me ? fmtInt(me.games) : null, count: me?.games, hint: "sur 90 jours" },
+  { label: "Victoires", value: me ? fmtInt(me.wins) : null, count: me?.wins, hint: "sur 90 jours" },
+  { label: "Taux de victoire", value: rate === null ? null : fmtPct(rate), hint: "victoires ÷ parties" },
+];
+---
+
+<Base>
+  <section class="relative overflow-hidden border-b border-line">
+    {
+      banner ? (
+        <div class="wrap reveal pb-4 pt-6">
+          <img
+            src={`${base}/generated/banner-1600.webp`}
+            srcset={`${base}/generated/banner-800.webp 800w, ${base}/generated/banner-1600.webp 1600w`}
+            sizes="(min-width: 960px) 896px, calc(100vw - 2rem)"
+            width="1672"
+            height="941"
+            alt="Logo du clan GAL, Les Gaulois : un guerrier gaulois de profil, un casque à plumes tricolore et le lettrage GAL."
+            class="mx-auto h-auto w-full max-w-4xl rounded-2xl border border-line"
+          />
+        </div>
+      ) : (
+        <div class="wrap reveal pb-4 pt-14 text-center">
+          <p class="font-display text-7xl font-black leading-none tracking-tight sm:text-9xl">{clan.tag}</p>
+          <p class="mt-3 font-display text-xl font-bold tracking-[0.3em] sm:text-3xl">LES GAULOIS</p>
+          <span class="tribar mx-auto mt-5 !w-48"></span>
+        </div>
+      )
+    }
+    <div class="wrap reveal pb-12 pt-4 text-center">
+      <h1 class:list={["text-2xl sm:text-4xl", !banner && "font-semibold"]}>{clan.tagline}</h1>
+      {clan.description && <p class="mx-auto mt-4 max-w-2xl text-lg text-muted">{clan.description}</p>}
+      <div class="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+        <a href={clan.links.discord} class="btn btn-primary" rel="noopener">Rejoindre le Discord</a>
+        <a href={clan.links.openfront} class="btn btn-ghost" rel="noopener">Jouer à OpenFront</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap reveal pt-10" aria-labelledby="stats-title">
+    <h2 id="stats-title" class="text-2xl">Le clan au classement officiel</h2>
+    <div class="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+      {
+        cards.map((c, i) => (
+          <div class:list={["card card-accent p-4 sm:p-5", i === 4 && "col-span-2 md:col-span-1"]} data-testid="stat-card">
+            <p class="text-sm font-semibold text-muted">{c.label}</p>
+            {c.value === null ? (
+              <p class="mt-2 font-display text-lg font-bold text-muted">Pas de données</p>
+            ) : (
+              <p
+                class="tnum mt-2 font-display text-3xl font-extrabold"
+                data-count={c.count}
+                data-decimals={c.decimals ?? 0}
+              >
+                {c.value}
+              </p>
+            )}
+            <p class="mt-1 text-xs text-muted">{c.hint}</p>
+          </div>
+        ))
+      }
+    </div>
+    {
+      leaderboard && !me && (
+        <p class="mt-4 font-semibold text-warn">
+          [{clan.tag}] ne figure pas dans la liste officielle au {fmtDateTime(leaderboard.end)} : le clan est hors classement.
+        </p>
+      )
+    }
+    <div class="mt-4">
+      <DataStatus state={meta.leaderboard} maxAgeHours={MAX_AGE_HOURS.leaderboard} asOf={leaderboard?.end} asOfLabel="Classement arrêté au" />
+      {
+        leaderboard && (
+          <p class="mt-1 text-sm text-muted">
+            Période du classement : {fmtDate(leaderboard.start)} au {fmtDate(leaderboard.end)}. Parties publiques en équipe, sans le classé.
+          </p>
+        )
+      }
+    </div>
+    <p class="mt-4"><a href={`${base}/classement`}>Voir le classement complet</a></p>
+  </section>
+
+  <section class="wrap reveal grid gap-6 pt-12 md:grid-cols-2">
+    <div>
+      <h2 class="text-2xl">Annonces</h2>
+      {
+        announcements.length === 0 ? (
+          <p class="card mt-4 p-5 text-muted">Aucune annonce pour le moment.</p>
+        ) : (
+          <ul class="mt-4 space-y-3">
+            {announcements.map((a) => (
+              <li class="card p-5">
+                <p class="tnum text-sm text-muted">{fmtDate(`${a.date}T12:00:00Z`)}</p>
+                <h3 class="mt-1 text-lg">{a.title}</h3>
+                <p class="mt-2 text-muted">{a.body}</p>
+                {a.url && <a href={a.url} rel="noopener" class="mt-2 inline-block text-blue-text underline">En savoir plus</a>}
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+    <div>
+      <h2 class="text-2xl">Événements à venir</h2>
+      {
+        events.length === 0 ? (
+          <p class="card mt-4 p-5 text-muted">Aucun événement prévu pour le moment.</p>
+        ) : (
+          <ul class="mt-4 space-y-3">
+            {events.map((e) => (
+              <li class="card p-5">
+                <p class="tnum text-sm text-muted">{fmtDateTime(e.start)}</p>
+                <h3 class="mt-1 text-lg">{e.title}</h3>
+                {e.description && <p class="mt-2 text-muted">{e.description}</p>}
+                {e.url && <a href={e.url} rel="noopener" class="mt-2 inline-block text-blue-text underline">En savoir plus</a>}
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </div>
+  </section>
+</Base>

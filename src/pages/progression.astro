@@ -1,0 +1,29 @@
+---
+import Base from "../layouts/Base.astro";
+import DataStatus from "../components/DataStatus.astro";
+import PageHeader from "../components/PageHeader.astro";
+import ProgressCharts from "../components/ProgressCharts.tsx";
+import { clan } from "../../config/clan";
+import { loadHistory, loadMeta, loadSessions } from "../lib/data";
+import { fmtDay } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { dailySeries } from "../lib/sessions";
+
+const meta = loadMeta();
+const days = dailySeries(loadSessions(), clan.archiveStart, meta.sessions.coveredUntil);
+const history = loadHistory();
+---
+
+<Base title="Progression" description="Évolution du clan GAL : parties, victoires, rang et score.">
+  <div class="wrap">
+    <PageHeader
+      title="Progression"
+      intro={`L'évolution du clan depuis sa création dans le jeu, le ${fmtDay(clan.archiveStart)} 2026. Parties publiques en équipe jouées avec le tag, regroupées par jour de Paris. Ce sont des données historiques, pas du temps réel.`}
+    >
+      <div class="mt-4">
+        <DataStatus state={meta.sessions} maxAgeHours={MAX_AGE_HOURS.sessions} />
+      </div>
+    </PageHeader>
+    <ProgressCharts client:load days={days} history={history} />
+  </div>
+</Base>
