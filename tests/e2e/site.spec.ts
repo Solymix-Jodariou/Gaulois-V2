@@ -105,6 +105,15 @@ test("l'accueil n'affiche que des données collectées", async ({ page }) => {
   }
 });
 
+for (const path of ["/", "/rejoindre"]) {
+  test(`le bloc de jeu en groupe mène au Discord : ${path}`, async ({ page }) => {
+    await page.goto(path);
+    const block = page.getByTestId("group-play");
+    await expect(block.getByTestId("group-size").first()).toContainText("Seul sous le tag");
+    await expect(block.getByRole("link", { name: "Trouver un groupe sur Discord" })).toHaveAttribute("href", "https://discord.gg/cjUc42T7Y2");
+  });
+}
+
 test("signale les données périmées au visiteur", async ({ page }) => {
   await page.clock.setFixedTime(new Date(Date.now() + 10 * 86_400_000));
   await page.goto("/classement");

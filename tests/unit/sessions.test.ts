@@ -5,6 +5,7 @@ import {
   buildHeatmap,
   dailySeries,
   filterRange,
+  groupStats,
   mergeSessions,
 } from "../../src/lib/sessions";
 import { parisParts } from "../../src/lib/time";
@@ -92,6 +93,42 @@ describe("filterRange et bucketize", () => {
   });
   it("laisse un taux absent pour une période sans partie", () => {
     expect(bucketize(dailySeries([], "2026-11-01", "2026-11-01T10:00:00.000Z"), 1)[0]?.winRate).toBeNull();
+  });
+});
+
+describe("groupStats", () => {
+  /** `games` parties à `players` joueurs du clan, dont `wins` gagnées. */
+  const games = (players: number, count: number, wins: number) =>
+    Array.from({ length: count }, (_, i) => s(`p${players}-${i}`, "2026-11-01T10:00:00.000Z", i < wins, players));
+
+  it("regroupe par taille et calcule le taux et la part jouée seul", () => {
+    const stats = groupStats([...games(1, 4, 1), ...games(2, 2, 1), ...games(6, 1, 1), ...games(7, 1, 1), ...games(8, 2, 2)], 1)!;
+    expect(stats.sizes.map((x) => [x.label, x.games, x.wins, x.winRate])).toEqual([
+      ["Seul sous le tag", 4, 1, 25],
+      ["2 joueurs du clan", 2, 1, 50],
+      ["5 à 7 joueurs du clan", 2, 2, 100],
+      ["8 joueurs du clan ou plus", 2, 2, 100],
+    ]);
+    expect(stats.games).toBe(10);
+    expect(stats.soloShare).toBe(40);
+  });
+  it("écarte une taille sous le minimum de parties", () => {
+    const stats = groupStats([...games(1, 5, 1), ...games(2, 5, 2), ...games(8, 4, 4)], 5)!;
+    expect(stats.sizes.map((x) => x.label)).toEqual(["Seul sous le tag", "2 joueurs du clan"]);
+  });
+  it("garde une partie sous le minimum dans le total", () => {
+    expect(groupStats([...games(1, 5, 1), ...games(2, 5, 2), ...games(8, 4, 4)], 5)?.games).toBe(14);
+  });
+  it("ignore une partie sans joueur du clan", () => {
+    expect(groupStats([...games(0, 5, 5), ...games(1, 5, 1), ...games(2, 5, 2)], 5)?.games).toBe(10);
+  });
+  it("ne renvoie rien si le groupe ne gagne pas plus", () => {
+    expect(groupStats([...games(1, 5, 3), ...games(2, 5, 3)], 5)).toBeNull();
+    expect(groupStats([...games(1, 5, 3), ...games(2, 5, 1)], 5)).toBeNull();
+  });
+  it("ne renvoie rien avec une seule taille ou sans données", () => {
+    expect(groupStats(games(1, 5, 1), 5)).toBeNull();
+    expect(groupStats([])).toBeNull();
   });
 });
 

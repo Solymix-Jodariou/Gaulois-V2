@@ -32,7 +32,7 @@ Les grandes sections sont des blocs `.stage` à coins de 24 px. La profondeur vi
 | Classe | Décor | Usage sur l'accueil |
 |---|---|---|
 | `.stage-blue` | Bleu royal | Classement officiel |
-| `.stage-indigo` | Indigo | Parties des 14 derniers jours |
+| `.stage-indigo` | Indigo | Parties des 14 derniers jours, jeu en groupe |
 | `.stage-night` | Nuit, avec bordure | Membres, appel à rejoindre |
 | `.stage-wine` | Lie-de-vin | Meilleurs créneaux |
 

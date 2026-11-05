@@ -1,0 +1,47 @@
+---
+import { clan } from "../../config/clan";
+import { loadSessions } from "../lib/data";
+import { fmtDate, fmtInt, fmtPct } from "../lib/format";
+import { groupStats } from "../lib/sessions";
+
+const stats = groupStats(loadSessions());
+const first = stats?.sizes[0];
+const last = stats?.sizes[stats.sizes.length - 1];
+---
+
+{
+  stats && first && last && (
+    <section class="stage stage-indigo reveal grid items-center gap-8 md:grid-cols-2" aria-labelledby="group-title" data-testid="group-play">
+      <div>
+        <h2 id="group-title" class="section-title">Plus on est de Gaulois, plus on gagne</h2>
+        <p class="mt-4 max-w-md text-lg text-muted">
+          {first.label} : {fmtPct(first.winRate)} de victoires. {last.label} : {fmtPct(last.winRate)}. Pourtant, {fmtPct(stats.soloShare)} des parties se jouent seul sous le tag.
+        </p>
+        <p class="mt-4 max-w-md text-lg text-muted">Le vocal est obligatoire pour jouer en équipe avec le tag : trouvez votre groupe sur Discord.</p>
+        <a href={clan.links.discord} class="btn btn-secondary mt-6" rel="noopener">Trouver un groupe sur Discord</a>
+      </div>
+      <div class="panel">
+        <h3 class="text-sm tracking-wide text-muted">Taux de victoire selon le groupe</h3>
+        <ul class="mt-4 space-y-3">
+          {
+            stats.sizes.map((size) => (
+              <li data-testid="group-size">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <span class="font-semibold">{size.label}</span>
+                  <span class="tnum font-display text-xl font-extrabold">{fmtPct(size.winRate)}</span>
+                </div>
+                <div class="meter mt-1" aria-hidden="true">
+                  <i style={{ "--v": `${size.winRate}%` }}></i>
+                </div>
+                <p class="tnum mt-1 text-xs text-muted">{fmtInt(size.wins)} victoires sur {fmtInt(size.games)} parties</p>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="mt-4 text-xs text-muted">
+          {fmtInt(stats.games)} parties publiques en équipe jouées avec le tag depuis le {fmtDate(`${clan.archiveStart}T12:00:00Z`)}. Un lien, pas une preuve : le niveau des joueurs et le format de la partie comptent aussi.
+        </p>
+      </div>
+    </section>
+  )
+}

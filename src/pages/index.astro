@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
+import GroupPlay from "../components/GroupPlay.astro";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
 import { loadAnnouncements, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
@@ -192,6 +193,8 @@ const anonymous = (members?.members ?? []).filter((m) => !m.username).length;
         </section>
       )
     }
+
+    <GroupPlay />
 
     {
       slots.length > 0 && (
