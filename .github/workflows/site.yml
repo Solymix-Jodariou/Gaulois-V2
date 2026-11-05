@@ -68,6 +68,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          OPENFRONT_DONATIONS_KEY: ${{ secrets.OPENFRONT_DONATIONS_KEY }}
       - name: Garder la sauvegarde chiffrée
         if: ${{ !cancelled() && hashFiles('.cache/conquete-backup/*') != '' }}
         continue-on-error: true

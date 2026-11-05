@@ -45,18 +45,20 @@ function useList<T>(fn: string, args: Record<string, unknown> = {}) {
   return { rows, extra, error, reload };
 }
 
+const renfort = (troops: number) => (troops > 0 ? ` ${fmtInt(troops)} troupes arrivent dans sa réserve.` : "");
+
 /** Exécute une action, affiche le refus du serveur ou un message de réussite, puis relit. */
 function useAction(after: () => Promise<void>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const run = async (action: () => Promise<unknown>, success: string) => {
+  const run = async <T,>(action: () => Promise<T>, success: string | ((result: T) => string)) => {
     setBusy(true);
     setError(null);
     setDone(null);
     try {
-      await action();
-      setDone(success);
+      const result = await action();
+      setDone(typeof success === "function" ? success(result) : success);
       await after();
     } catch (e) {
       setError(messageOf(e));
@@ -128,15 +130,30 @@ function Donations() {
   const action = useAction(reloadAll);
   const [reasons, setReasons] = useState<Record<number, string>>({});
 
+  const synced = pending.extra?.["synced"] === true;
+
   const review = (d: DonationRow, approve: boolean) =>
-    action.run(async () => {
-      const res = await call<{ removed_path: string | null }>("review_donation", { p_donation: d.id, p_approve: approve, p_reason: reasons[d.id] || null });
-      if (res.removed_path) await removeProof(res.removed_path);
-    }, approve ? "Don validé." : "Don refusé.");
+    action.run(
+      async () => {
+        const res = await call<{ removed_path: string | null; troops: number }>("review_donation", { p_donation: d.id, p_approve: approve, p_reason: reasons[d.id] || null });
+        if (res.removed_path) await removeProof(res.removed_path);
+        return res;
+      },
+      (res) => (approve ? `Don validé.${renfort(res.troops)}` : "Don refusé."),
+    );
+
+  if (synced) {
+    return (
+      <div data-testid="admin-donations">
+        <p class="text-sm text-muted">Les dons sont lus directement chez OpenFront : il n'y a plus rien à valider ni à saisir ici.</p>
+        <Problem message={pending.error} onRetry={() => void reloadAll()} />
+      </div>
+    );
+  }
 
   return (
     <div data-testid="admin-donations">
-      <p class="text-sm text-muted">Vérifiez chaque don dans le jeu : fiche de [GAL], onglet « Dons ». Seul un don validé compte, et personne ne valide les siens.</p>
+      <p class="text-sm text-muted">Vérifiez chaque don dans le jeu : fiche de [GAL], onglet « Dons ». Seul un don validé compte, et personne ne valide les siens. Dès votre validation, le don fait pendant la saison arrive en troupes dans la réserve du joueur.</p>
       <Problem message={pending.error ?? action.error} onRetry={() => void reloadAll()} />
       {action.done && <Success message={action.done} />}
       <h3 class="mt-4 text-lg">À traiter</h3>
@@ -212,6 +229,7 @@ function Donations() {
                 <span>
                   {d.name} : {fmtInt(d.capsules)} capsules, {fmtDate(`${d.donated_on}T12:00:00Z`)}
                   {d.kind === "opening" ? " (total de départ)" : ""}
+                  {d.troops_granted > 0 ? `, +${fmtInt(d.troops_granted)} troupes` : ""}
                 </span>
                 {d.can_review && (
                   <button
@@ -220,7 +238,7 @@ function Donations() {
                     disabled={action.busy}
                     onClick={() => {
                       const reason = window.prompt("Raison de l'annulation ?");
-                      if (reason) void action.run(() => call("cancel_donation", { p_donation: d.id, p_reason: reason }), "Don annulé.");
+                      if (reason) void action.run(() => call<{ troops_taken: number }>("cancel_donation", { p_donation: d.id, p_reason: reason }), (res) => `Don annulé.${res.troops_taken > 0 ? ` ${fmtInt(res.troops_taken)} troupes repartent de sa réserve.` : ""}`);
                     }}
                   >
                     Annuler ce don
@@ -253,8 +271,8 @@ function EnterDonation({ onDone }: { onDone: () => Promise<void> }) {
         onSubmit={(e) => {
           e.preventDefault();
           void action.run(
-            () => call("enter_donation", { p_request_id: newRequestId(), p_user: user, p_capsules: Number(capsules), p_donated_on: day, p_kind: opening ? "opening" : "donation", p_note: note || null }),
-            "Don enregistré.",
+            () => call<{ troops: number }>("enter_donation", { p_request_id: newRequestId(), p_user: user, p_capsules: Number(capsules), p_donated_on: day, p_kind: opening ? "opening" : "donation", p_note: note || null }),
+            (res) => `Don enregistré.${renfort(res.troops)}`,
           );
         }}
       >

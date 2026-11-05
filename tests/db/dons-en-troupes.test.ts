@@ -101,8 +101,8 @@ describe("un don fait pendant la saison", () => {
 
   it("un don d'avant la saison n'augmente que la capacité", async () => {
     const user = await player("Renfort6", 10_000, land1);
-    const res = await approve((await declare(user, 500, "2020-01-01").catch(() => ({ id: 0 }))).id || (await db.rpc<{ id: number }>(asUser(officer), "enter_donation", { p_request_id: randomUUID(), p_user: user, p_capsules: 500, p_donated_on: "2020-01-01" })).id).catch(() => ({ troops: 0 }));
-    expect(res.troops ?? 0).toBe(0);
+    const res = await db.rpc(asUser(officer), "enter_donation", { p_request_id: randomUUID(), p_user: user, p_capsules: 500, p_donated_on: "2020-01-01" });
+    expect(res).toMatchObject({ ok: true, troops: 0 });
     expect((await playerRow(db, season, user))!.troops).toBe(10_000);
     expect(await capsulesOf(user)).toBe(500);
   });
@@ -232,13 +232,18 @@ describe("la lecture chez OpenFront, le jour où elle est permise", () => {
     const user = await linked("Lecteur1", "PUB-L1");
     await enlist(db, season, user, 10_000);
     await place(db, season, user, land1, 1000);
-    expect(await ingest([row("101", "PUB-L1", 250)])).toMatchObject({ ok: true, new: 1, known: 0 });
-    expect(await capsulesOf(user)).toBe(250);
+    // La toute première lecture rattrape l'histoire : elle compte au total, sans donner de troupes.
+    expect(await ingest([row("100", "PUB-L1", 1000, new Date(Date.now() - 3_600_000).toISOString())])).toMatchObject({ ok: true, new: 1, known: 0 });
+    expect(await capsulesOf(user)).toBe(1000);
+    expect((await playerRow(db, season, user))!.troops).toBe(10_000);
+
+    expect(await ingest([row("101", "PUB-L1", 250)])).toMatchObject({ ok: true, new: 1 });
+    expect(await capsulesOf(user)).toBe(1250);
     expect((await playerRow(db, season, user))!.troops).toBe(35_000);
 
     // Relire le même don n'ajoute rien.
     expect(await ingest([row("101", "PUB-L1", 250), row("102", "PUB-L1", 10)])).toMatchObject({ new: 1, known: 1 });
-    expect(await capsulesOf(user)).toBe(260);
+    expect(await capsulesOf(user)).toBe(1260);
     expect((await playerRow(db, season, user))!.troops).toBe(36_000);
   });
 

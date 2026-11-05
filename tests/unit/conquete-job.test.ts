@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { announcement, batchMessages, decryptBackup, encryptBackup, fetchRoster, hashPublicId, runConquestJob, type JobDeps, type NotifyEvent, type RpcResult } from "../../src/lib/conquete/job";
+import { announcement, batchMessages, decryptBackup, encryptBackup, fetchDonations, fetchRoster, hashPublicId, runConquestJob, type JobDeps, type NotifyEvent, type RpcResult } from "../../src/lib/conquete/job";
 
 const NOW = new Date("2026-11-06T12:00:00.000Z");
 
@@ -44,10 +44,96 @@ function makeDeps(overrides: Partial<JobDeps> = {}, marks: Record<string, unknow
     passphrase: "phrase-de-test",
     webhook: null,
     delayMs: 0,
+    donationsKey: null,
     ...overrides,
   };
   return { deps, calls, backups, removed, logs };
 }
+
+const donation = (id: number, createdBy: string | null, amount: number, createdAt = "2026-11-06T10:00:00.000Z", currencyType = "soft") => ({
+  id: String(id),
+  currencyType,
+  amount: String(amount),
+  reason: "player_donation",
+  note: null,
+  createdBy,
+  createdByUsername: createdBy ? `Pseudo-${createdBy}` : null,
+  createdAt,
+});
+
+/** L'API des dons : du plus récent au plus ancien, 50 par page. Refuse sans clé. */
+function donationsApi(rows: ReturnType<typeof donation>[], requests: string[] = []): typeof fetch {
+  return (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = new URL(String(url));
+    requests.push(u.toString());
+    if (!u.pathname.endsWith("/donations")) return Response.json({ results: [], total: 0, page: 1, limit: 50 });
+    if (new Headers(init?.headers).get("Authorization") !== "Bearer cle-donnee-par-openfront") return new Response("non", { status: 401 });
+    const page = Number(u.searchParams.get("page"));
+    return Response.json({ results: rows.slice((page - 1) * 50, page * 50), total: rows.length, page, limit: 50 });
+  }) as typeof fetch;
+}
+
+describe("les dons lus chez OpenFront", () => {
+  const key = "cle-donnee-par-openfront";
+  const rosterIsFresh = { roster_read_at: NOW.toISOString(), backup_at: NOW.toISOString() };
+
+  it("sans clé donnée par OpenFront, rien n'est lu ni envoyé", async () => {
+    const requests: string[] = [];
+    const { deps, calls } = makeDeps({ fetch: donationsApi([], requests) }, rosterIsFresh);
+    expect(await runConquestJob(deps)).toEqual([]);
+    expect(requests).toEqual([]);
+    expect(calls.map((c) => c.fn)).not.toContain("ingest_openfront_donations");
+  });
+
+  it("n'envoie qu'une empreinte du donneur : ni identifiant, ni pseudo", async () => {
+    const { deps, calls } = makeDeps({ fetch: donationsApi([donation(2, "PUB-1", 250), donation(1, null, 10)]), donationsKey: key }, rosterIsFresh);
+    expect(await runConquestJob(deps)).toEqual([]);
+    const sent = calls.find((c) => c.fn === "ingest_openfront_donations")!;
+    expect(sent.args!["p_rows"]).toEqual([
+      { id: "2", hash: hashPublicId("PUB-1"), capsules: 250, at: "2026-11-06T10:00:00.000Z" },
+      { id: "1", hash: null, capsules: 10, at: "2026-11-06T10:00:00.000Z" },
+    ]);
+    expect(JSON.stringify(sent.args)).not.toContain("PUB-");
+    expect(JSON.stringify(sent.args)).not.toContain("Pseudo");
+  });
+
+  it("ne garde que les capsules : le Plutonium ne compte jamais", async () => {
+    const rows = await fetchDonations(makeDeps({ fetch: donationsApi([donation(2, "PUB-1", 250), donation(1, "PUB-1", 999, undefined, "hard")]) }).deps, key, null);
+    expect(rows.map((r) => r.capsules)).toEqual([250]);
+  });
+
+  it("lit toute l'histoire la première fois, puis s'arrête à ce qu'elle connaît déjà", async () => {
+    const old = Array.from({ length: 120 }, (_, i) => donation(1000 - i, "PUB-1", 1, new Date(Date.parse("2026-11-06T10:00:00.000Z") - i * 86_400_000).toISOString()));
+    const first: string[] = [];
+    expect(await fetchDonations(makeDeps({ fetch: donationsApi(old, first) }).deps, key, null)).toHaveLength(120);
+    expect(first).toHaveLength(3);
+
+    const next: string[] = [];
+    // Le dernier don connu date d'hier : la première page suffit.
+    const rows = await fetchDonations(makeDeps({ fetch: donationsApi(old, next) }).deps, key, "2026-11-05T10:00:00.000Z");
+    expect(next).toHaveLength(1);
+    expect(rows).toHaveLength(50);
+  });
+
+  it("une panne d'OpenFront ne change rien : le dernier état valide reste", async () => {
+    const { deps, calls } = makeDeps({ fetch: (async () => new Response("non", { status: 503 })) as typeof fetch, donationsKey: key }, rosterIsFresh);
+    const errors = await runConquestJob(deps);
+    expect(errors).toEqual(["Dons d'OpenFront : dons : HTTP 503"]);
+    expect(calls.map((c) => c.fn)).not.toContain("ingest_openfront_donations");
+  });
+
+  it("une page illisible n'envoie rien du tout, même les pages précédentes", async () => {
+    const rows = Array.from({ length: 50 }, (_, i) => donation(1000 - i, "PUB-1", 1));
+    let served = 0;
+    const flaky = (async () => {
+      served++;
+      return served === 1 ? Response.json({ results: rows, total: 100, page: 1, limit: 50 }) : Response.json({ results: [{ id: "x" }], total: 100, page: 2, limit: 50 });
+    }) as typeof fetch;
+    const { deps, calls } = makeDeps({ fetch: flaky, donationsKey: key }, rosterIsFresh);
+    expect((await runConquestJob(deps))[0]).toContain("Dons d'OpenFront");
+    expect(calls.map((c) => c.fn)).not.toContain("ingest_openfront_donations");
+  });
+});
 
 describe("la liste des membres", () => {
   it("n'envoie que des empreintes : aucun identifiant ne quitte la tâche", async () => {

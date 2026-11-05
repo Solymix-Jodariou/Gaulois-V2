@@ -5,11 +5,16 @@
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { z } from "zod";
 import { ApiMembersPage } from "../schemas";
 
 const API = "https://api.openfront.io/public";
+const DONATIONS_API = "https://api.openfront.io/clans";
 const PAGE_SIZE = 50;
 const USER_AGENT = "GAL-clan-site/1.0";
+/** Relire un peu avant le dernier don connu : relire un don n'ajoute rien, en manquer un serait pire. */
+const DONATIONS_OVERLAP_MS = 3_600_000;
+const DONATIONS_MAX_PAGES = 400;
 /** La liste et la sauvegarde ne se refont qu'une fois par jour : l'Action tourne toutes les heures. */
 const DAILY_MS = 20 * 3_600_000;
 const DISCORD_LIMIT = 1900;
@@ -28,6 +33,11 @@ export interface JobDeps {
   passphrase: string | null;
   webhook: string | null;
   delayMs: number;
+  /**
+   * Uniquement une clé donnée par l'équipe d'OpenFront. Jamais la session d'un joueur :
+   * ses conditions d'utilisation l'interdisent (sections 5 et 6.5). Voir docs/CONQUETE.md.
+   */
+  donationsKey: string | null;
 }
 
 export const hashPublicId = (id: string): string => createHash("sha256").update(id, "utf8").digest("hex");
@@ -51,6 +61,54 @@ export async function fetchRoster(deps: Pick<JobDeps, "fetch" | "sleep" | "tag" 
   // Une liste incomplète ne remplace jamais la dernière liste valide.
   if (total === 0 || byHash.size < total) throw new Error(`liste incomplète : ${byHash.size} reçus pour ${total} annoncés`);
   return { entries: [...byHash.values()], total };
+}
+
+/* ---------- Les dons, si OpenFront a donné un accès ---------- */
+
+const ApiDonationsPage = z.object({
+  results: z.array(
+    z.object({
+      id: z.string().regex(/^\d{1,40}$/),
+      currencyType: z.string(),
+      amount: z.string().regex(/^\d{1,18}$/),
+      createdBy: z.string().nullable(),
+      createdAt: z.iso.datetime({ offset: true }),
+    }),
+  ),
+  total: z.number(),
+});
+
+export interface DonationRow {
+  id: string;
+  hash: string | null;
+  capsules: number;
+  at: string;
+}
+
+/**
+ * Lit les dons du plus récent au plus ancien, jusqu'à retrouver ce qu'on connaît déjà.
+ * Seules les capsules comptent, et du donneur ne reste qu'une empreinte : ni identifiant, ni pseudo.
+ * Une page illisible interrompt toute la lecture : le serveur ne reçoit jamais un morceau d'histoire.
+ */
+export async function fetchDonations(deps: Pick<JobDeps, "fetch" | "sleep" | "tag" | "delayMs">, key: string, newestAt: string | null | undefined): Promise<DonationRow[]> {
+  const stopAt = newestAt ? Date.parse(newestAt) - DONATIONS_OVERLAP_MS : null;
+  const rows = new Map<string, DonationRow>();
+  for (let page = 1; page <= DONATIONS_MAX_PAGES; page++) {
+    await deps.sleep(deps.delayMs);
+    const res = await deps.fetch(`${DONATIONS_API}/${deps.tag}/donations?page=${page}&limit=${PAGE_SIZE}&currencyType=soft`, {
+      headers: { "User-Agent": USER_AGENT, Authorization: `Bearer ${key}` },
+    });
+    if (!res.ok) throw new Error(`dons : HTTP ${res.status}`);
+    const data = ApiDonationsPage.parse(await res.json());
+    for (const d of data.results) {
+      if (d.currencyType !== "soft") continue;
+      rows.set(d.id, { id: d.id, hash: d.createdBy === null ? null : hashPublicId(d.createdBy), capsules: Number(d.amount), at: d.createdAt });
+    }
+    const oldest = data.results.at(-1);
+    if (!oldest || data.results.length < PAGE_SIZE || page * PAGE_SIZE >= data.total) return [...rows.values()];
+    if (stopAt !== null && Date.parse(oldest.createdAt) < stopAt) return [...rows.values()];
+  }
+  throw new Error(`dons : plus de ${DONATIONS_MAX_PAGES} pages, lecture abandonnée`);
 }
 
 /* ---------- La sauvegarde : AES-256-GCM, avec une clé tirée de la phrase secrète ---------- */
@@ -85,7 +143,11 @@ export interface NotifyEvent {
   target: string | null;
   territory: string | null;
   season: string;
+  capsules?: number | null;
+  sent?: number | null;
 }
+
+const count = (n: number | null | undefined) => new Intl.NumberFormat("fr-FR").format(n ?? 0);
 
 export function announcement(e: NotifyEvent): string {
   switch (e.kind) {
@@ -97,6 +159,8 @@ export function announcement(e: NotifyEvent): string {
       return `La saison « ${e.season} » est terminée : le classement et la carte sont figés.`;
     case "attack_won":
       return `${e.actor ?? "Un ancien membre"} a pris ${e.territory ?? "un territoire"} à ${e.target ?? "un ancien membre"}.`;
+    case "donation":
+      return `${e.actor ?? "Un membre anonyme"} offre ${count(e.capsules)} capsules au clan : +${count(e.sent)} troupes dans la Conquête.`;
     default:
       return "";
   }
@@ -137,13 +201,21 @@ export async function runConquestJob(deps: JobDeps): Promise<string[]> {
     return result;
   };
 
-  const marks = (await call("get_job_marks")) as RpcResult & { roster_read_at?: string; backup_at?: string };
+  const marks = (await call("get_job_marks")) as RpcResult & { roster_read_at?: string; backup_at?: string; newest_donation_at?: string | null };
 
   await step("Liste des membres", async () => {
     if (!isOld(marks.roster_read_at, deps.now())) return;
     const { entries, total } = await fetchRoster(deps);
     await call("sync_clan_roster", { p_entries: entries, p_total: total });
     deps.log(`Liste des membres relue : ${total}.`);
+  });
+
+  await step("Dons d'OpenFront", async () => {
+    // Sans clé donnée par OpenFront, les dons restent déclarés et validés à la main.
+    if (!deps.donationsKey) return;
+    const rows = await fetchDonations(deps, deps.donationsKey, marks.newest_donation_at);
+    const result = (await call("ingest_openfront_donations", { p_rows: rows })) as RpcResult & { new: number };
+    deps.log(`Dons relus : ${rows.length}, dont ${result.new} nouveaux.`);
   });
 
   await step("Effacement des captures", async () => {

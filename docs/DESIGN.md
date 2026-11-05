@@ -32,7 +32,7 @@ Les grandes sections sont des blocs `.stage` à coins de 24 px. La profondeur vi
 | Classe | Décor | Usage sur l'accueil |
 |---|---|---|
 | `.stage-blue` | Bleu royal | Classement officiel |
-| `.stage-indigo` | Indigo | Parties des 14 derniers jours, jeu en groupe |
+| `.stage-indigo` | Indigo | Parties des 14 derniers jours |
 | `.stage-night` | Nuit, avec bordure | Carte des clans, membres, appel à rejoindre |
 | `.stage-wine` | Lie-de-vin | Meilleurs créneaux |
 
@@ -159,15 +159,21 @@ Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle id
 
 **Une carte d'hexagones, pas de pays.** Tous les territoires ont la même surface réelle, ce qui rend la carte équitable. Elle ne dessine aucune frontière contestée, et les six voisins se voient d'un coup d'œil.
 
-**Une couleur par joueur.** Elle est tirée de son numéro, sur le cercle des teintes, et ne change jamais. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés au survol, au toucher et dans le panneau latéral.
+**La lecture d'une carte de conquête, à notre façon.** Demande du clan : une carte dans l'esprit de celle d'OpenFront. On en garde les codes de lecture : un vrai relief sous une mer bleue, des terres translucides d'un seul tenant qui s'arrêtent aux côtes, et le nom d'un joueur posé sur ses terres avec ses troupes dessous. On n'en copie ni les images, ni les couleurs exactes, ni le code : le relief vient de Natural Earth, l'océan est le nôtre, les hexagones restent visibles, et le jeu garde ses propres règles et son nom.
+
+**Une couleur par joueur.** Elle est tirée de son numéro, sur le cercle des teintes, et ne change jamais. Ses terres sont translucides à 62 % pour laisser voir le relief, et bordées de la même teinte, plus sombre, là seulement où elles s'arrêtent. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés sur la carte, au survol, au toucher et dans le panneau latéral.
+
+**Le nom suit la place.** Une étiquette tient dans les terres du joueur : elle n'apparaît qu'une fois lisible (9 px) et cesse de grandir à 30 px pour ne pas cacher la carte. Le nombre dessous est le total de ses garnisons.
 
 | Marque | Sens |
 |---|---|
 | Contour blanc | Vos terres |
 | Contour jaune | Les terres à votre portée |
 | Contour en pointillés | Une terre protégée |
-| ^ et ^^ | Colline et montagne |
+| ^ et ^^, en zoomant | Colline et montagne, au sens des règles |
 | Trait jaune pointillé | Une route de haute mer |
+
+**Le don se voit passer.** Un don validé s'annonce en haut de la carte pendant 12 secondes, dans une zone lue par les lecteurs d'écran, sans animation si l'utilisateur les a réduites. « Actualisé à » donne l'heure de la dernière lecture réussie : le mot « direct » n'apparaît nulle part, car les pages lisent toutes les 15 secondes.
 
 **Tout se joue sans la carte.** La liste des territoires et les cibles possibles permettent de tout faire au clavier ou avec un lecteur d'écran. La carte elle-même se déplace aux flèches et se zoome avec + et −.
 

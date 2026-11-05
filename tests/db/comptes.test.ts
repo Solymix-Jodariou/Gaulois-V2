@@ -181,7 +181,7 @@ describe("les règles d'accès à la base", () => {
       cross join pg_roles r
       where n.nspname = 'public' and r.rolname = 'anon' and has_function_privilege('anon', p.oid, 'execute')
       order by 1`);
-    const allowed = new Set(["get_game_state", "get_feed", "get_donor_ranking", "get_season_history", "get_closed_season"]);
+    const allowed = new Set(["get_game_state", "get_game_pulse", "get_feed", "get_donor_ranking", "get_season_history", "get_closed_season"]);
     expect(open.map((o) => o.name).filter((name) => !allowed.has(name))).toEqual([]);
   });
 });

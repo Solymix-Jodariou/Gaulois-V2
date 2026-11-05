@@ -6,7 +6,7 @@ import { DiscordButton, Empty, Loading, Problem, Success, messageOf, useMe } fro
 
 const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
 
-const DONATION_LABELS: Record<DonationStatus, string> = { pending: "En attente d'un officier", approved: "Validé", refused: "Refusé", cancelled: "Annulé" };
+const DONATION_LABELS: Record<DonationStatus, string> = { pending: "En attente d'un officier", approved: "Validé", refused: "Refusé", cancelled: "Annulé", superseded: "Remplacé par la lecture automatique" };
 
 /** Lier son profil OpenFront et demander sa validation. */
 function MembershipRequest({ me, onChange }: { me: Me; onChange: () => Promise<void> }) {
@@ -132,7 +132,7 @@ function DeclareDonation({ userId, onDone }: { userId: string; onDone: () => Pro
       setCapsules("");
       setNote("");
       setFile(null);
-      setDone("Déclaration envoyée. Elle comptera une fois validée par un officier.");
+      setDone("Déclaration envoyée. Elle comptera une fois validée par un officier, et vos troupes arriveront à ce moment-là.");
       await onDone();
     } catch (e) {
       setError(e instanceof Error && !("code" in e) ? e.message : messageOf(e));
@@ -190,12 +190,17 @@ function DeclareDonation({ userId, onDone }: { userId: string; onDone: () => Pro
 
 function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChange: () => Promise<void> }) {
   const [rows, setRows] = useState<Donation[] | null>(null);
+  const [synced, setSynced] = useState(false);
+  const [rate, setRate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [anonymous, setAnonymous] = useState(me.anonymous ?? true);
 
   const load = async () => {
     try {
-      setRows((await call<{ rows: Donation[] }>("get_my_donations")).rows);
+      const mine = await call<{ rows: Donation[]; synced: boolean; troops_per_capsule: number | null }>("get_my_donations");
+      setRows(mine.rows);
+      setSynced(mine.synced);
+      setRate(mine.troops_per_capsule);
       setError(null);
     } catch (e) {
       setError(messageOf(e));
@@ -224,10 +229,13 @@ function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChang
       <p class="tnum mt-2 text-4xl font-extrabold" data-testid="my-capsules">
         {fmtInt(me.capsules ?? 0)}
       </p>
-      <p class="text-sm text-muted">capsules validées par un officier. Elles augmentent votre capacité de troupes dans la Conquête.</p>
+      <p class="text-sm text-muted">
+        capsules {synced ? "lues chez OpenFront" : "validées par un officier"}. Elles augmentent votre capacité de troupes dans la Conquête.
+        {rate !== null && rate > 0 ? ` Pendant la saison, chaque capsule donnée vous apporte aussi ${fmtInt(rate)} troupes en renfort, dans la limite de votre capacité.` : ""}
+      </p>
 
       <p class="mt-3 rounded-lg border border-line p-3 text-sm text-muted">
-        <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong> Le don se fait dans le jeu, sur la fiche de [GAL]. Ici, vous le déclarez seulement. Seules les capsules comptent, jamais le Plutonium.
+        <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong> Le don se fait dans le jeu, sur la fiche de [GAL]. {synced ? "Ici, il apparaît tout seul après sa lecture." : "Ici, vous le déclarez seulement."} Seules les capsules comptent, jamais le Plutonium.
       </p>
 
       <label class="mt-4 flex items-start gap-3">
@@ -238,7 +246,7 @@ function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChang
         </span>
       </label>
 
-      <DeclareDonation userId={userId} onDone={async () => { await load(); await onChange(); }} />
+      {!synced && <DeclareDonation userId={userId} onDone={async () => { await load(); await onChange(); }} />}
 
       <h3 class="mt-6 text-lg">Historique</h3>
       <Problem message={error} onRetry={() => void load()} />
@@ -255,6 +263,9 @@ function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChang
                 <th scope="col" class="num">
                   Capsules
                 </th>
+                <th scope="col" class="num">
+                  Troupes reçues
+                </th>
                 <th scope="col">État</th>
               </tr>
             </thead>
@@ -263,6 +274,7 @@ function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChang
                 <tr key={d.id} data-testid="donation-row">
                   <td class="tnum">{fmtDate(`${d.donated_on}T12:00:00Z`)}</td>
                   <td class="num tnum">{fmtInt(d.capsules)}</td>
+                  <td class="num tnum">{d.troops_granted > 0 ? `+${fmtInt(d.troops_granted)}` : "—"}</td>
                   <td>
                     {d.kind === "opening" ? "Total de départ, " : ""}
                     {DONATION_LABELS[d.status]}

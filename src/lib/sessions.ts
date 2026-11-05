@@ -78,51 +78,6 @@ export function bucketize(days: readonly DayStat[], size: 1 | 7): Bucket[] {
   return out;
 }
 
-const GROUP_SIZES = [
-  { label: "Seul sous le tag", min: 1, max: 1 },
-  { label: "2 joueurs du clan", min: 2, max: 2 },
-  { label: "3 joueurs du clan", min: 3, max: 3 },
-  { label: "4 joueurs du clan", min: 4, max: 4 },
-  { label: "5 à 7 joueurs du clan", min: 5, max: 7 },
-  { label: "8 joueurs du clan ou plus", min: 8, max: Infinity },
-] as const;
-
-export interface GroupSizeStat {
-  label: string;
-  games: number;
-  wins: number;
-  winRate: number;
-}
-
-export interface GroupStats {
-  sizes: GroupSizeStat[];
-  /** Parties avec au moins un joueur du clan. */
-  games: number;
-  /** Part des parties jouées seul sous le tag, en %. */
-  soloShare: number;
-}
-
-/**
- * Taux de victoire selon le nombre de joueurs du clan dans la partie.
- * Une taille sous `minGames` parties n'est pas retenue. Renvoie null si les données
- * ne montrent pas de gain entre la plus petite et la plus grande taille retenue :
- * le message du bloc ne serait alors plus vrai.
- */
-export function groupStats(sessions: readonly StoredSession[], minGames = 30): GroupStats | null {
-  const played = sessions.filter((s) => s.clanPlayerCount >= 1);
-  const sizes = GROUP_SIZES.flatMap(({ label, min, max }) => {
-    const rows = played.filter((s) => s.clanPlayerCount >= min && s.clanPlayerCount <= max);
-    const wins = rows.filter((s) => s.hasWon).length;
-    const rate = winRate(wins, rows.length);
-    return rate === null || rows.length < minGames ? [] : [{ label, games: rows.length, wins, winRate: rate }];
-  });
-  const first = sizes[0];
-  const last = sizes[sizes.length - 1];
-  if (!first || !last || first === last || last.winRate <= first.winRate) return null;
-  const solo = played.filter((s) => s.clanPlayerCount === 1).length;
-  return { sizes, games: played.length, soloShare: (solo / played.length) * 100 };
-}
-
 export const HEATMAP_DAYS = 90;
 
 export interface Heatmap {

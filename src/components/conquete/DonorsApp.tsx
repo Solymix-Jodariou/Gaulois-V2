@@ -1,12 +1,13 @@
 import { useEffect, useState } from "preact/hooks";
 import { basePath, call } from "../../lib/conquete/api";
-import type { DonorRow } from "../../lib/conquete/types";
+import type { DonationSync, DonorRow } from "../../lib/conquete/types";
 import { fmtDateTime, fmtInt } from "../../lib/format";
 import { Loading, Problem, messageOf } from "./common";
 
 interface Ranking {
   rows: DonorRow[];
   season: string | null;
+  sync: DonationSync | null;
   read_at: string;
 }
 
@@ -34,10 +35,11 @@ export default function DonorsApp() {
     <div data-testid="donors">
       <p class="tnum text-sm text-muted" data-testid="donors-read-at">
         Relu le {fmtDateTime(data.read_at)}, heure de Paris.
+        {data.sync ? ` Dons lus chez OpenFront, dernière lecture le ${fmtDateTime(data.sync.read_at)}.` : " Dons validés un à un par les officiers."}
       </p>
       {data.rows.length === 0 ? (
         <p class="card mt-4 p-5" data-testid="donors-empty">
-          Aucun don validé pour l'instant. Cela ne veut pas dire que personne n'a donné : les dons apparaissent ici une fois déclarés et validés par un officier.
+          Aucun don {data.sync ? "lu" : "validé"} pour l'instant. Cela ne veut pas dire que personne n'a donné : {data.sync ? "un don apparaît ici une fois son auteur validé sur le site." : "les dons apparaissent ici une fois déclarés et validés par un officier."}
         </p>
       ) : (
         <div class="card mt-4 overflow-x-auto" tabIndex={0} role="region" aria-label="Classement des donneurs">
@@ -75,7 +77,7 @@ export default function DonorsApp() {
         </div>
       )}
       <p class="mt-4">
-        <a href={`${basePath()}/compte`}>Déclarer un don ou choisir d'apparaître sous mon nom</a>
+        <a href={`${basePath()}/compte`}>{data.sync ? "Choisir d'apparaître sous mon nom" : "Déclarer un don ou choisir d'apparaître sous mon nom"}</a>
       </p>
     </div>
   );

@@ -8,7 +8,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import pg from "pg";
-import { DEMO_ACCOUNTS, seedDemo } from "./conquete-demo";
+import { DEMO_ACCOUNTS, seedDemo, startDemoGifts } from "./conquete-demo";
 import { TEMPLATE_DB, connection, startDatabaseServer } from "./database";
 import { startFakeSupabase } from "./fake-supabase";
 
@@ -19,9 +19,10 @@ const OUT_DIR = "dist-conquete";
 const database = await startDatabaseServer();
 const pool = new pg.Pool({ ...connection(database.port, TEMPLATE_DB), max: 30 });
 // `--demo` : une partie fictive déjà en cours, pour regarder le jeu sur son PC, sans aucun compte.
+// Des dons fictifs y arrivent tout seuls. `--direct` : comme si OpenFront avait donné un accès.
 const demo = process.argv.includes("--demo");
 await startFakeSupabase(pool, SUPABASE_PORT, demo ? { accounts: DEMO_ACCOUNTS } : {});
-if (demo) await seedDemo(pool);
+if (demo) startDemoGifts(pool, await seedDemo(pool), process.argv.includes("--direct"));
 
 // Le film et les logos sont produits par `npm run build` : on les refait s'ils manquent.
 if (!existsSync("public/generated/carte/film.json")) {

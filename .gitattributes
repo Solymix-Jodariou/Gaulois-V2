@@ -1,3 +1,4 @@
 # Le film de la carte est binaire : Git ne doit jamais y convertir les fins de ligne.
 data/clanmap/film.bin binary
 data/clanmap/terrain.webp binary
+public/conquete/*.webp binary

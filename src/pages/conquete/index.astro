@@ -8,7 +8,7 @@ import { GAME_ENABLED } from "../../lib/conquete/api";
 ---
 
 <Base title="La Conquête" description="La Conquête des Gaulois : le jeu de territoires des membres du clan GAL, par saisons. Les capsules données au clan font la puissance de chacun.">
-  <div class="wrap">
+  <div class:list={["wrap", GAME_ENABLED && "conq-wrap"]}>
     <PageHeader title="La Conquête des Gaulois" intro="Une carte du monde, des saisons, et seuls les membres de GAL pour se la disputer. Les capsules données au clan font la puissance de chacun." />
     <GameNav />
   </div>

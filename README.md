@@ -28,6 +28,7 @@ Le site s'ouvre sur http://localhost:4321. Aucun secret n'est nécessaire.
 | `npm run data:fetch` | Collecte les données dans `data/` |
 | `npm run data:carte` | Met à jour seulement la carte des clans, sans attendre le délai d'une journée |
 | `npm run conquete:map` | Régénère la carte du jeu depuis Natural Earth |
+| `npm run conquete:terrain` | Régénère l'image du relief de la carte, depuis Natural Earth |
 | `npm run conquete:job` | La tâche quotidienne du jeu. Sans ses réglages, elle ne fait rien. |
 | `npm run build` | Génère le favicon, l'image de partage et les fichiers du film, puis construit `dist/` |
 | `npm run preview` | Sert le dossier `dist/` |
@@ -126,7 +127,6 @@ Tous les calculs sont dans `src/lib/` et testés :
 - **Écart avec un voisin :** différence de `weightedWins`.
 - **Stats d'un membre :** champ `stats.team` de l'API.
 - **Meilleurs créneaux :** les plus de parties sur 90 jours, puis les plus de joueurs du clan par partie. Un créneau sous 5 parties est écarté.
-- **Jeu en groupe :** `victoires ÷ parties` selon `clanPlayerCount`, sur toutes les sessions archivées. Une taille sous 30 parties est écartée. Le bloc disparaît si la plus grande taille retenue ne gagne pas plus que la plus petite.
 - **Ma place :** position d'un membre parmi ceux dont les stats sont connues, triés par `stats.team.wins`, comme la page Membres. Deux membres à égalité partagent la même place.
 - **Territoire sur la carte :** pixels rejoués depuis l'historique. L'ordre des clans suit le nombre de pixels, comme la liste de la carte officielle. Ce n'est pas le classement des clans.
 - **Pixels pris et perdus :** comptés à chaque changement de main d'un pixel. Les terres neutres sont comptées à part.
