@@ -1,4 +1,5 @@
 import { useMemo, useState } from "preact/hooks";
+import AnimatedNumber from "./AnimatedNumber";
 import { fmtDay, fmtInt, fmtPct, fmtScore } from "../lib/format";
 import type { HistorySnapshot } from "../lib/schemas";
 import { bucketize, filterRange, type Bucket, type DayStat, type RangeKey } from "../lib/sessions";
@@ -44,22 +45,48 @@ function GamesChart({ buckets, weekly }: { buckets: Bucket[]; weekly: boolean })
             <span class="tnum absolute -top-2.5 left-0 bg-surface pr-1 text-xs text-muted">{fmtInt(Math.round(max * f))}</span>
           </div>
         ))}
-        <div class="absolute inset-y-0 left-10 right-0 flex items-end">
-          {buckets.map((b, i) => (
-            <div
-              key={b.date}
-              class={`flex h-full flex-1 flex-col justify-end px-px ${hover === i ? "bg-white/10" : ""}`}
-              onPointerEnter={() => setHover(i)}
-              onPointerDown={() => setHover(i)}
-            >
-              <div class="flex flex-col gap-0.5" style={{ height: `${(b.games / max) * 100}%`, opacity: b.partial ? 0.55 : 1 }}>
-                {b.losses > 0 && <div class="min-h-px rounded-t bg-loss" style={{ flexGrow: b.losses, flexBasis: 0 }} />}
-                {b.wins > 0 && (
-                  <div class={`min-h-px bg-win ${b.losses === 0 ? "rounded-t" : ""}`} style={{ flexGrow: b.wins, flexBasis: 0 }} />
-                )}
+        <div class="absolute inset-y-0 left-10 right-0" data-ripple-group>
+          <div class="chart-sweep" />
+          {hover !== null && shown && (
+            <>
+              <div class="chart-cursor" style={{ left: `${(hover / buckets.length) * 100}%`, width: `${100 / buckets.length}%` }} />
+              <div class="chart-guide" style={{ bottom: `${(shown.games / max) * 100}%` }} />
+              <div
+                class="chart-label tnum"
+                data-testid="chart-label"
+                style={{ left: `${((hover + 0.5) / buckets.length) * 100}%`, bottom: `${(shown.games / max) * 100}%` }}
+              >
+                {fmtInt(shown.games)}
               </div>
-            </div>
-          ))}
+            </>
+          )}
+          <div class="absolute inset-0 flex items-end">
+            {buckets.map((b, i) => (
+              <div
+                key={b.date}
+                class="flex h-full flex-1 flex-col justify-end px-px"
+                onPointerEnter={() => setHover(i)}
+                onPointerDown={() => setHover(i)}
+              >
+                <div
+                  class="fx-grow flex flex-col gap-0.5"
+                  data-ripple="glow"
+                  style={{
+                    height: `${(b.games / max) * 100}%`,
+                    opacity: b.partial ? 0.55 : 1,
+                    "--i": i,
+                    // Les barres voisines s'éclairent : leur hauteur, elle, ne change jamais.
+                    filter: hover === null ? undefined : `brightness(${1 + 0.35 * Math.max(0, 1 - Math.abs(i - hover) / 3)})`,
+                  }}
+                >
+                  {b.losses > 0 && <div class="min-h-px rounded-t bg-loss" style={{ flexGrow: b.losses, flexBasis: 0 }} />}
+                  {b.wins > 0 && (
+                    <div class={`min-h-px bg-win ${b.losses === 0 ? "rounded-t" : ""}`} style={{ flexGrow: b.wins, flexBasis: 0 }} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div class="relative mt-1 h-5 pl-10 text-xs text-muted" aria-hidden="true">
@@ -132,6 +159,7 @@ function LineChart({ title, points, invert, format }: { title: string; points: L
       </p>
       {measured < 2 ? (
         <p class="mt-3 text-sm text-muted">
+          <span class="beacon" aria-hidden="true" />
           Une seule mesure pour l'instant. L'API ne donne pas le passé de cette valeur : la courbe se construira jour après jour.
         </p>
       ) : (
@@ -145,7 +173,7 @@ function LineChart({ title, points, invert, format }: { title: string; points: L
             setHover(Math.max(0, Math.min(points.length - 1, Math.round(((pct - 2) / 96) * (points.length - 1)))));
           }}
         >
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="chart-draw absolute inset-0 size-full overflow-visible">
             {segments.map((d) => (
               <path key={d} d={d} fill="none" stroke="var(--color-win)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" />
             ))}
@@ -181,6 +209,7 @@ export default function ProgressCharts({ days, history }: Props) {
 
   const games = visibleDays.reduce((n, d) => n + d.games, 0);
   const wins = visibleDays.reduce((n, d) => n + d.wins, 0);
+  const rate = winRate(wins, games);
 
   if (days.length === 0) {
     return <p class="card p-6 text-center text-muted">Pas de données : aucune session n'a encore été collectée.</p>;
@@ -198,19 +227,27 @@ export default function ProgressCharts({ days, history }: Props) {
 
       <dl class="mt-5 grid grid-cols-3 gap-3" aria-live="polite">
         {[
-          ["Parties", fmtInt(games)],
-          ["Victoires", fmtInt(wins)],
-          ["Taux de victoire", fmtPct(winRate(wins, games))],
-        ].map(([label, value]) => (
+          { label: "Parties", value: games, format: fmtInt },
+          { label: "Victoires", value: wins, format: fmtInt },
+          { label: "Taux de victoire", value: rate, format: fmtPct },
+        ].map(({ label, value, format }) => (
           <div key={label} class="card p-3 sm:p-5">
             <dt class="text-xs font-semibold text-muted sm:text-sm">{label}</dt>
-            <dd class="tnum mt-1 font-display text-xl font-extrabold sm:text-3xl" data-testid={`summary-${label}`}>{value}</dd>
+            <dd class="tnum mt-1 font-display text-xl font-extrabold sm:text-3xl">
+              <AnimatedNumber value={value} format={format} testId={`summary-${label}`} />
+              {label === "Taux de victoire" && rate !== null && (
+                <div class="meter mt-3" aria-hidden="true">
+                  <i style={{ "--v": `${rate}%` }} />
+                </div>
+              )}
+            </dd>
           </div>
         ))}
       </dl>
 
       <section class="card mt-5 p-4 sm:p-5">
-        <GamesChart buckets={buckets} weekly={weekly} />
+        {/* La clé relance la pousse des barres et le balayage à chaque changement de période. */}
+        <GamesChart key={range} buckets={buckets} weekly={weekly} />
         <details class="mt-4">
           <summary class="cursor-pointer font-semibold">Voir le tableau des parties</summary>
           <div class="mt-3 max-h-96 overflow-auto" tabIndex={0} aria-label="Tableau des parties, zone défilante">
@@ -241,7 +278,7 @@ export default function ProgressCharts({ days, history }: Props) {
         </details>
       </section>
 
-      <h2 class="mt-10 text-2xl">Au classement officiel</h2>
+      <h2 class="section-title mt-12">Au classement officiel</h2>
       <p class="mt-2 max-w-3xl text-sm text-muted">
         Relevés quotidiens du classement, sur sa fenêtre glissante de 90 jours. Ces valeurs ne se comparent donc pas aux parties par jour ci-dessus.
       </p>

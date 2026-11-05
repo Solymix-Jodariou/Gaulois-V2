@@ -45,6 +45,16 @@ const tools = loadLinks().tools;
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/png" sizes="32x32" href={`${base}/generated/favicon-32.png`} />
     <link rel="apple-touch-icon" href={`${base}/generated/apple-touch-icon.png`} />
+    <script is:inline>
+      // Avant le premier affichage : un visiteur ayant mis en pause ne voit aucune animation,
+      // et les autres ne voient pas les blocs s'afficher puis disparaître avant leur conquête.
+      try {
+        if (localStorage.getItem("gal-fx") === "off") document.documentElement.classList.add("fx-off");
+        else if (!matchMedia("(prefers-reduced-motion: reduce)").matches) document.documentElement.classList.add("fx-wait");
+      } catch {
+        // Stockage indisponible : les animations restent actives, le bouton pause fonctionne.
+      }
+    </script>
   </head>
   <body class="flex min-h-dvh flex-col">
     <a
@@ -52,7 +62,7 @@ const tools = loadLinks().tools;
       class="absolute left-2 top-[-4rem] z-50 rounded bg-white px-3 py-2 font-semibold text-navy focus:top-2"
       >Aller au contenu</a
     >
-    <header class="sticky top-0 z-40 border-b border-line bg-navy/95 backdrop-blur">
+    <header class="sticky top-0 z-40 bg-navy/80 backdrop-blur-md">
       <div class="wrap flex min-h-16 items-center justify-between gap-4">
         <a href={`${base}/`} class="flex items-center gap-3 font-display font-extrabold">
           {
@@ -74,8 +84,8 @@ const tools = loadLinks().tools;
                     href={`${base}${n.href}`}
                     aria-current={path === n.href ? "page" : undefined}
                     class:list={[
-                      "block rounded px-3 py-2 text-sm font-semibold hover:text-white",
-                      path === n.href ? "text-white underline decoration-red decoration-2 underline-offset-8" : "text-muted",
+                      "block rounded px-3 py-2 text-sm font-semibold text-white hover:underline hover:underline-offset-8",
+                      path === n.href && "underline decoration-red decoration-2 underline-offset-8",
                     ]}
                   >
                     {n.label}
@@ -87,9 +97,26 @@ const tools = loadLinks().tools;
         </nav>
 
         <div class="flex items-center gap-2">
-          <a href={clan.links.discord} class="btn btn-primary hidden !min-h-10 !py-1.5 !text-sm sm:inline-flex" rel="noopener">
+          <a href={clan.links.discord} class="btn btn-secondary hidden !min-h-10 !py-1.5 !text-sm sm:inline-flex" rel="noopener">
             Discord
           </a>
+          <button
+            type="button"
+            class="btn btn-ghost fx-toggle !min-h-10 !px-2.5 !py-1.5"
+            data-fx-toggle
+            aria-pressed="false"
+            aria-label="Mettre les animations en pause"
+            title="Mettre les animations en pause"
+            hidden
+          >
+            <svg class="fx-icon-pause" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <rect x="3" y="2" width="4" height="12" rx="1"></rect>
+              <rect x="9" y="2" width="4" height="12" rx="1"></rect>
+            </svg>
+            <svg class="fx-icon-play" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
+              <path d="M4 2.500v11l9-5.500z"></path>
+            </svg>
+          </button>
           <details class="relative lg:hidden" data-menu>
             <summary class="btn btn-ghost !min-h-10 !py-1.5 cursor-pointer list-none text-sm" aria-label="Ouvrir le menu">Menu</summary>
             <nav aria-label="Navigation mobile" class="card absolute right-0 mt-2 w-56 p-2 shadow-xl">
@@ -118,8 +145,8 @@ const tools = loadLinks().tools;
       <slot />
     </main>
 
-    <footer class="mt-16 border-t border-line">
-      <div class="wrap grid gap-8 py-10 md:grid-cols-3">
+    <footer class="mt-20 bg-night">
+      <div class="wrap grid gap-10 py-14 md:grid-cols-3">
         <div>
           <p class="font-display text-lg font-extrabold">[{clan.tag}] {clan.name}</p>
           <span class="tribar mt-3"></span>
@@ -159,28 +186,6 @@ const tools = loadLinks().tools;
         }
       }
 
-      // Compteurs sobres, ignorés si l'utilisateur réduit les animations.
-      if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        for (const el of document.querySelectorAll<HTMLElement>("[data-count]")) {
-          const target = Number(el.dataset.count);
-          const decimals = Number(el.dataset.decimals ?? 0);
-          const suffix = el.dataset.suffix ?? "";
-          const fmt = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-          const final = el.textContent;
-          const start = performance.now();
-          const step = (t: number) => {
-            const p = Math.min(1, (t - start) / 700);
-            if (p < 1) {
-              el.textContent = fmt.format(target * (1 - (1 - p) ** 3)) + suffix;
-              requestAnimationFrame(step);
-            } else {
-              el.textContent = final;
-            }
-          };
-          requestAnimationFrame(step);
-        }
-      }
-
       // Referme le menu mobile avec Échap ou au clic en dehors.
       const menu = document.querySelector<HTMLDetailsElement>("[data-menu]");
       document.addEventListener("keydown", (e) => {
@@ -192,6 +197,9 @@ const tools = loadLinks().tools;
       document.addEventListener("click", (e) => {
         if (menu?.open && !menu.contains(e.target as Node)) menu.open = false;
       });
+    </script>
+    <script>
+      import "../scripts/fx";
     </script>
   </body>
 </html>

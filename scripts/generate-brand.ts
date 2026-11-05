@@ -55,6 +55,10 @@ await icon(192, "icon-192.png");
 if (badge) {
   await sharp(join("public", badge)).trim().resize(96, 96, { fit: "cover" }).webp({ quality: 90 }).toFile(join(out, "badge-96.webp"));
 }
+const vertical = brandFile("vertical");
+if (vertical) {
+  await sharp(join("public", vertical)).trim().resize(720, 720, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp({ quality: 88 }).toFile(join(out, "logo-vertical-720.webp"));
+}
 if (banner) {
   for (const width of [800, 1600]) {
     await sharp(join("public", banner)).resize({ width }).webp({ quality: 82 }).toFile(join(out, `banner-${width}.webp`));

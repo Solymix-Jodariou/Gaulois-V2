@@ -2,7 +2,10 @@
 import Base from "../layouts/Base.astro";
 import PageHeader from "../components/PageHeader.astro";
 import { clan } from "../../config/clan";
+import { brandFile } from "../lib/brand";
 
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const hasLogo = brandFile("vertical") !== null;
 const steps = [
   { title: "Créez un compte OpenFront", body: "Le jeu demande un compte pour rejoindre un clan." },
   { title: `Cherchez le clan [${clan.tag}]`, body: "Ouvrez la section Clans du jeu, puis l'onglet Rechercher." },
@@ -17,23 +20,37 @@ const steps = [
   <div class="wrap">
     <PageHeader title="Rejoindre le clan" intro="Quatre étapes pour nous rejoindre dans le jeu, puis sur le Discord." />
 
-    <ol class="grid max-w-3xl gap-3" data-testid="join-steps">
-      {
-        steps.map((s, i) => (
-          <li class="card flex gap-4 p-5">
-            <span class="tnum font-display text-3xl font-extrabold text-blue-text" aria-hidden="true">{i + 1}</span>
-            <div>
-              <h2 class="text-lg">{s.title}</h2>
-              <p class="mt-1 text-muted">{s.body}</p>
-            </div>
-          </li>
-        ))
-      }
-    </ol>
+    <div class="grid items-center gap-10 lg:grid-cols-[3fr_2fr]">
+      <div>
+        <ol class="grid gap-3" data-testid="join-steps">
+          {
+            steps.map((s, i) => (
+              <li class="card flex gap-4 p-5" data-tilt="2">
+                <span class="tnum font-display text-3xl font-extrabold text-blue-text" aria-hidden="true">{i + 1}</span>
+                <div>
+                  <h2 class="text-lg">{s.title}</h2>
+                  <p class="mt-1 text-muted">{s.body}</p>
+                </div>
+              </li>
+            ))
+          }
+        </ol>
 
-    <div class="mt-6 flex flex-col gap-3 sm:flex-row">
-      <a href={clan.links.discord} class="btn btn-primary" rel="noopener">Rejoindre le Discord</a>
-      <a href={clan.links.openfront} class="btn btn-ghost" rel="noopener">Jouer à OpenFront</a>
+        <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+          <a href={clan.links.discord} class="btn btn-lg btn-primary" rel="noopener">Rejoindre le Discord</a>
+          <a href={clan.links.openfront} class="btn btn-lg btn-secondary" rel="noopener">Jouer à OpenFront</a>
+        </div>
+      </div>
+      {
+        hasLogo && (
+          <div class="fx-stage relative hidden justify-center lg:flex">
+            <div class="hero-glow" aria-hidden="true"></div>
+            <div class="float relative w-full max-w-sm">
+              <img src={`${base}/generated/logo-vertical-720.webp`} width="720" height="720" alt="" class="h-auto w-full" draggable="false" data-fx-logo />
+            </div>
+          </div>
+        )
+      }
     </div>
 
     {

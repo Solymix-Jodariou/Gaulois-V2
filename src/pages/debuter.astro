@@ -16,11 +16,11 @@ const tools = loadLinks().tools;
     <PageHeader title="Débuter" intro="Les guides par mode écrits par le clan, un repère pour attaquer les bots et les outils de la communauté." />
 
     <section aria-labelledby="guide-title">
-      <h2 id="guide-title" class="text-2xl">Guide par mode</h2>
+      <h2 id="guide-title" class="section-title">Guide par mode</h2>
       <div class="mt-4 grid gap-3 md:grid-cols-2">
         {
           guides.map(({ entry, Content }) => (
-            <article class="card p-5" id={`guide-${entry.id}`} data-testid="guide-card">
+            <article class="card p-5" id={`guide-${entry.id}`} data-testid="guide-card" data-tilt="3">
               <h3 class="text-xl">{entry.data.title}</h3>
               {entry.data.draft ? (
                 <p class="mt-2 text-sm text-muted">
@@ -39,7 +39,7 @@ const tools = loadLinks().tools;
     </section>
 
     <section class="mt-12" aria-labelledby="calc-title" id="calculateur">
-      <h2 id="calc-title" class="text-2xl">Troupes à envoyer contre un bot</h2>
+      <h2 id="calc-title" class="section-title">Troupes à envoyer contre un bot</h2>
       <p class="mb-4 mt-2 max-w-3xl text-muted">
         Un repère calculé à partir des règles du jeu. Ce qui pèse le plus est la taille du bot, plus que ses troupes.
       </p>
@@ -47,7 +47,7 @@ const tools = loadLinks().tools;
     </section>
 
     <section class="mt-12" aria-labelledby="outils" id="outils-section">
-      <h2 id="outils" class="text-2xl">Outils communautaires</h2>
+      <h2 id="outils" class="section-title">Outils communautaires</h2>
       {
         tools.length === 0 ? (
           <p class="card mt-4 p-5 text-muted">Aucun outil répertorié pour le moment.</p>
@@ -55,7 +55,7 @@ const tools = loadLinks().tools;
           <ul class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {tools.map((t) => (
               <li>
-                <a href={t.url} rel="noopener" class="card block h-full p-5 transition-colors hover:border-white">
+                <a href={t.url} rel="noopener" class="card block h-full p-5 hover:border-white" data-tilt="4">
                   <span class="font-display font-bold">{t.name}</span>
                   <span class="mt-1 block text-sm text-muted">{t.description}</span>
                 </a>

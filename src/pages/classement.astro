@@ -15,6 +15,8 @@ const leaderboard = loadLeaderboard();
 const clans = leaderboard ? withOfficialRanks(leaderboard.clans) : [];
 const me = findClan(clans, clan.tag);
 const near = neighbours(clans, clan.tag);
+const lanes = me && near ? [near.above?.clan, me, near.below?.clan].filter((c) => c !== undefined) : [];
+const laneMax = Math.max(1, ...lanes.map((c) => c.weightedWins));
 ---
 
 <Base title="Classement" description="Classement officiel des clans OpenFront et position du clan GAL.">
@@ -36,12 +38,12 @@ const near = neighbours(clans, clan.tag);
         <>
           {me && near ? (
             <section class="reveal mb-8 grid gap-3 md:grid-cols-3" aria-label={`Position de ${clan.tag}`}>
-              <div class="card card-accent p-5">
+              <div class="card card-accent p-5" data-tilt="3">
                 <p class="text-sm font-semibold text-muted">Position de [{clan.tag}]</p>
                 <p class="tnum mt-2 font-display text-3xl font-extrabold">{me.rank}{me.rank === 1 ? "er" : "e"}</p>
                 <p class="tnum mt-1 text-sm text-muted">Score {fmtScore(me.weightedWins)}</p>
               </div>
-              <div class="card p-5" data-testid="gap-above">
+              <div class="card p-5" data-testid="gap-above" data-tilt="3">
                 <p class="text-sm font-semibold text-muted">Écart avec le clan au-dessus</p>
                 {near.above ? (
                   <>
@@ -52,7 +54,7 @@ const near = neighbours(clans, clan.tag);
                   <p class="mt-2 font-display text-lg font-bold">Aucun : {clan.tag} est premier</p>
                 )}
               </div>
-              <div class="card p-5" data-testid="gap-below">
+              <div class="card p-5" data-testid="gap-below" data-tilt="3">
                 <p class="text-sm font-semibold text-muted">Écart avec le clan en dessous</p>
                 {near.below ? (
                   <>
@@ -62,6 +64,20 @@ const near = neighbours(clans, clan.tag);
                 ) : (
                   <p class="mt-2 font-display text-lg font-bold">Aucun : {clan.tag} est dernier de la liste</p>
                 )}
+              </div>
+              <div class="card p-5 md:col-span-3" data-testid="score-lanes">
+                <h2 class="text-sm tracking-wide text-muted">Le score autour de [{clan.tag}]</h2>
+                <ul class="mt-4 space-y-3">
+                  {lanes.map((lane) => (
+                    <li class="grid grid-cols-[3.5rem_1fr_auto] items-center gap-3 sm:grid-cols-[4.5rem_1fr_6rem]">
+                      <span class:list={["font-display font-bold", lane.clanTag !== clan.tag && "text-muted"]}>[{lane.clanTag}]</span>
+                      <span class:list={["meter meter-lg", lane.clanTag === clan.tag ? "meter-gal" : "meter-other"]} aria-hidden="true">
+                        <i style={{ "--v": `${(lane.weightedWins / laneMax) * 100}%` }}></i>
+                      </span>
+                      <span class="tnum text-right text-sm font-semibold">{fmtScore(lane.weightedWins)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </section>
           ) : (

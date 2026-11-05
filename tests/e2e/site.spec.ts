@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/debuter", "/rejoindre"];
 const lb = JSON.parse(readFileSync("data/leaderboard.json", "utf8"));
 const members = JSON.parse(readFileSync("data/members.json", "utf8"));
 const gal = lb.clans.find((c: { clanTag: string }) => c.clanTag === "GAL");
 const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
+
+/** Attend que les composants interactifs de la page aient démarré. */
+const hydrated = (page: Page) => page.waitForFunction(() => !document.querySelector("astro-island[ssr]"));
 
 test("parcours principal", async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === "mobile";
@@ -31,6 +34,7 @@ test("parcours principal", async ({ page }, testInfo) => {
   if (mobile) await page.getByText("Menu", { exact: true }).click();
   await page.getByRole("link", { name: "Classement", exact: true }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/classement/);
+  await hydrated(page);
   await expect(page.locator(".row-highlight").filter({ visible: true })).toContainText("[GAL]");
   await page.getByLabel("Rechercher un clan").fill("gal");
   await expect(page.getByText(/clans? sur \d+/)).toContainText("sur");
@@ -39,6 +43,7 @@ test("parcours principal", async ({ page }, testInfo) => {
 
   // Progression : le filtre change le résumé et le tableau reste accessible.
   await page.goto("/progression");
+  await hydrated(page);
   const summary = page.getByTestId("summary-Parties");
   await expect(summary).not.toBeEmpty();
   await page.getByRole("button", { name: "30 jours" }).click();
@@ -50,6 +55,7 @@ test("parcours principal", async ({ page }, testInfo) => {
 
   // Membres : liste officielle, anonymes, recherche, tri.
   await page.goto("/membres");
+  await hydrated(page);
   await expect(page.getByTestId("member-count")).toContainText(`${members.total}`.replace(/\B(?=(\d{3})+$)/g, " "));
   await expect(page.getByText("Membre anonyme").filter({ visible: true }).first()).toBeVisible();
   const named = members.members.find((m: { username: string | null }) => m.username)?.username;
@@ -67,6 +73,7 @@ test("parcours principal", async ({ page }, testInfo) => {
 
   // Débuter : le calculateur réagit et ne dépend pas de la frontière.
   await page.goto("/debuter");
+  await hydrated(page);
   await expect(page.getByTestId("guide-card")).toHaveCount(4);
   await expect(page.getByText("Repère indicatif, pas une garantie.")).toBeVisible();
   const minimum = page.getByTestId("calc-minimum");
@@ -85,6 +92,17 @@ test("parcours principal", async ({ page }, testInfo) => {
   await expect(page.getByRole("heading", { name: "Demandez une invitation" })).toBeVisible();
 
   expect(apiCalls, "aucun appel à l'API OpenFront depuis le navigateur").toEqual([]);
+});
+
+test("l'accueil n'affiche que des données collectées", async ({ page }) => {
+  await page.goto("/");
+  const title = page.getByRole("heading", { name: /membres dans le clan/i });
+  expect(digits(await title.textContent())).toBe(String(members.total));
+  const command = members.members.filter((m: { role: string }) => m.role !== "member");
+  await expect(page.getByRole("heading", { name: new RegExp(`Encadrement · ${command.length}`, "i") })).toBeVisible();
+  for (const m of command) {
+    if (m.username) await expect(page.getByText(m.username, { exact: true })).toBeVisible();
+  }
 });
 
 test("signale les données périmées au visiteur", async ({ page }) => {

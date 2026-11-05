@@ -76,6 +76,32 @@ export interface SimResult {
 }
 
 export function simulate(attack: number, input: CalcInput): SimResult {
+  return run(attack, input);
+}
+
+export interface TracePoint {
+  seconds: number;
+  /** Troupes restantes dans l'attaque. */
+  remaining: number;
+  /** Cases conquises. */
+  conquered: number;
+}
+
+/** Déroulé d'une attaque selon le modèle, avec environ `samples` points, pour la rejouer à l'écran. */
+export function simulateTrace(attack: number, input: CalcInput, samples = 80): TracePoint[] {
+  const every = Math.max(1, Math.floor(input.botTiles / samples));
+  const points: TracePoint[] = [{ seconds: 0, remaining: attack, conquered: 0 }];
+  const end = run(attack, input, (point) => {
+    if (point.conquered % every === 0) points.push(point);
+  });
+  const last = points[points.length - 1];
+  if (last?.conquered !== end.conquered) {
+    points.push({ seconds: end.seconds, remaining: end.remaining, conquered: end.conquered });
+  }
+  return points;
+}
+
+function run(attack: number, input: CalcInput, onTile?: (point: TracePoint) => void): SimResult {
   const { botTiles, terrain, myTiles } = input;
   const border = input.border + BORDER_RANDOM_AVG;
   let a = attack;
@@ -97,6 +123,7 @@ export function simulate(attack: number, input: CalcInput): SimResult {
     d -= d / n;
     n -= 1;
     me += 1;
+    onTile?.({ seconds: ticks * TICK_SECONDS, remaining: Math.max(0, a), conquered: botTiles - n });
   }
   return { success: a >= 1, remaining: Math.max(0, a), conquered: botTiles, seconds: ticks * TICK_SECONDS };
 }

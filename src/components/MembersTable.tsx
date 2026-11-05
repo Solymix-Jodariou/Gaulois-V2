@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import { fmtDate, fmtInt, fmtPct } from "../lib/format";
+import { motionAllowed } from "../lib/fx/motion";
 import { filterMembers, gamesOf, rateOf, sortMembers, type SortDir, type SortKey } from "../lib/members";
 import type { StoredMember, StoredMembers } from "../lib/schemas";
 
@@ -36,6 +37,40 @@ function RoleBadge({ role }: { role: StoredMember["role"] }) {
 const wlText = (m: StoredMember) =>
   m.team === null ? "Pas de données" : gamesOf(m) === 0 ? "Aucune partie sous le tag" : null;
 
+const memberKey = (m: StoredMember) => m.publicId ?? `anon-${m.joinedAt}`;
+/** Au-delà, on ne fait plus glisser les lignes : le gain visuel ne vaut pas le coût. */
+const FLIP_MAX_ROWS = 150;
+
+/** Après un tri, chaque ligne glisse de son ancienne place vers la nouvelle. */
+function useGlidingRows(container: { current: HTMLElement | null }, change: unknown): void {
+  const tops = useRef(new Map<string, number>());
+
+  useLayoutEffect(() => {
+    const el = container.current;
+    if (!el) {
+      tops.current.clear();
+      return;
+    }
+    const rows = [...el.children] as HTMLElement[];
+    const next = new Map<string, number>();
+    const animate = rows.length <= FLIP_MAX_ROWS && motionAllowed();
+    for (const row of rows) {
+      const key = row.dataset.key;
+      if (!key) continue;
+      const top = row.offsetTop;
+      next.set(key, top);
+      const before = tops.current.get(key);
+      if (animate && before !== undefined && before !== top) {
+        row.animate([{ transform: `translateY(${before - top}px)` }, { transform: "none" }], {
+          duration: 480,
+          easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        });
+      }
+    }
+    tops.current = next;
+  }, [change]);
+}
+
 export default function MembersTable({ src }: { src: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [query, setQuery] = useState("");
@@ -69,6 +104,12 @@ export default function MembersTable({ src }: { src: string }) {
   const rows = useMemo(() => sortMembers(filterMembers(members, query), sort, dir), [members, query, sort, dir]);
 
   useEffect(() => setLimit(PAGE), [query, sort, dir]);
+
+  const tableBody = useRef<HTMLTableSectionElement>(null);
+  const cardList = useRef<HTMLUListElement>(null);
+  const shownRows = rows.slice(0, limit);
+  useGlidingRows(tableBody, shownRows);
+  useGlidingRows(cardList, shownRows);
 
   const toggleSort = (key: SortKey) => {
     if (key === sort) setDir(dir === "desc" ? "asc" : "desc");
@@ -150,25 +191,31 @@ export default function MembersTable({ src }: { src: string }) {
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {visible.map((m, i) => (
-                  <tr key={m.publicId ?? `anon-${m.joinedAt}-${i}`} data-testid="member-row">
-                    <td><Name m={m} /><RoleBadge role={m.role} /></td>
-                    <td class="num">{m.team ? fmtInt(m.team.wins) : "—"}</td>
-                    <td class="num">{fmtInt(gamesOf(m))}</td>
-                    <td class="num">{fmtPct(rateOf(m))}</td>
-                    <td>{fmtDate(m.joinedAt)}</td>
-                  </tr>
-                ))}
+              <tbody ref={tableBody}>
+                {visible.map((m, i) => {
+                  const rate = rateOf(m);
+                  return (
+                    <tr key={memberKey(m)} class="fx-row" data-key={memberKey(m)} data-testid="member-row" style={{ "--i": Math.min(i, 18) }}>
+                      <td><Name m={m} /><RoleBadge role={m.role} /></td>
+                      <td class="num">{m.team ? fmtInt(m.team.wins) : "—"}</td>
+                      <td class="num">{fmtInt(gamesOf(m))}</td>
+                      <td class="num">
+                        {rate !== null && <span class="score-bar" aria-hidden="true" style={{ width: `${rate}%`, "--i": Math.min(i, 18) }} />}
+                        <span class="relative">{fmtPct(rate)}</span>
+                      </td>
+                      <td>{fmtDate(m.joinedAt)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
-          <ul class="mt-4 space-y-2 md:hidden">
+          <ul class="mt-4 space-y-2 md:hidden" ref={cardList}>
             {visible.map((m, i) => {
               const note = wlText(m);
               return (
-                <li key={m.publicId ?? `anon-${m.joinedAt}-${i}`} class="card tnum p-3" data-testid="member-card">
+                <li key={memberKey(m)} class="fx-row card tnum p-3" data-key={memberKey(m)} data-testid="member-card" style={{ "--i": Math.min(i, 18) }}>
                   <p><Name m={m} /><RoleBadge role={m.role} /></p>
                   <p class="mt-1 text-sm">
                     {note ?? `${fmtInt(m.team?.wins)} victoires · ${fmtInt(gamesOf(m))} parties · ${fmtPct(rateOf(m))}`}

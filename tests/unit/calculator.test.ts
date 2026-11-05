@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_BOT_TILES, minimumTroops, simulate, tileLoss, type CalcInput } from "../../src/lib/calculator";
+import { MAX_BOT_TILES, minimumTroops, simulate, simulateTrace, tileLoss, type CalcInput } from "../../src/lib/calculator";
 
 const base: CalcInput = { botTroops: 10_000, botTiles: 1000, terrain: "plains", border: 50, myTiles: 20_000 };
 
@@ -24,6 +24,42 @@ describe("tileLoss", () => {
 
   it("réduit les pertes pour un très grand attaquant", () => {
     expect(tileLoss(20_000, 10_000, 1000, 2_000_000, "plains")).toBeLessThan(tileLoss(20_000, 10_000, 1000, 1000, "plains"));
+  });
+});
+
+describe("simulateTrace", () => {
+  const attack = minimumTroops(base)!.minimum;
+  const trace = simulateTrace(attack, base);
+
+  it("part de l'envoi complet, sans case conquise", () => {
+    expect(trace[0]).toEqual({ seconds: 0, remaining: attack, conquered: 0 });
+  });
+  it("arrive au même résultat que la simulation", () => {
+    const end = simulate(attack, base);
+    const last = trace.at(-1)!;
+    expect(last.conquered).toBe(end.conquered);
+    expect(last.seconds).toBeCloseTo(end.seconds, 8);
+    expect(last.remaining).toBeCloseTo(end.remaining, 8);
+  });
+  it("avance sans jamais revenir en arrière", () => {
+    for (let i = 1; i < trace.length; i++) {
+      expect(trace[i]!.seconds).toBeGreaterThan(trace[i - 1]!.seconds);
+      expect(trace[i]!.conquered).toBeGreaterThan(trace[i - 1]!.conquered);
+      expect(trace[i]!.remaining).toBeLessThan(trace[i - 1]!.remaining);
+    }
+  });
+  it("garde un nombre de points raisonnable", () => {
+    expect(trace.length).toBeLessThanOrEqual(90);
+    expect(simulateTrace(minimumTroops({ ...base, botTiles: 50_000 })!.minimum, { ...base, botTiles: 50_000 }).length).toBeLessThanOrEqual(90);
+  });
+  it("gère un bot d'une seule case", () => {
+    const one = { ...base, botTiles: 1 };
+    expect(simulateTrace(1000, one).at(-1)!.conquered).toBe(1);
+  });
+  it("s'arrête quand l'attaque échoue", () => {
+    const failed = simulateTrace(5, base).at(-1)!;
+    expect(failed.conquered).toBeLessThan(base.botTiles);
+    expect(failed.remaining).toBe(0);
   });
 });
 

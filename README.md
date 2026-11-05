@@ -59,9 +59,10 @@ Déposez les fichiers sous ces noms, en `.svg`, `.webp`, `.png`, `.jpg` ou `.jpe
 
 | Fichier | Utilisation |
 |---|---|
-| `banner` | Haut de l'accueil et image de partage |
+| `banner` | Bas de l'accueil et image de partage |
+| `logo-vertical` | Grand visuel de l'accueil et de la page Rejoindre |
 | `badge` | En-tête et favicon (recadré en cercle) |
-| `logo-horizontal`, `logo-vertical` | Non utilisés pour l'instant |
+| `logo-horizontal` | Non utilisé pour l'instant |
 
 Pour changer de version, remplacez le fichier sous le même nom : le prochain build en tire des images légères (`npm run brand`). Sans ces fichiers, le site affiche un lettrage provisoire. Les six originaux sont conservés dans `brand-sources/`, qui n'est pas publié.
 
@@ -116,6 +117,10 @@ Rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite d
 3. Dans **Actions**, lancez **Données et site** une première fois.
 
 Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque push sur `main` et à la demande. GitHub peut retarder les exécutions planifiées, et il peut désactiver celles d'un dépôt qu'il juge inactif : si les données se figent, regardez l'onglet **Actions**.
+
+## Animations
+
+Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décrits dans [docs/DESIGN.md](docs/DESIGN.md). Les visiteurs peuvent les couper avec le bouton pause de l'en-tête ou le réglage « réduire les animations » de leur système.
 
 ## Limites connues
 

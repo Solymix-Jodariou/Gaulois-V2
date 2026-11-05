@@ -41,3 +41,6 @@ export function dayRange(from: string, to: string): string[] {
   for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
   return out;
 }
+
+/** Noms des jours, lundi en premier, comme `ParisParts.weekday`. */
+export const WEEKDAYS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] as const;
