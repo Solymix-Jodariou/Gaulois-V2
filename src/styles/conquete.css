@@ -1,0 +1,313 @@
+/* La Conquête des Gaulois : ces styles ne sont chargés que sur les pages du jeu. */
+.conq-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.conq-nav-link {
+  display: inline-flex;
+  align-items: center;
+}
+.conq-nav-link[aria-current="page"],
+.chip[aria-selected="true"] {
+  color: var(--color-navy);
+  background: #fff;
+  border-color: #fff;
+}
+.conq-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: var(--color-night);
+}
+.conq-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  border-radius: 1rem;
+  background: var(--color-surface-2);
+}
+.conq-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.conq-stats > div {
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+}
+.conq-stats dt {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+.conq-stats dd {
+  /* La police de titre n'a pas d'espace fine : les grands nombres s'y liraient d'un bloc. */
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.conq-board {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+@media (min-width: 64rem) {
+  .conq-board {
+    grid-template-columns: minmax(0, 1fr) 21rem;
+    align-items: start;
+  }
+}
+.conq-map-view {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: #050a1e;
+}
+.conq-map-view svg {
+  display: block;
+  width: 100%;
+  height: clamp(18rem, 36vw, 30rem);
+  cursor: pointer;
+  user-select: none;
+  /* Non zoomée, la carte laisse la page défiler au doigt. */
+  touch-action: pan-y;
+}
+.conq-map-view svg[data-zoomed="true"] {
+  cursor: grab;
+  touch-action: none;
+}
+.conq-land {
+  fill: #101b3d;
+}
+.conq-routes path {
+  fill: none;
+  stroke: var(--color-warn);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  opacity: 0.75;
+}
+.conq-hex {
+  fill: #2a3b70;
+  stroke: #050a1e;
+  stroke-width: 0.45;
+}
+.conq-hex:hover {
+  stroke: #fff;
+  stroke-width: 0.8;
+}
+.conq-hex.is-target {
+  stroke: var(--color-warn);
+  stroke-width: 0.9;
+}
+.conq-hex.is-protected {
+  stroke-dasharray: 1.6 1.2;
+}
+.conq-hex.is-mine {
+  stroke: #fff;
+  stroke-width: 1.1;
+}
+.conq-hex.is-selected {
+  stroke: #fff;
+  stroke-width: 1.8;
+}
+.conq-relief {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.55);
+  stroke-width: 0.45;
+  pointer-events: none;
+}
+.conq-names {
+  display: none;
+  pointer-events: none;
+}
+svg[data-names="true"] .conq-names {
+  display: block;
+}
+.conq-names text {
+  fill: #fff;
+  font-family: var(--font-sans);
+  font-size: 1.15px;
+  font-weight: 600;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgb(5 10 30 / 0.85);
+  stroke-width: 0.3px;
+}
+.conq-tip {
+  position: absolute;
+  z-index: 2;
+  max-width: 18rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--color-night);
+  border: 1px solid var(--color-line);
+  font-size: 0.8125rem;
+  pointer-events: none;
+}
+.conq-map-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.conq-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-top: 0.5rem;
+}
+.conq-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.conq-swatch {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 0.25rem;
+  background: #2a3b70;
+}
+.conq-swatch.is-mine {
+  border: 2px solid #fff;
+  background: transparent;
+}
+.conq-swatch.is-target {
+  border: 2px solid var(--color-warn);
+  background: transparent;
+}
+.conq-dot {
+  display: inline-block;
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+}
+.conq-side {
+  padding: 1.25rem;
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+  background: var(--color-surface);
+}
+.conq-facts {
+  display: grid;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+}
+.conq-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.conq-facts dt {
+  color: var(--color-muted);
+}
+.conq-facts dd {
+  font-weight: 700;
+  text-align: right;
+}
+.conq-preview {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-night);
+  font-size: 0.875rem;
+}
+.conq-problem {
+  margin-top: 0.5rem;
+  color: #ffb4bb;
+  font-weight: 600;
+}
+.conq-success {
+  margin-top: 0.5rem;
+  color: #a6e3b4;
+  font-weight: 600;
+}
+.conq-success:empty {
+  display: none;
+}
+.conq-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.conq-rank {
+  display: grid;
+  grid-template-columns: 1.5rem auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+}
+.conq-rank:not(:has(.conq-dot)) {
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+}
+.conq-rank.is-me {
+  border-radius: 0.375rem;
+  background: var(--color-surface-2);
+  box-shadow: 0 0 0 0.25rem var(--color-surface-2);
+}
+.conq-feed {
+  display: grid;
+  gap: 0.75rem;
+}
+.conq-feed li {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.conq-rules h2 {
+  margin-top: 2.5rem;
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+}
+.conq-rules h3 {
+  margin-top: 1.75rem;
+  font-size: 1.25rem;
+}
+.conq-rules p,
+.conq-rules ul,
+.conq-rules ol,
+.conq-rules table {
+  margin-top: 0.75rem;
+}
+.conq-rules ul {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.conq-rules ol {
+  padding-left: 1.25rem;
+  list-style: decimal;
+}
+.conq-rules li + li {
+  margin-top: 0.375rem;
+}
+.conq-rules table {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9375rem;
+}
+.conq-rules th,
+.conq-rules td {
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+}
+.conq-rules th {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+}
+.conq-rules a {
+  color: var(--color-blue-text);
+  text-decoration: underline;
+}

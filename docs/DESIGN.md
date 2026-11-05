@@ -33,7 +33,7 @@ Les grandes sections sont des blocs `.stage` à coins de 24 px. La profondeur vi
 |---|---|---|
 | `.stage-blue` | Bleu royal | Classement officiel |
 | `.stage-indigo` | Indigo | Parties des 14 derniers jours, jeu en groupe |
-| `.stage-night` | Nuit, avec bordure | Membres, appel à rejoindre |
+| `.stage-night` | Nuit, avec bordure | Carte des clans, membres, appel à rejoindre |
 | `.stage-wine` | Lie-de-vin | Meilleurs créneaux |
 
 Une scène associe un texte et un panneau `.panel`, à la manière d'un écran de l'application. **Ces panneaux n'affichent que des données collectées :** graphique des parties, encadrement réel du clan, créneaux réels. Aucune maquette ni valeur fictive.
@@ -96,6 +96,53 @@ L'idée centrale reprend le principe d'OpenFront, la conquête de territoire : d
 | Modifier le calculateur | L'attaque se rejoue : le bot est conquis pendant que les troupes fondent |
 | Rien | Lente flottaison du logo, petits territoires qui naissent et disparaissent seuls, frontière qui fait parfois le tour d'un bloc |
 
+### Le film de la carte
+
+C'est le seul effet qui affiche des données : chaque image vient de l'historique officiel de la carte des clans. La page s'ouvre directement sur la carte, en plein écran sur un grand écran, avec le titre, le classement et les commandes posés dessus. Sous 1 200 px, tout s'empile et les commandes restent collées à la carte. La carte finale s'affiche d'abord, puis le film repart du premier pixel.
+
+| Élément | Rôle |
+|---|---|
+| Lueur bleu pâle et étincelles | Des pixels que GAL vient de prendre |
+| Lueur rouge et étincelles | Des pixels que GAL vient de perdre |
+| Onde | L'endroit où GAL a le plus gagné ou le plus perdu dans cette image |
+| Lueur blanche discrète | Un pixel pris par un autre clan |
+| Halo qui respire | Le territoire de GAL, pendant la lecture |
+| Grand moment | Plan rapproché, ralenti, bandes de cinéma, éclair doux et sous-titre |
+| Classement posé sur la carte | Les 5 plus grands territoires, avec des barres et des places qui glissent. Les valeurs sont celles de l'image affichée. Il occupe l'océan au sud-ouest. |
+| Frise, courbe et repères | Position dans l'historique, pixels de GAL tout au long du film, et grands moments |
+| Griser les autres clans | GAL seul en couleur, sans changer aucun chiffre |
+| Suivre GAL | La caméra accompagne son territoire. Activé par défaut sur téléphone. |
+| Survol ou pression sur la carte | Le tag du clan à cet endroit |
+
+**Les grands moments sont calculés, jamais écrits à la main** (`src/lib/clanmap/moments.ts`) : premier pixel, meilleure place, plus forte chute, remontée, plus grande poussée, plus dur recul, paliers de pixels. Deux moments trop proches ne se suivent pas : le plus important reste.
+
+Le film dure 60 s à la vitesse × 1, quel que soit le nombre d'images, plus les ralentis. Il s'arrête hors de l'écran, sa boucle s'arrête quand plus rien ne bouge, et il se charge seulement sur cette page : environ 400 Ko au total. L'éclair reste doux et ne se répète pas : rien ne clignote. Si le film saccade, il coupe seul le halo et les étincelles, et baisse un peu sa résolution.
+
+Les couleurs des territoires sont celles que les clans ont choisies dans le jeu : le bleu ciel de GAL n'est pas un jeton du site. Elles peuvent donc être peu contrastées entre elles : les chiffres et les tags en texte restent la référence, et l'option « Griser les autres clans » isole GAL.
+
+**Avec « réduire les animations » ou le bouton pause du site :** le film ne démarre pas seul, il n'y a ni lueur, ni onde, ni halo, ni plan rapproché, et la caméra saute directement. Le bouton de lecture, la frise et les sous-titres restent disponibles. **Sans JavaScript ou si le film ne charge pas :** la carte finale et tous les chiffres restent affichés.
+
+Le code est dans `src/scripts/film.ts`. Sa logique testable est dans `src/lib/clanmap/`.
+
+### Donner envie de participer
+
+Sous le film, la page transforme les données publiques en objectif concret. **Aucune de ces parties n'invente un chiffre, et aucune ne pousse à dépenser de l'argent : seules les capsules comptent, jamais le Plutonium.**
+
+| Partie | Contenu | Source |
+|---|---|---|
+| Prochain objectif | Le clan à dépasser, les pixels manquants, l'avance sur le suivant | Ordre de la carte officielle |
+| Réserves du clan | Capsules et troupes, et ce qu'elles valent en pixels neutres | Fiche publique du clan, règles du jeu |
+| Votre don sur la carte | Capsules, troupes, pixels, rang obtenu, seul ou avec tous les membres | Calcul, marqué comme simulation |
+| Simulation sur la carte | Le territoire s'étend depuis sa frontière sur les terres neutres. La vue recule quand il grandit. | Illustration : le chef et les officiers choisissent où peindre |
+| Comment participer | Don, jeu sous le tag, peinture, avec l'avertissement sur les dons définitifs | Code du jeu, à relire par un membre |
+| Ma place dans le clan | Un membre tape son pseudo : sa place, le prochain joueur à dépasser et celui qui le suit | `stats.team`, comme la page Membres |
+| Plus gros donateurs | Recopiés par le clan s'il choisit de les publier. Sinon, un renvoi vers le jeu. | `content/carte-heros.json` |
+| Le plus de victoires sous le tag | Les 3 premiers | `stats.team` |
+| Peuvent peindre pour GAL | Le chef et les officiers, sans classement | Rôles de la liste des membres |
+| Explorer nos territoires, fronts | Un clic cadre la carte sur une zone ou un front, et met le clan adverse en évidence | Carte complète, rejouée |
+
+Le calculateur est dans `src/scripts/conquest.ts`, et ses règles dans `src/lib/clanmap/economy.ts`. Pour garder la page courte, les explications, les chiffres détaillés et les fronts sont repliés. Tout reste dans le HTML et s'ouvre sans JavaScript.
+
 **Le clic droit garde son menu habituel** sur les liens, les boutons, les champs, les images autres que le logo et le texte sélectionné. Maj + clic droit l'ouvre partout.
 
 **Les animations ne touchent jamais aux valeurs.** Une barre ne change pas de hauteur au survol, et l'onde d'un clic ne fait que l'éclairer. Les nouvelles jauges (taux de victoire, créneaux, scores du classement) ont une longueur calculée à partir des données. Le rejeu du calculateur vient de `simulateTrace`, et reste un repère indicatif.
@@ -106,13 +153,41 @@ Le code est dans `src/scripts/fx.ts`, et sa logique testable dans `src/lib/fx/te
 
 **Trois façons de couper les effets :** le bouton pause de l'en-tête (le choix est mémorisé), le réglage « réduire les animations » du système, ou l'absence de JavaScript. Dans tous les cas, le contenu reste complet et les valeurs finales sont déjà dans le HTML.
 
+## La Conquête des Gaulois
+
+Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle identité. Ses règles et son architecture sont dans [CONQUETE.md](CONQUETE.md).
+
+**Une carte d'hexagones, pas de pays.** Tous les territoires ont la même surface réelle, ce qui rend la carte équitable. Elle ne dessine aucune frontière contestée, et les six voisins se voient d'un coup d'œil.
+
+**Une couleur par joueur.** Elle est tirée de son numéro, sur le cercle des teintes, et ne change jamais. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés au survol, au toucher et dans le panneau latéral.
+
+| Marque | Sens |
+|---|---|
+| Contour blanc | Vos terres |
+| Contour jaune | Les terres à votre portée |
+| Contour en pointillés | Une terre protégée |
+| ^ et ^^ | Colline et montagne |
+| Trait jaune pointillé | Une route de haute mer |
+
+**Tout se joue sans la carte.** La liste des territoires et les cibles possibles permettent de tout faire au clavier ou avec un lecteur d'écran. La carte elle-même se déplace aux flèches et se zoome avec + et −.
+
+**La molette fait défiler la page.** Le zoom demande Ctrl + molette, pour que la carte ne piège pas le défilement. Au doigt, une carte non zoomée laisse aussi la page défiler.
+
+**Aucun hasard, aucune surprise.** L'écran annonce le résultat exact avant la confirmation, et le fil d'actualité le raconte ensuite avec les mêmes chiffres.
+
+**Rien n'est présenté comme un zéro.** Sans saison, la page dit qu'il n'y en a pas. Si le serveur ne répond pas, elle dit « Jeu indisponible ». Sans don validé, elle précise que cela ne veut pas dire que personne n'a donné.
+
+**Le jeu ne pousse pas à dépenser.** Chaque écran de don rappelle qu'un don est définitif et que rien n'y oblige. Le Plutonium, monnaie payante, ne compte jamais.
+
+**Le bouton de connexion reste un texte** : le site ne reprend pas la marque Discord.
+
 ## Accessibilité
 
 - Lien d'évitement, focus visible partout, navigation entièrement utilisable au clavier.
 - Animations continues interruptibles par le bouton pause, comme l'exige le critère WCAG 2.2.2. Toutes les interactions à la souris sont décoratives : aucune information n'en dépend.
 - Les chiffres qui défilent sont masqués aux lecteurs d'écran, qui reçoivent uniquement la valeur finale.
 - Graphiques de la page Progression doublés par des tableaux, identité jamais portée par la seule couleur.
-- Tests automatiques axe (WCAG 2.1 A et AA) sur les 7 pages en desktop et mobile. Ces tests ne remplacent pas un essai avec un lecteur d'écran, qui n'a pas été fait. Ils ne peuvent pas non plus toujours mesurer un contraste sur un dégradé : le texte des scènes a été choisi clair et vérifié à l'œil sur les captures.
+- Tests automatiques axe (WCAG 2.1 A et AA) sur les 8 pages en desktop et mobile. Ces tests ne remplacent pas un essai avec un lecteur d'écran, qui n'a pas été fait. Ils ne peuvent pas non plus toujours mesurer un contraste sur un dégradé : le texte des scènes a été choisi clair et vérifié à l'œil sur les captures.
 - Absence de défilement horizontal testée à 375, 768, 1 280 et 1 920 px.
 
 ## États des données

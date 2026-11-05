@@ -19,6 +19,7 @@ Toutes les réponses citées sont réelles. Elles sont raccourcies avec `…`, e
 | Historique du rang | **Impossible à reconstruire** : l'API ne donne que le classement actuel. |
 | Appels depuis le navigateur | **Bloqués par le CORS**, ce qui confirme le choix de la GitHub Action. |
 | Limites de requêtes | Aucune documentée, et aucune atteinte pendant les tests. Le seuil réel reste inconnu. |
+| Carte officielle des clans | Lisible sans compte et rejouable depuis le premier pixel, par des routes non documentées. Voir la section 8. |
 
 ### Points à trancher
 
@@ -299,3 +300,96 @@ Le parcours détaillé dans l'interface (où trouver le menu Clans) n'a pas ét�
 - La documentation demande de retirer les joueurs supprimés (`/public/players/recently-deleted`). Le roster étant réécrit à chaque collecte et les instantanés ne contenant aucune donnée individuelle, un joueur supprimé disparaît dès qu'il quitte le roster.
 - Les 475 membres sans pseudo n'en ont jamais défini (`null` signifie « jamais défini » dans le schéma du jeu). Par prudence, le site n'écrira pas leur `publicId` dans ses fichiers JSON, même si l'API l'expose.
 - **Le lien entre `publicId` et pseudo** sera conservé pour les membres avec pseudo, ce qui permet un lien vers leur profil officiel.
+
+## 8. Carte officielle des clans
+
+Tests du 5 novembre 2026, entre 14 h 30 et 15 h 10 UTC. La carte est visible sur `clanmap.openfront.io` sans compte. Les clans y peignent un territoire de 4 108 × 1 948 pixels. Ce n'est pas le classement des clans.
+
+### Routes lues par la carte
+
+Toutes répondent sans authentification, hors `/public` et sans documentation. Elles ont été trouvées dans le code de la page et peuvent changer sans préavis.
+
+| Route | Réponse | Cache annoncé |
+|---|---|---|
+| `GET /clanmap/ownership` | `seq`, `width`, `height`, `clans[]`, `rle` : l'état complet, en paires (clan, longueur) sur 16 bits, encodées en base 64 | 5 min |
+| `GET /clanmap/changes?since=N` | `seq`, `changes[]` : 5 000 événements `[seq, x, y, clanId]` au plus, et `clans` | Non relevé |
+| `GET /clanmap/terrain` | Une case par pixel, en gzip : bit 7 = terre, bits 0 à 4 = relief | 1 h |
+| `GET /clanmap/ships` | Les navires en cours | 10 s (non utilisée) |
+
+- `/clanmap/changes` sans `since` répond 400.
+- Les numéros d'événements ont des trous : 106 sur 1 641 811 événements.
+- Quatre réponses 500 passagères sur environ 330 appels. La même requête réussit au nouvel essai.
+- `/clanmap/changes` ne donne ni la date ni l'ancien propriétaire. Le rejeu retrouve l'ancien propriétaire, mais pas la date.
+
+### Route documentée, pas encore en ligne
+
+`docs/API.md` décrit depuis le 4 novembre 2026 `GET /public/clanmap/history`, avec `[seq, x, y, clanId, previousClanId, createdAt]`, « pour construire des timelapses ». **Elle répondait 404 le 5 novembre 2026 à 14 h 38 UTC.** Dès qu'elle répond, il faudra la préférer : elle est documentée et elle donne les dates, ce qui permettrait une vraie frise temporelle.
+
+### Vérification du rejeu
+
+L'historique rejoué depuis le début a été comparé pixel par pixel à l'instantané officiel :
+
+| Instantané | Événements lus | Pixels comparés | Écart |
+|---|---:|---:|---:|
+| n° 1 649 074 | 1 641 811 | 8 002 384 | **0** |
+| n° 1 654 095 | 1 646 033 | 8 002 384 | **0** |
+
+La collecte refait ce contrôle à chaque mise à jour et refuse de publier un film en cas d'écart. Le décompte de GAL (90 908 pixels à l'instantané n° 1 649 074) est identique à celui affiché par la carte du jeu. L'ordre des clans de tête aussi.
+
+### Qui peut quoi sur la carte
+
+Lu dans le code de la page de la carte (`clanmap.openfront.io`) et du jeu, le 5 novembre 2026. Rien n'a été essayé avec un compte.
+
+| Sujet | Constat |
+|---|---|
+| Peindre | Réservé au chef et aux officiers (`Only … leaders and officers can paint`). Il faut un pixel au contact du territoire, ou un navire. 100 pixels au plus par envoi, 3 navires en mer au plus. |
+| Troupes | Achetées avec les capsules du trésor : `1 capsule = 100 troupes`. |
+| Coût d'un pixel | Neutre : 1 000 troupes. Ennemi : `2 000 + ⌈troupes du clan ÷ pixels du clan⌉`. |
+| Donner au trésor | Réservé aux membres (`POST /clans/:tag/donate`). Permanent et non remboursable. Le Plutonium est une monnaie payante : le site n'en parle pas et ne calcule rien avec. |
+| Alimenter le trésor | Le schéma du jeu cite aussi une « part des victoires » du clan. **Son montant n'est écrit nulle part dans le dépôt public.** |
+
+### Ce qui est public, et ce qui ne l'est pas
+
+| Donnée | Route | Sans compte |
+|---|---|---|
+| Capsules, troupes et membres du clan | `GET /clans/GAL` | **Oui.** Le schéma du jeu précise que le trésor est une information publique. |
+| Troupes de chaque clan | `GET /clanmap/ownership` | **Oui** |
+| Dons au clan | `GET /clans/GAL/donations` | **Non : 401** |
+| Top donateurs | `GET /clans/GAL/donations/leaderboard` | **Non : 401** |
+| Mêmes routes sous `/public/clan/GAL/` | | **Non : 404** |
+| Qui a peint quel pixel | Aucune route connue | **Rien ne le donne**, ni `/clanmap/changes`, ni `/clanmap/ships`, ni la route documentée |
+
+**Conséquences pour le site :**
+
+- **Le « joueur qui a le plus participé » à la carte n'est pas mesurable.** La page n'affiche donc aucun classement de peinture. Elle cite ceux qui peuvent peindre, sans dire qu'ils l'ont fait.
+- **Le top donateurs ne peut pas être collecté.** Il faudrait le compte d'un membre, ce qui est exclu pour ce site. De plus, le jeu indique : « Les dons sont uniquement visibles aux yeux des membres du clan ». Le site passe donc par `content/carte-heros.json`, rempli à la main par le clan s'il choisit de le publier.
+- **Le top des victoires reste public.** Il vient de `stats.team`, déjà affiché sur la page Membres.
+
+### Licences
+
+Le dépôt du jeu place le code sous AGPL-3.0 et le dossier `/resources` sous CC BY-SA 4.0, avec l'attribution « OpenFront ». **Le terrain de `/clanmap/terrain` n'est pas dans ce dossier, et sa licence n'est écrite nulle part : à confirmer avant publication.** Le site le cite et n'en tire qu'une version réduite et assombrie. Je ne peux pas trancher ce point juridiquement.
+
+### Données personnelles
+
+Le film ne contient que des tags, des couleurs et des troupes de clans, aucun joueur. Les noms complets des clans et le Plutonium ne sont pas conservés. Le film est toutefois fait de dessins peints par les joueurs, que le site ne filtre pas.
+
+## 9. Vérifier les joueurs et lire les dons
+
+Pour la Conquête des Gaulois uniquement : voir [CONQUETE.md](CONQUETE.md). Testé le 5 novembre 2026. Le navigateur n'appelle aucune de ces routes.
+
+| Besoin | Route | État |
+|---|---|---|
+| Prouver qu'on possède un compte | `POST /public/identity_token/validate`, avec `token` et `audience` | **Documentée, mais réservée aux sites de la liste d'OpenFront** : `ofstats.io` et `trackerfront.io` à la lecture de `docs/API.md`. Il faut demander à son équipe d'ajouter le site. **Pas encore utilisée.** |
+| Savoir qui est membre | `GET /public/clan/GAL/members?page=N&limit=50` | La route déjà utilisée par la collecte, non documentée. Lue sans erreur par la tâche du jeu : 763 membres. |
+| Lire les dons au clan | `GET /clans/GAL/donations`, `/donations/leaderboard` | **401 sans compte.** Aucune route de dons dans `docs/API.md`. Les mêmes routes sous `/public/clan/GAL/` répondent 404. |
+| Total du trésor | `GET /clans/GAL`, champ `softBalance` | Public, mais global : il ne dit pas qui a donné. |
+
+Le code du jeu (`packages/shared/src/ClanApiSchemas.ts`) confirme que ces listes séparent les capsules (`soft`) du Plutonium (`hard`), et qu'elles excluent la part des victoires. La somme des dons n'est donc pas le trésor.
+
+**Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Un membre déclare son don, un officier le vérifie dans l'onglet Dons du jeu.
+
+**Conséquence pour la vérification : la liste des membres ne prouve rien.** Elle est publique, donc n'importe qui peut y trouver le pseudo d'un membre. Le site s'en sert comme d'un contrôle, et un officier confirme.
+
+D'après la documentation du jeu, un jeton d'identité dure 10 minutes, n'est valable que pour le site choisi, ne contient que le `publicId` et ne permet pas de se connecter à OpenFront.
+
+**Ménager l'API :** la tâche du jeu lit la liste au plus une fois par jour, en 16 appels espacés de 300 ms. Une liste incomplète ne remplace jamais la dernière liste valide. Le `publicId` est aussitôt remplacé par son empreinte : il n'entre jamais dans la base, ce qui respecte la règle de la section 7.

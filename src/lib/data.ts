@@ -3,10 +3,13 @@ import { join } from "node:path";
 import type { z } from "zod";
 import {
   Announcements,
+  ClanMapJournal,
   Events,
   HistorySnapshot,
   Links,
+  MapHeroes,
   Meta,
+  StoredClanMapFilm,
   StoredLeaderboard,
   StoredMembers,
   StoredSessionFile,
@@ -41,6 +44,9 @@ function listJson(dir: string): string[] {
 export const loadMeta = (): Meta => read("data/meta.json", Meta) ?? emptyMeta();
 export const loadLeaderboard = () => read("data/leaderboard.json", StoredLeaderboard);
 export const loadMembers = () => read("data/members.json", StoredMembers);
+export const loadClanMapFilm = () => read("data/clanmap/film.json", StoredClanMapFilm);
+export const loadClanMapJournal = () => read("data/clanmap/journal.json", ClanMapJournal) ?? [];
+export const loadMapHeroes = () => read("content/carte-heros.json", MapHeroes) ?? { updatedOn: null, donors: [], highlights: [] };
 
 export function loadSessions(): StoredSession[] {
   return listJson("data/sessions").flatMap((f) => read(`data/sessions/${f}`, StoredSessionFile)?.sessions ?? []);

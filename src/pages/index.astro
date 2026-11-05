@@ -4,7 +4,7 @@ import DataStatus from "../components/DataStatus.astro";
 import GroupPlay from "../components/GroupPlay.astro";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
-import { loadAnnouncements, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
+import { loadAnnouncements, loadClanMapFilm, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
 import { fmtDate, fmtDateTime, fmtDay, fmtDec1, fmtInt, fmtPct, fmtScore } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
 import { bestSlots, buildHeatmap, dailySeries } from "../lib/sessions";
@@ -41,6 +41,8 @@ const members = loadMembers();
 const roleLabel = { leader: "Chef", officer: "Officier", member: "Membre" } as const;
 const command = (members?.members ?? []).filter((m) => m.role !== "member");
 const anonymous = (members?.members ?? []).filter((m) => !m.username).length;
+const mapFilm = loadClanMapFilm();
+const onMap = mapFilm?.galSummary ?? null;
 ---
 
 <Base>
@@ -130,6 +132,30 @@ const anonymous = (members?.members ?? []).filter((m) => !m.username).length;
       </div>
       <a href={`${base}/classement`} class="btn btn-secondary mt-6">Voir le classement complet</a>
     </section>
+
+    {
+      mapFilm && onMap && onMap.pixels > 0 && (
+        <section class="stage stage-night reveal grid items-center gap-8 md:grid-cols-2" aria-labelledby="map-title">
+          <div>
+            <h2 id="map-title" class="section-title">{fmtInt(onMap.pixels)} pixels sur la carte</h2>
+            <p class="mt-4 max-w-md text-lg text-muted">
+              Le territoire peint par le clan sur la carte officielle d'OpenFront{onMap.rank !== null && `, ${onMap.rank}${onMap.rank === 1 ? "er" : "e"} au ${fmtDate(mapFilm.fetchedAt)}`}. Ce n'est pas le classement des clans.
+            </p>
+            <a href={`${base}/carte`} class="btn btn-ghost mt-6">Voir le film de la conquête</a>
+          </div>
+          <img
+            src={`${base}/generated/carte/finale-800.webp`}
+            srcset={`${base}/generated/carte/finale-800.webp 800w, ${base}/generated/carte/finale-1400.webp 1400w`}
+            sizes="(min-width: 768px) 560px, calc(100vw - 5rem)"
+            width="1400"
+            height={Math.round((1400 * mapFilm.rows) / mapFilm.cols)}
+            loading="lazy"
+            alt="La carte officielle des clans, où chaque clan occupe un territoire de sa couleur."
+            class="h-auto w-full rounded-2xl"
+          />
+        </section>
+      )
+    }
 
     {
       recent.length > 0 && (

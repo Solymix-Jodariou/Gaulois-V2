@@ -20,7 +20,8 @@ import { mergeSessions } from "./sessions";
 import { findClan, withOfficialRanks } from "./stats";
 import { addDays, parisParts } from "./time";
 
-export const API_BASE = "https://api.openfront.io/public";
+export const API_ORIGIN = "https://api.openfront.io";
+export const API_BASE = `${API_ORIGIN}/public`;
 const PAGE_SIZE = 50;
 /** Délai après la fin d'un jour UTC avant de le considérer comme définitif. */
 const SETTLE_MS = 6 * 3_600_000;
@@ -41,14 +42,15 @@ export interface Deps {
 export class ApiClient {
   constructor(private deps: Deps) {}
 
-  async get<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S>> {
+  /** Espace les appels et réessaie sur 429 ou 5xx, avec un délai croissant. */
+  private async request(url: string, path: string): Promise<Response> {
     const { fetch: f, sleep, delayMs } = this.deps;
     let lastError = "";
     for (let attempt = 0; attempt < 4; attempt++) {
       await sleep(attempt === 0 ? delayMs : delayMs * 2 ** (attempt + 2));
       let res: Response;
       try {
-        res = await f(`${API_BASE}${path}`, { headers: { "User-Agent": "GAL-clan-site/1.0" } });
+        res = await f(url, { headers: { "User-Agent": "GAL-clan-site/1.0" } });
       } catch (e) {
         lastError = `réseau : ${e instanceof Error ? e.message : String(e)}`;
         continue;
@@ -58,21 +60,31 @@ export class ApiClient {
         continue;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status} sur ${path}`);
-      const parsed = schema.safeParse(await res.json());
-      if (!parsed.success) throw new Error(`réponse invalide sur ${path} : ${parsed.error.message.slice(0, 300)}`);
-      return parsed.data;
+      return res;
     }
     throw new Error(`${lastError} sur ${path} après 4 essais`);
   }
+
+  async get<S extends z.ZodType>(path: string, schema: S, base: string = API_BASE): Promise<z.output<S>> {
+    const res = await this.request(`${base}${path}`, path);
+    const parsed = schema.safeParse(await res.json());
+    if (!parsed.success) throw new Error(`réponse invalide sur ${path} : ${parsed.error.message.slice(0, 300)}`);
+    return parsed.data;
+  }
+
+  async getBytes(path: string, base: string = API_BASE): Promise<Uint8Array> {
+    const res = await this.request(`${base}${path}`, path);
+    return new Uint8Array(await res.arrayBuffer());
+  }
 }
 
-async function writeJson(path: string, value: unknown): Promise<void> {
+export async function writeJson(path: string, value: unknown): Promise<void> {
   const tmp = `${path}.tmp`;
   await writeFile(tmp, `${JSON.stringify(value)}\n`, "utf8");
   await rename(tmp, path);
 }
 
-async function readJson<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S> | null> {
+export async function readJson<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S> | null> {
   try {
     return schema.parse(JSON.parse(await readFile(path, "utf8")));
   } catch {
@@ -80,11 +92,11 @@ async function readJson<S extends z.ZodType>(path: string, schema: S): Promise<z
   }
 }
 
-function markOk(state: DatasetState, at: string): void {
+export function markOk(state: DatasetState, at: string): void {
   state.lastSuccessAt = at;
   state.lastError = null;
 }
-function markError(state: DatasetState, at: string, e: unknown): string {
+export function markError(state: DatasetState, at: string, e: unknown): string {
   state.lastErrorAt = at;
   state.lastError = e instanceof Error ? e.message : String(e);
   return state.lastError;

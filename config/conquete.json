@@ -1,0 +1,40 @@
+{
+  "tilesPerTerritory": 100,
+  "capacity": {
+    "multiplier": 2,
+    "tilesExponent": 0.6,
+    "tilesFactor": 1000,
+    "base": 50000,
+    "capsuleFactor": 2000,
+    "capsuleExponent": 0.5
+  },
+  "regen": {
+    "base": 10,
+    "exponent": 0.73,
+    "divisor": 4,
+    "tickMinutes": 60
+  },
+  "startShare": 0.25,
+  "troopsPerCapsule": 100,
+  "terrain": {
+    "plains": 80,
+    "highland": 100,
+    "mountain": 120
+  },
+  "neutralDivisor": 5,
+  "combat": {
+    "ratioMin": 0.6,
+    "ratioMax": 2,
+    "lossBase": 0.463,
+    "lossDensity": 0.0039,
+    "garrisonBonus": 5
+  },
+  "limits": {
+    "expansionsPerDay": 3,
+    "attacksPerDay": 5,
+    "attackCooldownMinutes": 60,
+    "protectionHours": 24,
+    "lastTerritoryProtected": true,
+    "actionsPerMinute": 30
+  }
+}

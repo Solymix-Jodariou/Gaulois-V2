@@ -1,0 +1,16 @@
+---
+import { Content } from "../../../docs/REGLES_CONQUETE.md";
+import Base from "../../layouts/Base.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import GameNav from "../../components/conquete/GameNav.astro";
+---
+
+<Base title="Les règles de la Conquête" description="Les règles de la Conquête des Gaulois, expliquées simplement pour les membres du clan GAL.">
+  <div class="wrap">
+    <PageHeader title="Les règles" intro="Tout ce qu'il faut savoir pour jouer, sans jargon." />
+    <GameNav />
+    <article class="conq-rules mt-8 max-w-3xl" data-testid="rules">
+      <Content />
+    </article>
+  </div>
+</Base>

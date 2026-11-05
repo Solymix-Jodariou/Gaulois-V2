@@ -881,6 +881,8 @@ function init(): void {
   function prepareReveal(): void {
     for (const el of document.querySelectorAll<HTMLElement>(BLOCKS)) {
       if (el.getBoundingClientRect().width === 0) continue;
+      // Le contenu d'un volet fermé n'entre jamais à l'écran : il resterait caché une fois le volet ouvert.
+      if (el.closest("details:not([open])")) continue;
       el.classList.add("fx-hidden");
       hiddenBlocks.add(el);
       revealObserver.observe(el);

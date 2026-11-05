@@ -62,6 +62,38 @@ export const ApiMembersPage = z.object({
 
 export const ApiClanExists = z.object({ exists: z.boolean() });
 
+/* ---------- Carte officielle des clans (routes hors /public, voir docs/API_AUDIT.md) ---------- */
+
+const numericId = z.string().regex(/^\d+$/);
+const ApiClanMapClan = z.object({
+  tag: z.string().min(1),
+  // `null` : le clan n'a pas choisi de couleur.
+  color: z.number().int().nullable().optional(),
+});
+
+export const ApiClanMapChanges = z.object({
+  seq: numericId,
+  // [numéro, x, y, clan] : les champs ajoutés plus tard par le jeu sont ignorés.
+  changes: z.array(z.tuple([numericId, z.number().int().nonnegative(), z.number().int().nonnegative(), numericId], z.unknown())),
+  clans: z.record(z.string(), ApiClanMapClan).default({}),
+});
+
+export const ApiClanMapOwnership = z.object({
+  seq: numericId,
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  clans: z.array(ApiClanMapClan.extend({ id: numericId, troops: z.number().nonnegative().optional() })),
+  rle: z.string().min(1),
+});
+
+/** Fiche publique du clan. Le code du jeu précise que son trésor n'est pas réservé aux membres. */
+export const ApiClanCard = z.object({
+  // Entier décimal en texte. Absent signifie « inconnu », pas zéro.
+  softBalance: z.string().regex(/^\d+$/).optional(),
+  troops: z.number().nonnegative().optional(),
+  memberCount: z.number().int().nonnegative().optional(),
+});
+
 /* ---------- Fichiers écrits dans data/ ---------- */
 
 export const StoredLeaderboard = ApiLeaderboard.extend({ fetchedAt: isoDate });
@@ -117,12 +149,96 @@ export const HistorySnapshot = z.object({
 });
 export type HistorySnapshot = z.infer<typeof HistorySnapshot>;
 
+const count = z.number().int().nonnegative();
+
+export const StoredClanMapFilm = z.object({
+  version: z.literal(1),
+  fetchedAt: isoDate,
+  // Numéro du dernier événement lu, et nombre d'événements rejoués.
+  seq: count,
+  events: count,
+  width: count,
+  height: count,
+  scale: count,
+  cols: count,
+  rows: count,
+  bucket: count,
+  totalChanges: count,
+  land: count,
+  claimed: count,
+  check: z.object({ seq: count, pixels: count, mismatches: count }),
+  // L'index 0 est la terre neutre. `tag: null` : clan supprimé depuis.
+  clans: z.array(z.object({ tag: z.string().nullable(), color: z.number().int().nullable() })),
+  // `gal: null` : GAL n'a jamais eu de pixel sur la carte.
+  gal: count.nullable(),
+  galSummary: z
+    .object({
+      pixels: count,
+      rank: count.nullable(),
+      firstEvent: count,
+      peak: z.object({ pixels: count, event: count }),
+      taken: count,
+      lost: count,
+      neutralTaken: count,
+      fronts: z.array(
+        z.object({
+          tag: z.string().nullable(),
+          // Index du clan dans `clans`, pour le mettre en évidence sur la carte.
+          clan: count,
+          taken: count,
+          lost: count,
+          // Pixels de ce clan au contact de GAL, et centre de cette frontière. 0 et `null` : plus de contact.
+          border: count,
+          at: z.tuple([count, count]).nullable(),
+          // Troupes pour lui prendre un pixel. `null` : ce clan n'est plus sur la carte.
+          pixelCost: count.nullable(),
+        }),
+      ),
+      zones: z.array(z.object({ pixels: count, x: count, y: count, halfWidth: count, halfHeight: count })),
+      zoneCount: count,
+      neutralBorder: count,
+    })
+    .nullable(),
+  // Tous les clans présents, dans l'ordre de la carte officielle.
+  standings: z.array(
+    z.object({ tag: z.string().nullable(), color: z.number().int().nullable(), pixels: count, troops: z.number().nonnegative().nullable() }),
+  ),
+  // Réserves publiques de GAL à la collecte. `null` : pas de données, ce n'est pas un zéro.
+  treasury: z.object({ caps: count.nullable(), troops: z.number().nonnegative().nullable(), members: count.nullable() }).nullable(),
+  frames: z.array(
+    z.object({
+      ev: count,
+      total: count,
+      clans: count,
+      gal: count,
+      rank: count.nullable(),
+      top: z.array(z.tuple([count, count])),
+      cam: z.tuple([count, count, count, count]).nullable(),
+    }),
+  ),
+});
+export type StoredClanMapFilm = z.infer<typeof StoredClanMapFilm>;
+
+/** Un relevé par jour, en heure de Paris : l'historique de la carte ne donne aucune date. */
+export const ClanMapJournal = z.array(
+  z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    pixels: count,
+    rank: count.nullable(),
+    caps: count.nullable(),
+    troops: z.number().nonnegative().nullable(),
+  }),
+);
+export type ClanMapJournal = z.infer<typeof ClanMapJournal>;
+
 const DatasetState = z.object({
   lastSuccessAt: isoDate.nullable(),
   lastErrorAt: isoDate.nullable(),
   lastError: z.string().nullable(),
 });
 export type DatasetState = z.infer<typeof DatasetState>;
+
+const EMPTY_STATE: DatasetState = { lastSuccessAt: null, lastErrorAt: null, lastError: null };
 
 export const Meta = z.object({
   lastRunAt: isoDate.nullable(),
@@ -134,16 +250,18 @@ export const Meta = z.object({
     // Instant jusqu'où les sessions sont connues sans trou.
     coveredUntil: isoDate.nullable(),
   }),
+  // Valeur par défaut : un meta.json plus ancien reste valide et garde tout son état.
+  clanmap: DatasetState.default(EMPTY_STATE),
 });
 export type Meta = z.infer<typeof Meta>;
 
 export function emptyMeta(): Meta {
-  const empty = { lastSuccessAt: null, lastErrorAt: null, lastError: null };
   return {
     lastRunAt: null,
-    leaderboard: { ...empty },
-    members: { ...empty },
-    sessions: { ...empty, completeThrough: null, coveredUntil: null },
+    leaderboard: { ...EMPTY_STATE },
+    members: { ...EMPTY_STATE },
+    sessions: { ...EMPTY_STATE, completeThrough: null, coveredUntil: null },
+    clanmap: { ...EMPTY_STATE },
   };
 }
 
@@ -167,6 +285,19 @@ export const Events = z.array(
   }),
 );
 export type Events = z.infer<typeof Events>;
+/**
+ * Donateurs recopiés à la main par le clan : le jeu réserve ce classement à ses
+ * membres et aucune route publique ne le donne. Vide : le site n'affiche aucun nom.
+ */
+export const MapHeroes = z.object({
+  updatedOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  donors: z.array(z.object({ player: z.string().min(1), caps: z.number().int().positive() })),
+  highlights: z.array(z.object({ title: z.string().min(1), player: z.string().min(1), detail: z.string().optional() })),
+});
+export type MapHeroes = z.infer<typeof MapHeroes>;
 export const Links = z.object({
   tools: z.array(z.object({ name: z.string().min(1), url: z.url(), description: z.string().min(1) })),
 });

@@ -1,5 +1,5 @@
 /** Âge maximal avant qu'un jeu de données soit signalé comme périmé, en heures. */
-export const MAX_AGE_HOURS = { leaderboard: 4, sessions: 4, members: 36 } as const;
+export const MAX_AGE_HOURS = { leaderboard: 4, sessions: 4, members: 36, clanmap: 36 } as const;
 
 export type Freshness = "missing" | "fresh" | "stale";
 

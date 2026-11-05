@@ -7,5 +7,5 @@
     "types": ["node"]
   },
   "include": [".astro/types.d.ts", "src", "scripts", "config", "tests", "*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "dist-conquete", "node_modules"]
 }

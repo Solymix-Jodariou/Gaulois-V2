@@ -1,0 +1,31 @@
+---
+import Base from "../../layouts/Base.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import ConquestApp from "../../components/conquete/ConquestApp";
+import GameNav from "../../components/conquete/GameNav.astro";
+import NotOpen from "../../components/conquete/NotOpen.astro";
+import { GAME_ENABLED } from "../../lib/conquete/api";
+---
+
+<Base title="La Conquête" description="La Conquête des Gaulois : le jeu de territoires des membres du clan GAL, par saisons. Les capsules données au clan font la puissance de chacun.">
+  <div class="wrap">
+    <PageHeader title="La Conquête des Gaulois" intro="Une carte du monde, des saisons, et seuls les membres de GAL pour se la disputer. Les capsules données au clan font la puissance de chacun." />
+    <GameNav />
+  </div>
+  {
+    GAME_ENABLED ? (
+      <div class="mt-6">
+        <ConquestApp client:only="preact" />
+        <noscript>
+          <div class="wrap">
+            <p class="card p-5">Le jeu demande JavaScript.</p>
+          </div>
+        </noscript>
+      </div>
+    ) : (
+      <div class="wrap mt-6">
+        <NotOpen />
+      </div>
+    )
+  }
+</Base>

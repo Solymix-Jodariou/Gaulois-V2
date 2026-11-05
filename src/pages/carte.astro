@@ -1,0 +1,509 @@
+---
+import Base from "../layouts/Base.astro";
+import DataStatus from "../components/DataStatus.astro";
+import Empty from "../components/Empty.astro";
+import MyPlace from "../components/MyPlace.tsx";
+import { clan } from "../../config/clan";
+import { clanRgb } from "../lib/clanmap/codec";
+import { RULES_CHECKED_ON, TROOPS_PER_CAP, NEUTRAL_PIXEL_TROOPS, ENEMY_PIXEL_BASE_TROOPS, capsToTroops, neutralPixelsFor, objectiveFor } from "../lib/clanmap/economy";
+import { findMoments } from "../lib/clanmap/moments";
+import { loadClanMapFilm, loadClanMapJournal, loadMapHeroes, loadMembers, loadMeta } from "../lib/data";
+import { fmtDate, fmtDay, fmtDec1, fmtInt } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const meta = loadMeta();
+const film = loadClanMapFilm();
+const gal = film?.galSummary ?? null;
+const assets = `${base}/generated/carte/`;
+const ordinal = (n: number) => `${n}${n === 1 ? "er" : "e"}`;
+const signed = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtInt(Math.abs(n))}`;
+const rgb = (color: number | null) => `rgb(${clanRgb(color).join(" ")})`;
+const stillHeight = film ? Math.round((1400 * film.rows) / film.cols) : 0;
+const landShare = film ? (film.claimed / film.land) * 100 : 0;
+const clansOnMap = film?.frames.at(-1)?.clans ?? 0;
+const standings = film?.standings ?? [];
+const lead = standings[0]?.pixels ?? 1;
+const galLine = gal ? (gal.rank === null ? `[${clan.tag}] n'a plus de pixel sur la carte.` : `GAL : ${ordinal(gal.rank)} avec ${fmtInt(gal.pixels)} pixels.`) : "GAL n'est pas sur la carte.";
+const moments = film ? findMoments(film.frames) : [];
+
+// Objectif et réserves : uniquement des chiffres collectés, et un calcul documenté.
+const objective = objectiveFor(standings, clan.tag);
+const treasury = film?.treasury ?? null;
+const troopPixels = treasury?.troops === null || treasury?.troops === undefined ? null : neutralPixelsFor(treasury.troops);
+const capPixels = treasury?.caps === null || treasury?.caps === undefined ? null : neutralPixelsFor(capsToTroops(treasury.caps));
+const reservePixels = troopPixels === null && capPixels === null ? null : (troopPixels ?? 0) + (capPixels ?? 0);
+const goalProgress = objective?.above ? Math.min(100, (objective.me.pixels / objective.above.pixels) * 100) : null;
+
+// Calculateur : valeurs affichées avant le démarrage du script, et sans JavaScript.
+const startCaps = 100;
+const startTroops = capsToTroops(startCaps);
+const startPixels = neutralPixelsFor(startTroops);
+const rivalAhead = gal && objective?.above ? gal.fronts.find((f) => f.tag === objective.above?.tag) : null;
+
+// Les joueurs : les rôles et les victoires sont publics, les dons sont recopiés par le clan.
+const members = loadMembers();
+const memberCount = treasury?.members ?? members?.total ?? null;
+const heroes = loadMapHeroes();
+const donorLead = heroes.donors[0]?.caps ?? 1;
+const painters = (members?.members ?? []).filter((m) => m.role !== "member").sort((a, b) => (a.role === "leader" ? -1 : b.role === "leader" ? 1 : 0));
+const topWinners = (members?.members ?? [])
+  .filter((m) => m.team && m.team.wins > 0)
+  .sort((a, b) => (b.team?.wins ?? 0) - (a.team?.wins ?? 0))
+  .slice(0, 3);
+const winLead = topWinners[0]?.team?.wins ?? 1;
+
+const journal = loadClanMapJournal();
+const today = journal.at(-1);
+const previousDay = journal.at(-2);
+---
+
+<Base title="Carte" description="Le territoire du clan GAL sur la carte officielle des clans d'OpenFront, rejoué du premier pixel au dernier. Objectif du moment et votre place dans le clan.">
+  {
+    !film ? (
+      <div class="wrap pt-12">
+        <h1 class="page-title">La carte des clans</h1>
+        <div class="mt-4">
+          <DataStatus state={meta.clanmap} maxAgeHours={MAX_AGE_HOURS.clanmap} />
+        </div>
+        <div class="mt-6">
+          <Empty title="Pas de données">La carte n'a pas encore été collectée.</Empty>
+        </div>
+      </div>
+    ) : (
+      <>
+        <section data-film data-assets={assets} aria-labelledby="map-page-title">
+          <div class="film-hero">
+            <div class="film-title">
+              <h1 id="map-page-title">La carte des clans</h1>
+              <DataStatus state={meta.clanmap} maxAgeHours={MAX_AGE_HOURS.clanmap} />
+            </div>
+
+            <div class="film-map" data-film-map data-testid="film-map">
+              <img
+                src={`${assets}finale-1400.webp`}
+                srcset={`${assets}finale-800.webp 800w, ${assets}finale-1400.webp 1400w`}
+                sizes="100vw"
+                width="1400"
+                height={stillHeight}
+                alt={`La carte officielle des clans à la fin de l'historique. ${galLine}`}
+              />
+              <canvas data-film-canvas hidden role="img" aria-label="Carte animée des territoires de clans. Les mêmes chiffres sont donnés en texte à côté et sous la carte."></canvas>
+              <p class="film-hud tnum" data-film-ready hidden aria-hidden="true">Événement <span data-film-event></span></p>
+              <button type="button" class="chip film-world" data-film-world hidden>Vue d'ensemble</button>
+              <p class="film-caption" data-film-caption hidden aria-hidden="true"></p>
+              <div class="film-tip" data-film-tip hidden aria-hidden="true"></div>
+            </div>
+
+            <aside class="card film-ladder p-4" aria-labelledby="ladder-title">
+              <h2 id="ladder-title" class="text-base">Le territoire à cet instant</h2>
+              <p class="mt-1 text-xs text-muted">Pixels peints sur la carte, pas le classement des clans.</p>
+              <p class="tnum mt-1 text-xs text-muted"><span data-film-land>{fmtDec1(landShare)}</span> % des terres · <span data-film-clans>{fmtInt(clansOnMap)}</span> clans</p>
+              <ol class="film-rows tnum mt-2" data-film-rows>
+                {
+                  standings.slice(0, 5).map((c, i) => (
+                    <li class:list={["film-row", c.tag === clan.tag && "is-gal"]} style={{ transform: `translateY(${i * 38}px)` }}>
+                      <span class="text-muted">{i + 1}</span>
+                      <span class="truncate font-semibold">{c.tag ?? "Clan supprimé"}</span>
+                      <span>{fmtInt(c.pixels)}</span>
+                      <span class="film-bar"><i style={{ width: `${(c.pixels / lead) * 100}%`, background: rgb(c.color) }}></i></span>
+                    </li>
+                  ))
+                }
+              </ol>
+              <p class="tnum border-t border-line pt-2 text-sm font-semibold" data-film-pinned data-testid="film-gal">{galLine}</p>
+            </aside>
+
+            <div class="film-controls" data-film-ready hidden>
+              <div class="film-deck">
+                <button type="button" class="btn btn-primary film-play" data-film-play data-testid="film-play">
+                  <svg viewBox="0 0 14 14" width="14" height="14" fill="currentColor" aria-hidden="true"><path data-film-play-icon d="M2 1l11 6-11 6z"></path></svg>
+                  <span data-film-play-label>Lancer le film</span>
+                </button>
+                <div class="film-scrub">
+                  <svg data-film-curve preserveAspectRatio="none" aria-hidden="true" style={{ "--gal": rgb(film.gal === null ? null : (film.clans[film.gal]?.color ?? null)) }}><path></path></svg>
+                  <span class="film-ticks" data-film-ticks aria-hidden="true"></span>
+                  <input type="range" min="0" value="0" step="1" data-film-pos data-testid="film-pos" aria-label="Position dans le film" />
+                </div>
+                <div class="film-opts" role="group" aria-label="Vitesse de lecture">
+                  <button type="button" class="chip" data-film-speed="1" aria-pressed="true">× 1</button>
+                  <button type="button" class="chip" data-film-speed="2" aria-pressed="false">× 2</button>
+                  <button type="button" class="chip" data-film-speed="4" aria-pressed="false">× 4</button>
+                </div>
+                <div class="film-opts">
+                  <button type="button" class="chip" data-film-focus aria-pressed="false">Griser les autres</button>
+                  <button type="button" class="chip" data-film-follow aria-pressed="false">Suivre GAL</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="sr-only" role="status" data-film-status></p>
+          <div class="wrap mt-3 flex flex-wrap items-center gap-3 text-sm font-semibold text-warn" role="status" data-film-message hidden>
+            <span data-film-message-text></span>
+            <button type="button" class="btn btn-ghost !min-h-10 !py-1.5" data-film-retry>Réessayer</button>
+          </div>
+
+          <div class="wrap mt-6 grid gap-5">
+            <p class="max-w-3xl text-lg text-muted">Les clans d'OpenFront peignent un territoire sur une carte commune. Voici toute son histoire, du premier pixel au dernier, et ce qu'il faut pour que GAL aille plus loin.</p>
+            {
+              moments.length > 0 && (
+                <div data-film-ready hidden>
+                  <h2 class="text-base">Les grands moments de GAL</h2>
+                  <ol class="film-moments mt-2">
+                    {moments.map((m) => (
+                      <li>
+                        <button type="button" class="chip film-moment" data-film-moment={m.frame}>{m.title}</button>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )
+            }
+            {
+              gal && gal.zones.length > 0 && (
+                <div data-film-ready hidden>
+                  <h2 class="text-base">Explorer nos territoires</h2>
+                  <p class="tnum mt-1 text-sm text-muted">{fmtInt(gal.zoneCount)} zones d'un seul tenant. Voici les plus grandes.</p>
+                  <ul class="film-moments mt-2">
+                    {gal.zones.map((z, i) => (
+                      <li>
+                        <button type="button" class="chip tnum" data-film-look={`Zone ${i + 1} : ${fmtInt(z.pixels)} pixels`} data-x={z.x} data-y={z.y} data-half-width={z.halfWidth} data-half-height={z.halfHeight}>
+                          Zone {i + 1} · {fmtInt(z.pixels)} pixels
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            }
+          </div>
+        </section>
+
+        <div class="wrap mt-8 space-y-6 md:space-y-8">
+          {
+            objective && (
+              <section class="stage stage-blue grid grid-cols-1 items-center gap-8 md:grid-cols-2" aria-labelledby="goal-title" data-testid="map-goal">
+                <div>
+                  <p class="text-sm font-semibold uppercase tracking-wide text-muted">{ordinal(objective.rank)} sur la carte</p>
+                  {objective.above && objective.gap !== null ? (
+                    <>
+                      <h2 id="goal-title" class="section-title mt-2">Prochain objectif : dépasser {objective.above.tag ?? "le clan suivant"}</h2>
+                      <p class="tnum mt-4 font-display text-5xl font-extrabold" data-testid="map-gap" data-count={objective.gap}>{fmtInt(objective.gap)}</p>
+                      <p class="mt-1 text-lg text-muted">pixels à gagner pour passer {ordinal(objective.rank - 1)}.</p>
+                      <div class="meter meter-lg mt-5" aria-hidden="true"><i style={{ "--v": `${goalProgress}%` }}></i></div>
+                      <p class="tnum mt-2 text-sm text-muted">GAL {fmtInt(objective.me.pixels)} · {objective.above.tag} {fmtInt(objective.above.pixels)}</p>
+                    </>
+                  ) : (
+                    <h2 id="goal-title" class="section-title mt-2">GAL occupe le plus grand territoire</h2>
+                  )}
+                  {objective.below && objective.lead !== null && (
+                    <p class="tnum mt-3 text-sm text-muted">{objective.below.tag ?? "Le clan suivant"} suit à {fmtInt(objective.lead)} pixels.</p>
+                  )}
+                </div>
+                <div class="panel">
+                  <h3 class="text-sm tracking-wide text-muted">Les réserves du clan</h3>
+                  {reservePixels === null ? (
+                    <p class="mt-3 font-display text-lg font-bold">Pas de données</p>
+                  ) : (
+                    <>
+                      <dl class="tnum mt-3 grid grid-cols-2 gap-3" data-testid="map-reserves">
+                        <div>
+                          <dt class="text-sm text-muted">Troupes prêtes</dt>
+                          <dd class="font-display text-2xl font-extrabold">{treasury?.troops === null || treasury?.troops === undefined ? "Pas de données" : fmtInt(treasury.troops)}</dd>
+                        </div>
+                        <div>
+                          <dt class="text-sm text-muted">Capsules au trésor</dt>
+                          <dd class="font-display text-2xl font-extrabold">{treasury?.caps === null || treasury?.caps === undefined ? "Pas de données" : fmtInt(treasury.caps)}</dd>
+                        </div>
+                      </dl>
+                      <p class="mt-3 text-sm">
+                        De quoi peindre environ <strong class="tnum">{fmtInt(reservePixels)} pixels neutres</strong>.
+                        {objective.gap !== null && (reservePixels >= objective.gap ? " Assez pour atteindre l'objectif." : ` Il en manque ${fmtInt(objective.gap - reservePixels)} pour l'objectif.`)}
+                      </p>
+                    </>
+                  )}
+                  {gal && <p class="tnum mt-2 text-sm text-muted">{fmtInt(gal.neutralBorder)} pixels de terre neutre touchent déjà notre territoire.</p>}
+                  <p class="mt-2 text-xs text-muted">Repère indicatif, selon les règles lues dans le code de la carte le {fmtDate(`${RULES_CHECKED_ON}T12:00:00Z`)}.</p>
+                </div>
+              </section>
+            )
+          }
+
+          {
+            gal && objective && (
+              <section class="stage stage-night grid grid-cols-1 gap-8 lg:grid-cols-2" aria-labelledby="conquest-title" data-conquest data-assets={assets} data-members={memberCount ?? undefined} data-testid="conquest">
+                <div>
+                  <h2 id="conquest-title" class="section-title">Votre don sur la carte</h2>
+                  <p class="mt-3 text-muted">Combien de pixels valent vos capsules ? Essayez : rien n'est donné ici, le site ne touche pas à votre compte.</p>
+
+                  <div class="mt-4 grid gap-3" data-conquest-ready hidden>
+                    <label class="grid gap-1 text-sm font-semibold" for="conquest-caps">Capsules données</label>
+                    <input id="conquest-caps" class="field tnum" type="number" min="0" max="10000000" step="10" value={startCaps} inputmode="numeric" data-conquest-caps />
+                    <input class="film-range" type="range" min="0" max="100" step="1" value="33" aria-label="Capsules données, sur une échelle progressive" data-conquest-range />
+                    {memberCount !== null && (
+                      <div class="film-opts" role="group" aria-label="Qui donne">
+                        <button type="button" class="chip" data-conquest-scope="me" aria-pressed="true">Moi seul</button>
+                        <button type="button" class="chip" data-conquest-scope="all" aria-pressed="false">Chaque membre ({fmtInt(memberCount)})</button>
+                      </div>
+                    )}
+                    {objective.above && objective.gap !== null && memberCount !== null && (
+                      <button type="button" class="btn btn-secondary justify-self-start !whitespace-normal" data-conquest-goal data-testid="conquest-goal">Que faut-il pour dépasser {objective.above.tag} ?</button>
+                    )}
+                  </div>
+
+                  <dl class="tnum mt-4 grid grid-cols-3 gap-3">
+                    <div>
+                      <dt class="text-xs text-muted">Capsules</dt>
+                      <dd class="font-display text-2xl font-extrabold" data-conquest-total data-testid="conquest-total">{fmtInt(startCaps)}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-xs text-muted">Troupes</dt>
+                      <dd class="font-display text-2xl font-extrabold" data-conquest-troops>{fmtInt(startTroops)}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-xs text-muted">Pixels neutres</dt>
+                      <dd class="font-display text-2xl font-extrabold" data-conquest-pixels data-testid="conquest-pixels">{fmtInt(startPixels)}</dd>
+                    </div>
+                  </dl>
+                  <p class="mt-3 font-semibold" aria-live="polite" data-conquest-verdict data-testid="conquest-verdict">GAL passerait de {fmtInt(gal.pixels)} à {fmtInt(gal.pixels + startPixels)} pixels.</p>
+                  {rivalAhead?.pixelCost && (
+                    <p class="tnum mt-1 text-sm text-muted">Prendre un pixel à {rivalAhead.tag} coûte {fmtInt(rivalAhead.pixelCost)} troupes, contre {fmtInt(NEUTRAL_PIXEL_TROOPS)} sur une terre neutre.</p>
+                  )}
+                  <p class="mt-3 text-sm">Pour donner pour de vrai : fiche de [{clan.tag}] dans le jeu, bouton « Faire un don ». <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong></p>
+                </div>
+                <div class="grid content-start gap-2">
+                  <div class="conquest-map">
+                    <canvas data-conquest-map hidden role="img" aria-label="Simulation : le territoire de GAL et les pixels neutres qu'il pourrait peindre autour de lui."></canvas>
+                    <span class="film-hud !left-2.5 !right-auto" data-conquest-map-ready hidden aria-hidden="true">Simulation</span>
+                  </div>
+                  <p class="text-xs text-muted">Simulation, pas une prévision : le chef et les officiers choisissent où peindre, et la carte ne change pas ici.</p>
+                </div>
+              </section>
+            )
+          }
+
+          <section aria-labelledby="players-title">
+            <h2 id="players-title" class="section-title">Ceux qui font avancer GAL</h2>
+            <div class="card mt-5 p-5" data-testid="my-place">
+              <h3 class="text-xl">Ma place dans le clan</h3>
+              <p class="mt-1 text-sm text-muted">Retrouvez votre rang aux victoires en équipe sous le tag, et le prochain joueur à dépasser.</p>
+              <div class="mt-3">
+                <MyPlace client:visible src={`${base}/data/members.json`} />
+              </div>
+              <noscript><p class="mt-3 text-sm text-muted">JavaScript est nécessaire pour chercher un pseudo. La liste complète reste sur la page <a href={`${base}/membres`}>Membres</a>.</p></noscript>
+            </div>
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <div class="card p-5" data-testid="map-donors">
+                <h3 class="text-lg">Plus gros donateurs</h3>
+                {
+                  heroes.donors.length > 0 ? (
+                    <>
+                      <ol class="tnum mt-3 space-y-3">
+                        {heroes.donors.slice(0, 5).map((d, i) => (
+                          <li>
+                            <div class="flex items-baseline justify-between gap-3">
+                              <span class="min-w-0 truncate font-semibold">{i + 1}. {d.player}</span>
+                              <span class="text-sm text-muted">{fmtInt(d.caps)} capsules</span>
+                            </div>
+                            <div class="meter mt-1" aria-hidden="true"><i style={{ "--v": `${(d.caps / donorLead) * 100}%` }}></i></div>
+                          </li>
+                        ))}
+                      </ol>
+                      <p class="mt-3 text-xs text-muted">Relevé à la main par le clan dans le jeu{heroes.updatedOn && `, le ${fmtDate(`${heroes.updatedOn}T12:00:00Z`)}`}. Ces chiffres ne viennent pas de la collecte automatique.</p>
+                    </>
+                  ) : (
+                    <p class="mt-3 text-sm text-muted">Le jeu réserve ce classement à ses membres : retrouvez-le sur la fiche de [{clan.tag}], onglet « Dons », puis « Top donateurs ». Le clan n'a pas encore choisi de le publier ici.</p>
+                  )
+                }
+              </div>
+              <div class="card p-5" data-testid="map-winners">
+                <h3 class="text-lg">Le plus de victoires sous le tag</h3>
+                {
+                  topWinners.length === 0 ? (
+                    <p class="mt-3 text-sm text-muted">Pas de données.</p>
+                  ) : (
+                    <>
+                      <ol class="tnum mt-3 space-y-3">
+                        {topWinners.map((m, i) => (
+                          <li>
+                            <div class="flex items-baseline justify-between gap-3">
+                              <span class="min-w-0 truncate font-semibold">{i + 1}. {m.username ?? "Membre anonyme"}</span>
+                              <span class="text-sm text-muted">{fmtInt(m.team?.wins ?? 0)}</span>
+                            </div>
+                            <div class="meter mt-1" aria-hidden="true"><i style={{ "--v": `${((m.team?.wins ?? 0) / winLead) * 100}%` }}></i></div>
+                          </li>
+                        ))}
+                      </ol>
+                      <p class="mt-3 text-xs text-muted">Parties en équipe sous le tag. <a href={`${base}/membres`}>Voir tous les membres</a>.</p>
+                    </>
+                  )
+                }
+              </div>
+              <div class="card p-5" data-testid="map-painters">
+                <h3 class="text-lg">Peuvent peindre pour GAL</h3>
+                {
+                  painters.length === 0 ? (
+                    <p class="mt-3 text-sm text-muted">Pas de données.</p>
+                  ) : (
+                    <ul class="mt-3 flex flex-wrap gap-2">
+                      {painters.map((m) => (
+                        <li class="rounded-full bg-surface-2 px-3 py-1 text-sm font-semibold">{m.username ?? "Membre anonyme"}{m.role === "leader" && <span class="font-normal text-muted"> · Chef</span>}</li>
+                      ))}
+                    </ul>
+                  )
+                }
+                <p class="mt-3 text-xs text-muted">Le jeu ne publie pas qui a peint quel pixel : personne n'est classé ici pour sa peinture.</p>
+              </div>
+            </div>
+            {
+              heroes.highlights.length > 0 && (
+                <ul class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3" data-testid="map-highlights">
+                  {heroes.highlights.map((h) => (
+                    <li class="card p-5">
+                      <p class="text-sm font-semibold text-muted">{h.title}</p>
+                      <p class="mt-1 font-display text-2xl font-extrabold">{h.player}</p>
+                      {h.detail && <p class="mt-1 text-sm text-muted">{h.detail}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </section>
+
+          <div class="fold-list">
+            <details class="fold" data-testid="fold-join">
+              <summary><h2 class="text-xl">Comment participer</h2></summary>
+              <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div class="card p-5">
+                  <h3 class="text-lg">Donner des capsules</h3>
+                  <p class="mt-2 text-sm text-muted">Sur la fiche de [{clan.tag}] dans le jeu, le bouton « Faire un don » envoie vos capsules au trésor du clan. Il est réservé aux membres.</p>
+                  <p class="tnum mt-2 text-sm text-muted">1 capsule = {TROOPS_PER_CAP} troupes.</p>
+                </div>
+                <div class="card p-5">
+                  <h3 class="text-lg">Jouer sous le tag</h3>
+                  <p class="mt-2 text-sm text-muted">Le code du jeu prévoit aussi une part des victoires pour le trésor du clan. Son montant n'est pas public, donc ce site n'en donne aucun chiffre.</p>
+                  <a href={clan.links.openfront} class="btn btn-ghost mt-4 !min-h-10 !py-1.5 !text-sm" rel="noopener">Jouer à OpenFront</a>
+                </div>
+                <div class="card p-5">
+                  <h3 class="text-lg">Peindre la carte</h3>
+                  <p class="tnum mt-2 text-sm text-muted">Seuls le chef et les officiers peuvent peindre. Ils achètent des troupes avec le trésor : un pixel neutre coûte {fmtInt(NEUTRAL_PIXEL_TROOPS)} troupes, un pixel ennemi {fmtInt(ENEMY_PIXEL_BASE_TROOPS)} et plus selon les troupes de ce clan.</p>
+                  <a href="https://clanmap.openfront.io/" class="btn btn-ghost mt-4 !min-h-10 !py-1.5 !text-sm" rel="noopener">Voir la carte officielle</a>
+                </div>
+              </div>
+            </details>
+
+            {
+              gal && (
+                <details class="fold" data-testid="fold-numbers">
+                  <summary><h2 class="text-xl">Tous les chiffres de GAL</h2></summary>
+                  <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div class="card p-5" data-testid="film-fact">
+                      <p class="text-sm font-semibold text-muted">Premier pixel</p>
+                      <p class="tnum mt-2 font-display text-3xl font-extrabold">Événement n° {fmtInt(gal.firstEvent)}</p>
+                      <p class="mt-1 text-sm text-muted">Sur {fmtInt(film.events)} changements de main au total.</p>
+                      <button type="button" class="btn btn-ghost mt-4 !min-h-10 !py-1.5 !text-sm" data-film-jump data-film-ready hidden>Revoir ce moment</button>
+                    </div>
+                    <div class="card p-5" data-testid="film-fact">
+                      <p class="text-sm font-semibold text-muted">Territoire à la dernière mise à jour</p>
+                      <p class="tnum mt-2 font-display text-3xl font-extrabold">{fmtInt(gal.pixels)} pixels</p>
+                      <p class="mt-1 text-sm text-muted">
+                        {gal.rank === null ? "Plus aucun pixel sur la carte." : `${ordinal(gal.rank)} sur la carte.`}
+                        {gal.peak.pixels === gal.pixels ? " C'est aussi son plus grand territoire." : ` Son record : ${fmtInt(gal.peak.pixels)} pixels.`}
+                      </p>
+                      {
+                        today && previousDay ? (
+                          <p class="tnum mt-1 text-sm font-semibold" data-testid="map-journal">{signed(today.pixels - previousDay.pixels)} pixels depuis le {fmtDay(previousDay.date)}.</p>
+                        ) : (
+                          <p class="mt-1 text-sm text-muted" data-testid="map-journal">L'évolution jour par jour s'affichera ici à partir du prochain relevé.</p>
+                        )
+                      }
+                    </div>
+                    <div class="card p-5" data-testid="film-fact">
+                      <p class="text-sm font-semibold text-muted">Pixels gagnés et perdus</p>
+                      <p class="tnum mt-2 font-display text-3xl font-extrabold">+{fmtInt(gal.taken)} / −{fmtInt(gal.lost)}</p>
+                      <p class="mt-1 text-sm text-muted">Dont {fmtInt(gal.neutralTaken)} pixels pris sur des terres neutres.</p>
+                    </div>
+                  </div>
+                </details>
+              )
+            }
+
+            {
+              gal && gal.fronts.length > 0 && (
+                <details class="fold" data-testid="fold-fronts">
+                  <summary><h2 class="text-xl">Les fronts de GAL</h2></summary>
+                  <div class="card mt-4 overflow-x-auto">
+                    <table class="data-table film-fronts tnum w-full" data-testid="film-fronts">
+                      <caption class="p-3 text-left text-sm text-muted">Les {gal.fronts.length} clans avec lesquels GAL a échangé le plus de pixels, hors terres neutres. Le coût est celui d'un pixel pris à ce clan, en troupes.</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Clan</th>
+                          <th scope="col" class="num">Pris</th>
+                          <th scope="col" class="num">Perdus</th>
+                          <th scope="col" class="num">Solde</th>
+                          <th scope="col" class="num">Frontière</th>
+                          <th scope="col" class="num">Coût</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {gal.fronts.map((f) => (
+                          <tr>
+                            <td class="font-semibold">
+                              {f.at ? (
+                                <button
+                                  type="button"
+                                  class="film-front-link"
+                                  data-film-look={`Front ${f.tag ?? "Clan supprimé"} : ${fmtInt(f.border)} pixels de frontière`}
+                                  data-x={f.at[0]}
+                                  data-y={f.at[1]}
+                                  data-half-width="200"
+                                  data-half-height="130"
+                                  data-clan={f.clan}
+                                  aria-label={`Voir le front avec ${f.tag ?? "ce clan"} sur la carte`}
+                                >
+                                  {f.tag ?? "Clan supprimé"}
+                                </button>
+                              ) : (
+                                (f.tag ?? "Clan supprimé")
+                              )}
+                            </td>
+                            <td class="num">{fmtInt(f.taken)}</td>
+                            <td class="num">{fmtInt(f.lost)}</td>
+                            <td class="num font-semibold">{signed(f.taken - f.lost)}</td>
+                            <td class="num">{f.border > 0 ? fmtInt(f.border) : "—"}</td>
+                            <td class="num">{f.pixelCost === null ? "—" : fmtInt(f.pixelCost)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="mt-2 text-sm text-muted">Cliquez sur un clan pour voir ce front sur la carte.</p>
+                </details>
+              )
+            }
+
+            <details class="fold" data-testid="fold-read">
+              <summary><h2 class="text-xl">Comment lire cette carte</h2></summary>
+              <ul class="mt-4 max-w-prose list-disc space-y-3 pl-5 text-muted">
+                <li><strong class="text-white">Ce n'est pas le classement des clans.</strong> La carte compte des pixels peints, pas des victoires. L'ordre des clans suit celui de la carte officielle. Le classement du clan reste sur la page <a href={`${base}/classement`}>Classement</a>.</li>
+                <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps : la source utilisée ne les date pas.</li>
+                <li><strong class="text-white">Une mise à jour par jour.</strong> Ce ne sont pas des données en temps réel. La carte vient de routes du jeu non documentées, lues par la collecte du site et jamais par votre navigateur. Elles peuvent changer sans préavis.</li>
+                <li><strong class="text-white">Vérifié à chaque mise à jour.</strong> Rejoué jusqu'à l'instantané officiel n° {fmtInt(film.check.seq)}, l'historique retombe sur la carte du jeu, avec {fmtInt(film.check.mismatches)} pixel d'écart sur {fmtInt(film.check.pixels)}. En cas d'écart, le film n'est pas mis à jour.</li>
+                <li><strong class="text-white">Des coûts indicatifs.</strong> Ils viennent du code de la carte et ne tiennent pas compte de la forme du territoire ni des pixels verrouillés. Le jeu peut les changer.</li>
+                <li><strong class="text-white">Image allégée.</strong> Les chiffres sont calculés sur la carte complète, {fmtInt(film.width)} × {fmtInt(film.height)} pixels. Seul le film est affiché en résolution réduite.</li>
+                <li><strong class="text-white">Dessins des joueurs.</strong> Les motifs visibles sont peints par les joueurs, et le site ne les filtre pas.</li>
+              </ul>
+              <p class="mt-4 text-sm text-muted">Carte, terrain et données © OpenFront et ses contributeurs. <a href="https://clanmap.openfront.io/" rel="noopener">Voir la carte officielle</a>.</p>
+            </details>
+          </div>
+        </div>
+      </>
+    )
+  }
+</Base>
+
+<script>
+  import "../scripts/film";
+  import "../scripts/conquest";
+</script>

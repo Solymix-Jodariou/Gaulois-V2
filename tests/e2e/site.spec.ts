@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/debuter", "/rejoindre"];
+const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre"];
 const lb = JSON.parse(readFileSync("data/leaderboard.json", "utf8"));
 const members = JSON.parse(readFileSync("data/members.json", "utf8"));
 const gal = lb.clans.find((c: { clanTag: string }) => c.clanTag === "GAL");
@@ -10,6 +10,23 @@ const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
 
 /** Attend que les composants interactifs de la page aient démarré. */
 const hydrated = (page: Page) => page.waitForFunction(() => !document.querySelector("astro-island[ssr]"));
+
+test("sans serveur configuré, le jeu n'apparaît pas et le site reste statique", async ({ page }) => {
+  const calls: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("supabase") || r.url().includes("/rest/v1/")) calls.push(r.url());
+  });
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Conquête", exact: true })).toHaveCount(0);
+  for (const path of ["/conquete", "/dons", "/compte", "/admin"]) {
+    await page.goto(path);
+    await expect(page.getByTestId("game-not-open")).toBeVisible();
+  }
+  // Les règles restent lisibles, sans rien demander au serveur.
+  await page.goto("/conquete/regles");
+  await expect(page.getByTestId("rules")).toContainText("Phase 1");
+  expect(calls).toEqual([]);
+});
 
 test("parcours principal", async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === "mobile";

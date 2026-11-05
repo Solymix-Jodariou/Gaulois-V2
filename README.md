@@ -6,6 +6,7 @@ Le site est statique (Astro). Une GitHub Action récupère les données de l'API
 
 - Audit de l'API : [docs/API_AUDIT.md](docs/API_AUDIT.md)
 - Choix de design : [docs/DESIGN.md](docs/DESIGN.md)
+- La Conquête des Gaulois, seule partie avec un serveur : [docs/CONQUETE.md](docs/CONQUETE.md), et [ses règles](docs/REGLES_CONQUETE.md)
 
 ## Installation
 
@@ -25,11 +26,15 @@ Le site s'ouvre sur http://localhost:4321. Aucun secret n'est nécessaire.
 |---|---|
 | `npm run dev` | Serveur de développement |
 | `npm run data:fetch` | Collecte les données dans `data/` |
-| `npm run build` | Génère le favicon et l'image de partage, puis construit `dist/` |
+| `npm run data:carte` | Met à jour seulement la carte des clans, sans attendre le délai d'une journée |
+| `npm run conquete:map` | Régénère la carte du jeu depuis Natural Earth |
+| `npm run conquete:job` | La tâche quotidienne du jeu. Sans ses réglages, elle ne fait rien. |
+| `npm run build` | Génère le favicon, l'image de partage et les fichiers du film, puis construit `dist/` |
 | `npm run preview` | Sert le dossier `dist/` |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `astro check` et `tsc` |
-| `npm test` | Tests unitaires (Vitest) |
+| `npm test` | Tests unitaires et règles du jeu sur un vrai Postgres (Vitest). Docker n'est pas nécessaire. |
+| `npm run test:unit`, `npm run test:db` | L'une ou l'autre de ces deux parties |
 | `npm run test:e2e` | Parcours, accessibilité et largeurs d'écran (Playwright). À lancer après `npm run build`. |
 
 Pour les tests Playwright, installez une première fois le navigateur :
@@ -70,6 +75,8 @@ Pour changer de version, remplacez le fichier sous le même nom : le prochain bu
 
 `SITE_URL` et `BASE_PATH` ne servent qu'à construire les liens. Sur GitHub Pages, l'Action les renseigne seule.
 
+Les autres valeurs ne concernent que la Conquête des Gaulois : voir [docs/CONQUETE.md](docs/CONQUETE.md). Sans elles, le jeu n'apparaît pas et le site reste entièrement statique.
+
 ## Mettre à jour les contenus
 
 Tout se modifie depuis GitHub, sans outil particulier. L'enregistrement relance la construction du site.
@@ -80,6 +87,9 @@ Tout se modifie depuis GitHub, sans outil particulier. L'enregistrement relance 
 | Événements | `content/events.json` | `[{ "start": "2026-11-20T20:00:00.000Z", "title": "…", "description": "… (facultatif)", "url": "https://… (facultatif)" }]` |
 | Outils communautaires | `content/links.json` | `{ "tools": [{ "name": "…", "url": "https://…", "description": "…" }] }` |
 | Guides par mode | `content/guide/*.md` | Markdown |
+| Donateurs de la carte | `content/carte-heros.json` | `{ "updatedOn": "2026-11-05", "donors": [{ "player": "…", "caps": 1200 }], "highlights": [{ "title": "…", "player": "…", "detail": "… (facultatif)" }] }` |
+
+**Les donateurs se recopient à la main.** Le jeu les réserve aux membres du clan : fiche de [GAL], onglet « Dons », puis « Top donateurs ». Aucune route publique ne les donne, et le site n'utilise aucun compte. Publier ces noms rend publique une information que le jeu garde entre membres : c'est au clan d'en décider. Tant que le fichier est vide, la page n'affiche aucun nom et renvoie vers le jeu.
 
 Pour publier un guide, écrivez le texte dans le fichier, puis retirez la ligne `draft: true` en tête. Un événement passé disparaît au build suivant. Un fichier JSON au mauvais format est ignoré : la section s'affiche alors comme vide, et le build le signale dans ses journaux.
 
@@ -93,9 +103,20 @@ Tout est écrit dans `data/` :
 | `sessions/AAAA-MM.json` | Sessions du clan, sans doublon | Chaque heure |
 | `members.json` | Membres et leurs stats d'équipe | Une fois par jour |
 | `history/AAAA-MM-JJ.json` | Instantané quotidien : rang, score, totaux | Chaque heure, dernière valeur du jour conservée |
+| `clanmap/film.bin`, `clanmap/film.json` | Film de la carte des clans : changements de cases et chiffres de chaque image | Une fois par jour |
+| `clanmap/terrain.webp` | Fond de carte | Une seule fois |
+| `clanmap/journal.json` | Un relevé par jour : pixels, rang, capsules et troupes de GAL | Une fois par jour |
 | `meta.json` | Date du dernier succès et dernière erreur de chaque jeu de données | Chaque heure |
 
-Si l'API échoue ou si une réponse ne passe pas la validation Zod, les derniers fichiers valides sont conservés, l'erreur est notée dans `meta.json` et le site l'affiche. Si la collecte s'arrête entièrement, le navigateur du visiteur signale les données périmées : au bout de 4 h pour le classement et les sessions, 36 h pour les membres.
+Si l'API échoue ou si une réponse ne passe pas la validation Zod, les derniers fichiers valides sont conservés, l'erreur est notée dans `meta.json` et le site l'affiche. Si la collecte s'arrête entièrement, le navigateur du visiteur signale les données périmées : au bout de 4 h pour le classement et les sessions, 36 h pour les membres et la carte.
+
+### La carte des clans
+
+L'historique brut de la carte ne va pas dans Git : il pèse déjà environ 20 Mo. Il reste dans `.cache/clanmap/`, conservé entre deux exécutions par le cache de l'Action. S'il est perdu, la collecte suivante le retélécharge entièrement, soit plus de 330 appels à ce jour. Chaque page lue est gardée, donc une panne en cours de route ne fait pas tout recommencer.
+
+À chaque mise à jour, tout l'historique est rejoué et comparé pixel par pixel à l'instantané officiel. Au moindre écart, le film n'est pas remplacé et l'erreur s'affiche sur la page. Si OpenFront remet un jour sa carte à zéro, il faudra supprimer le cache `clanmap-…` dans l'onglet **Actions → Caches** pour repartir de son nouvel historique.
+
+Le film compte 480 images au plus, 5 000 événements par image pour l'instant. Cette taille ne double que si le film devient trop long. Les images déjà écrites ne changent donc pas d'un jour à l'autre, et `film.bin` reste non compressé pour que Git ne stocke presque que les nouvelles. Le fichier est déclaré binaire dans `.gitattributes`, sans quoi Git pourrait le corrompre sous Windows.
 
 Tous les calculs sont dans `src/lib/` et testés :
 
@@ -106,6 +127,12 @@ Tous les calculs sont dans `src/lib/` et testés :
 - **Stats d'un membre :** champ `stats.team` de l'API.
 - **Meilleurs créneaux :** les plus de parties sur 90 jours, puis les plus de joueurs du clan par partie. Un créneau sous 5 parties est écarté.
 - **Jeu en groupe :** `victoires ÷ parties` selon `clanPlayerCount`, sur toutes les sessions archivées. Une taille sous 30 parties est écartée. Le bloc disparaît si la plus grande taille retenue ne gagne pas plus que la plus petite.
+- **Ma place :** position d'un membre parmi ceux dont les stats sont connues, triés par `stats.team.wins`, comme la page Membres. Deux membres à égalité partagent la même place.
+- **Territoire sur la carte :** pixels rejoués depuis l'historique. L'ordre des clans suit le nombre de pixels, comme la liste de la carte officielle. Ce n'est pas le classement des clans.
+- **Pixels pris et perdus :** comptés à chaque changement de main d'un pixel. Les terres neutres sont comptées à part.
+- **Objectif :** pixels du clan juste devant, moins ceux de GAL, plus 1.
+- **Coûts de la carte :** 1 capsule = 100 troupes, 1 pixel neutre = 1 000 troupes, 1 pixel ennemi = 2 000 troupes + `troupes du clan ÷ pixels du clan`, arrondi au-dessus. Règles lues dans le code de la carte, dans `src/lib/clanmap/economy.ts`. **Si le jeu les change, il faut les mettre à jour à la main.**
+- **Grands moments du film :** déduits des chiffres de chaque image dans `src/lib/clanmap/moments.ts`, sans texte écrit à la main.
 
 Le calculateur de troupes est documenté dans `src/lib/calculator.ts`. Il reprend les constantes du jeu au commit `5b75bd3`. **Si le jeu change ses règles d'attaque, il faut les mettre à jour à la main.**
 
@@ -119,6 +146,10 @@ Rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite d
 
 Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque push sur `main` et à la demande. GitHub peut retarder les exécutions planifiées, et il peut désactiver celles d'un dépôt qu'il juge inactif : si les données se figent, regardez l'onglet **Actions**.
 
+## La Conquête des Gaulois
+
+Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde en hexagones, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle n'est pas en ligne :** il faut d'abord créer les comptes décrits dans [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
+
 ## Animations
 
 Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décrits dans [docs/DESIGN.md](docs/DESIGN.md). Les visiteurs peuvent les couper avec le bouton pause de l'en-tête ou le réglage « réduire les animations » de leur système.
@@ -128,3 +159,9 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - La route de la liste des membres n'est pas documentée par OpenFront et peut changer. En cas de panne, le site garde la dernière liste valide.
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
+- Les routes de la carte (`/clanmap/…`) ne sont pas documentées non plus et ne donnent pas de dates. La route documentée `/public/clanmap/history`, qui les donnera, répondait 404 le 5 novembre 2026 : à retester.
+- La licence du fond de carte reste à confirmer avant publication (voir [docs/API_AUDIT.md](docs/API_AUDIT.md), section 8).
+- Le film ne filtre pas les dessins peints par les joueurs sur la carte.
+- Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.
+- La Conquête des Gaulois n'a été essayée qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).
+- Les parcours décrits dans « Comment participer » viennent du code du jeu et n'ont pas été essayés avec un compte. Le texte devra être relu par un membre du clan.
