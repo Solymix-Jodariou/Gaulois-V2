@@ -164,7 +164,7 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
 - La route documentée de la carte ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc ni le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le message prévu pour OpenFront, dans [docs/CONQUETE.md](docs/CONQUETE.md), demande ces données.
-- Le trésor vient de `/clans/GAL`, une route non documentée : la page écrit « Pas de données » si elle ne répond pas.
+- Le trésor vient de `/clans/GAL`, une route non documentée. Elle n'a pas répondu à la collecte sur GitHub le 6 novembre 2026 : la page écrit donc « Pas de données » pour les réserves du clan.
 - La licence du fond de carte reste à confirmer avant publication (voir [docs/API_AUDIT.md](docs/API_AUDIT.md), section 8).
 - Le film ne filtre pas les dessins peints par les joueurs sur la carte.
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.

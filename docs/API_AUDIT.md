@@ -313,6 +313,7 @@ Depuis le 6 novembre 2026, la collecte lit `GET /public/clanmap/history`, docume
 - La collecte suit `next` et garde la taille de page par défaut : la documentation indique que seules ces pages tombent dans le cache d'OpenFront. Après une interruption, elle reprend donc à la dernière page complète.
 - `previousClanId` sert de contrôle à chaque mise à jour : si le rejeu ne retombe pas sur l'ancien propriétaire annoncé, le film n'est pas remplacé.
 - `createdAt` n'est pas encore conservé : le film suit l'ordre des événements, sans dates. Il pourrait devenir une vraie frise temporelle.
+- La route passe depuis GitHub : premier passage le 6 novembre 2026 à 13 h 01 UTC, en un peu plus de 3 minutes, avec 1 788 073 événements et 0 écart.
 
 La route ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc plus le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le nombre de pixels de terre (2 335 403) et le fond de carte viennent du relevé du 5 novembre.
 
@@ -378,6 +379,8 @@ Lu dans le code de la page de la carte (`clanmap.openfront.io`) et du jeu, le 5 
 | Top donateurs | `GET /clans/GAL/donations/leaderboard` | **Non : 401** |
 | Mêmes routes sous `/public/clan/GAL/` | | **Non : 404** |
 | Qui a peint quel pixel | Aucune route connue | **Rien ne le donne**, ni `/clanmap/changes`, ni `/clanmap/ships`, ni la route documentée |
+
+**`/clans/GAL` n'a pas répondu à la collecte sur GitHub** le 6 novembre 2026, vers 13 h 04 UTC, alors qu'elle répondait une demi-heure plus tôt depuis une connexion personnelle. Le code d'erreur n'a pas été relevé : c'est peut-être le même refus que `/clanmap/ownership`. La collecte la réessaie une fois par jour, et la page écrit « Pas de données » pour les réserves.
 
 **Conséquences pour le site :**
 
