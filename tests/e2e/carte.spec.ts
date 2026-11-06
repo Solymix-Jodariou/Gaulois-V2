@@ -87,6 +87,33 @@ test.describe("film de la carte", () => {
     await expect(page.getByRole("heading", { name: "Donner des capsules" })).toBeHidden();
   });
 
+  // Avec « réduire les animations », le film attend ce bouton : il doit se voir dès l'arrivée sur la page.
+  for (const [width, height] of [
+    [375, 812],
+    [768, 1024],
+    [900, 700],
+    [1024, 768],
+    [1180, 820],
+    [1199, 800],
+    [1200, 800],
+    [1920, 1080],
+  ] as const) {
+    test(`à ${width} × ${height}, le bouton de lecture se voit sans défiler et rien ne déborde`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name !== "desktop", "Formats testés une seule fois.");
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({ width, height });
+      await page.goto("/carte");
+      await expect(playButton(page)).toBeVisible();
+      await expect(playButton(page)).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+      // Le bouton ne gagne pas sa place en écrasant la carte : le monde garde presque toute la largeur.
+      const map = (await page.getByTestId("film-map").boundingBox())!;
+      expect(Math.min(map.width, map.height * (film.cols / film.rows))).toBeGreaterThan(width * 0.9);
+    });
+  }
+
   test("le film démarre seul, puis se met en pause et reprend", async ({ page }) => {
     await page.goto("/carte");
     await expect(playButton(page)).toContainText("Pause", { timeout: 8000 });

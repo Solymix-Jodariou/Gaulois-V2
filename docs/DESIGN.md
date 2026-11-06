@@ -98,7 +98,7 @@ L'idée centrale reprend le principe d'OpenFront, la conquête de territoire : d
 
 ### Le film de la carte
 
-C'est le seul effet qui affiche des données : chaque image vient de l'historique officiel de la carte des clans. La page s'ouvre directement sur la carte, en plein écran sur un grand écran, avec le titre, le classement et les commandes posés dessus. Sous 1 200 px, tout s'empile et les commandes restent collées à la carte. La carte finale s'affiche d'abord, puis le film repart du premier pixel.
+C'est le seul effet qui affiche des données : chaque image vient de l'historique officiel de la carte des clans. La page s'ouvre directement sur la carte, en plein écran sur un grand écran, avec le titre, le classement et les commandes posés dessus. Sous 1 200 px, tout s'empile et les commandes restent collées à la carte, dont la hauteur se limite sur un écran en paysage pour garder le bouton de lecture dans le premier écran. La carte finale s'affiche d'abord, puis le film repart du premier pixel.
 
 | Élément | Rôle |
 |---|---|

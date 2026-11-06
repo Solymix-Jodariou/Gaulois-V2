@@ -587,6 +587,9 @@ th.fx-cross {
   overflow: hidden;
   aspect-ratio: 1.3 / 1;
   width: 100%;
+  /* Écran en paysage : le bouton de lecture reste dans le premier écran. 16rem : en-tête, titre avec ses avertissements, bouton.
+     `svh` : la hauteur ne bouge pas quand la barre du navigateur se replie au défilement. */
+  max-height: max(20rem, 100svh - 16rem);
   scroll-margin-top: 4rem;
   background-color: #091426;
 }
@@ -835,6 +838,7 @@ th.fx-cross {
     inset: 0;
     aspect-ratio: auto;
     height: 100%;
+    max-height: none;
   }
   .film-title {
     position: absolute;
