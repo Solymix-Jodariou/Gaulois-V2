@@ -283,7 +283,7 @@ Limites à afficher avec la mention « repère indicatif » :
 - **Il n'a pas été vérifié en partie réelle.** Ces chiffres viennent du code, pas d'une mesure.
 - Il faudra que le joueur connaisse la taille du bot en cases. Je n'ai pas vérifié que le jeu l'affiche sous cette forme : **à confirmer par un joueur du clan.**
 - Les constantes peuvent changer à chaque mise à jour du jeu. Le site indiquera le commit de référence.
-- Le jeu est sous licence AGPL-3.0. Le calculateur réécrit le calcul sans copier de fichier et cite sa source, mais cette réutilisation peut avoir une incidence sur la licence du dépôt du site. Je ne peux pas le trancher juridiquement.
+- Le jeu est sous licence AGPL-3.0. Le calculateur réécrit le calcul sans copier de fichier et cite sa source. Le site est lui-même sous AGPL-3.0-only : voir `NOTICE.md`.
 
 ## 6. Parcours pour rejoindre le clan
 

@@ -21,6 +21,7 @@ export const clan = {
   links: {
     discord: "https://discord.gg/cjUc42T7Y2",
     openfront: "https://openfront.io/",
+    source: "https://github.com/Solymix-Jodariou/Gaulois-V2",
   },
 
   /**
@@ -53,3 +54,7 @@ export const clan = {
 
 export const SITE_DISCLAIMER =
   "Site communautaire non officiel, sans lien avec les éditeurs d'OpenFront.";
+
+/** Exigée par l'AGPL et par les conditions d'OpenFront : voir NOTICE.md. Elle doit rester visible. */
+export const SITE_LICENSE_NOTICE =
+  "Code sous licence AGPL-3.0. Certaines parties sont adaptées d'OpenFront, © OpenFront and Contributors.";

@@ -175,6 +175,17 @@ for (const width of [360, 375, 768, 1024, 1280, 1920]) {
   });
 }
 
+// L'AGPL et les conditions d'OpenFront, voir NOTICE.md : le code et la mention restent accessibles sur toutes les pages.
+test("chaque page donne le code source et la mention d'OpenFront", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Même pied de page sur mobile.");
+  for (const path of [...PAGES, "/confidentialite", "/conquete", "/conquete/regles", "/dons", "/compte", "/admin"]) {
+    await page.goto(path);
+    const footer = page.locator("footer");
+    await expect(footer.getByRole("link", { name: "Code source", exact: true }), path).toHaveAttribute("href", "https://github.com/Solymix-Jodariou/Gaulois-V2");
+    await expect(footer, path).toContainText("© OpenFront and Contributors");
+  }
+});
+
 test("navigation au clavier : lien d'évitement et focus visible", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Clavier testé sur desktop.");
   await page.goto("/");

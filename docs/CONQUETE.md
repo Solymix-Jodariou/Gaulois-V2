@@ -247,7 +247,7 @@ La Conquête reprend ce qui fait jouer à OpenFront, et change ce qu'il faut pou
 - **Pas de chat ni d'émotes :** le clan a déjà son Discord.
 - **Des limites par jour** (conquêtes, attaques), pour que personne ne perde tout pendant son sommeil. Elles se règlent dans `/admin`.
 
-**Rien n'est copié.** Le code d'OpenFront est sous AGPL-3.0 et ses images sous CC BY-SA 4.0 : tout est réécrit ici, sans ses images, ses couleurs ni sa mise en page exacte. Les mécaniques et les règles d'un jeu ne sont pas protégées en elles-mêmes, mais ce point n'a pas été relu par un juriste.
+**Rien n'est copié.** Le code d'OpenFront est sous AGPL-3.0 et ses images sous CC BY-SA 4.0 : tout est réécrit ici, sans ses images, ses couleurs ni sa mise en page exacte. Les mécaniques et les règles d'un jeu ne sont pas protégées en elles-mêmes, mais ce point n'a pas été relu par un juriste. Le site est lui-même sous AGPL-3.0-only (voir `NOTICE.md`) : du code d'OpenFront pourrait y être repris, signalé et daté, mais pas ses images, ses cartes ni son apparence.
 
 ## Le guide de première partie
 

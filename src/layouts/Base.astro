@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-import { clan, SITE_DISCLAIMER } from "../../config/clan";
+import { clan, SITE_DISCLAIMER, SITE_LICENSE_NOTICE } from "../../config/clan";
 import { brandFile } from "../lib/brand";
 import { GAME_ENABLED } from "../lib/conquete/api";
 import AuthMenu from "../components/AuthMenu";
@@ -164,6 +164,7 @@ const tools = loadLinks().tools;
           <p class="font-display text-lg font-extrabold">[{clan.tag}] {clan.name}</p>
           <span class="tribar mt-3"></span>
           <p class="mt-4 text-sm text-muted">{SITE_DISCLAIMER}</p>
+          <p class="mt-2 text-sm text-muted">{SITE_LICENSE_NOTICE}</p>
         </div>
         <div>
           <h2 class="text-sm uppercase tracking-wide text-muted">Liens utiles</h2>
@@ -173,6 +174,7 @@ const tools = loadLinks().tools;
             <li><a href={`${base}/debuter`}>Débuter</a></li>
             {tools.length > 0 && <li><a href={`${base}/debuter#outils`}>Outils communautaires</a></li>}
             {GAME_ENABLED && <li><a href={`${base}/confidentialite`}>Confidentialité</a></li>}
+            <li><a href={clan.links.source} rel="noopener">Code source</a></li>
           </ul>
         </div>
         <div class="text-sm text-muted">

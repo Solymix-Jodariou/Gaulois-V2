@@ -27,7 +27,7 @@ Vérifier : `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `n
 - Postgres ouvre toute fonction nouvelle à tout le monde, visiteurs compris, et `…_droits.sql` ne ferme que celles créées avant lui. La migration qui crée une fonction fait donc elle-même `revoke all … from public, anon, authenticated` puis ses `grant` : `tests/db/comptes.test.ts` échoue si un visiteur peut l'appeler.
 - Supabase ouvre aussi toute nouvelle table de `public` à `anon` et `authenticated` (`pg_default_acl`) : la migration qui la crée active RLS et fait `revoke all … from anon, authenticated`.
 - Les conditions d'OpenFront (sections 5 et 6.5) interdisent les robots et les scripts : jamais de lecture automatique des dons, ni de session de joueur dans `OPENFRONT_DONATIONS_KEY`, qui n'attend qu'une clé donnée par OpenFront. Seule exception, décidée le 06/11/2026 sans attendre son accord : un officier recopie la liste à la main et la colle dans `/admin`. Rien n'automatise cette copie, et ses vraies réponses n'entrent jamais dans ce dépôt, tests compris. Si OpenFront s'y oppose, elle s'arrête.
-- Le code d'OpenFront est sous AGPL et ses images sous CC BY-SA : reprendre les mécaniques, tout réécrire, sans ses images, couleurs ni mise en page exacte.
+- Le site est sous AGPL-3.0-only (`LICENSE`, `NOTICE.md`). Du code d'OpenFront, sous AGPL lui aussi, peut y être repris s'il est signalé et daté dans son fichier, avec les conditions de `NOTICE.md`. Le jeu reste original : ni ses images, ni ses cartes, ni ses couleurs, ni sa mise en page exacte.
 - Sans `PUBLIC_SUPABASE_URL` et `PUBLIC_SUPABASE_KEY`, le jeu reste fermé. Ne poser ces variables GitHub qu'une fois le schéma installé et le site publié à jour.
 - Contrôler le vrai projet sans rien écrire : `npx supabase db query --remote=zxavwcupauheheqxfdez --read-only -f fichier.sql` et `npx supabase config diff --remote=zxavwcupauheheqxfdez`.
 
@@ -40,4 +40,4 @@ Vérifier : `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `n
 - Tests e2e : Playwright réutilise ce qui écoute sur 4321, parfois une vieille version, et veut 4322 et 54399 libres, donc arrêter d'abord sa démo. `Get-NetTCPConnection -State Listen` peut les dire libres alors qu'ils répondent : tenter une vraie connexion. 4321 et 4322 sont en dur dans `playwright.config.ts` : pour en changer, adapter une copie de la config et exporter `GAL_TEST_SITE_PORT` et `GAL_TEST_SUPABASE_PORT` dans le shell, car la pile et les tests les lisent aussi. Une seconde pile dans le même dossier écrase `dist-conquete/`.
 - Sous charge, un test du jeu peut dépasser 30 s : le relancer seul avant de conclure.
 - `.btn` écrase la classe `hidden` de Tailwind : masquer via un conteneur.
-- Réutiliser le code de TeamStats imposerait l'AGPL, et la licence du dépôt n'est pas tranchée.
+- Du code repris d'un autre projet sous AGPL, comme TeamStats, se signale et se date dans son fichier, et s'ajoute à `NOTICE.md`.
