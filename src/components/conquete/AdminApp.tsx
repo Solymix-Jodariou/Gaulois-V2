@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { basePath, call, newRequestId, proofUrl, removeProof } from "../../lib/conquete/api";
 import { CONFIG_LABELS, flattenConfig, withValue, type ConfigValue } from "../../lib/conquete/config-labels";
+import type { DonationImport } from "../../lib/conquete/donation-import";
 import { DEFAULT_CONFIG, type ConquestConfig } from "../../lib/conquete/rules";
-import { ROLE_LABELS, type DonationRow, type ExcludedRow, type LogRow, type Me, type MemberRow, type RequestRow, type Role, type SeasonRow } from "../../lib/conquete/types";
-import { fmtDate, fmtDateTime, fmtInt } from "../../lib/format";
+import { ROLE_LABELS, type DonationImportResult, type DonationImportState, type DonationRow, type ExcludedRow, type LogRow, type Me, type MemberRow, type RequestRow, type Role, type SeasonRow } from "../../lib/conquete/types";
+import { fmtDate, fmtDateTime, fmtInt, fmtRanges } from "../../lib/format";
 import { DiscordButton, Empty, Loading, Problem, Success, messageOf, useMe } from "./common";
 
 type Tab = "requests" | "donations" | "members" | "moderation" | "seasons" | "log";
@@ -46,6 +47,7 @@ function useList<T>(fn: string, args: Record<string, unknown> = {}) {
 }
 
 const renfort = (troops: number) => (troops > 0 ? ` ${fmtInt(troops)} troupes arrivent dans sa réserve.` : "");
+const plural = (n: number, one: string, many: string) => `${fmtInt(n)} ${n > 1 ? many : one}`;
 
 /** Exécute une action, affiche le refus du serveur ou un message de réussite, puis relit. */
 function useAction(after: () => Promise<void>) {
@@ -126,7 +128,7 @@ function Requests() {
   );
 }
 
-function Donations() {
+function Donations({ rank }: { rank: number }) {
   const pending = useList<DonationRow>("list_donations", { p_status: "pending" });
   const approved = useList<DonationRow>("list_donations", { p_status: "approved", p_limit: 30 });
   const reloadAll = async () => {
@@ -147,20 +149,8 @@ function Donations() {
       (res) => (approve ? `Don validé.${renfort(res.troops)}` : "Don refusé."),
     );
 
-  if (synced) {
-    return (
-      <div data-testid="admin-donations">
-        <p class="text-sm text-muted">Les dons sont lus directement chez OpenFront : il n'y a plus rien à valider ni à saisir ici.</p>
-        <Problem message={pending.error} onRetry={() => void reloadAll()} />
-      </div>
-    );
-  }
-
-  return (
-    <div data-testid="admin-donations">
-      <p class="text-sm text-muted">Vérifiez chaque don dans le jeu : fiche de [GAL], onglet « Dons ». Seul un don validé compte, et personne ne valide les siens. Dès votre validation, le don fait pendant la saison arrive en troupes dans la réserve du joueur.</p>
-      <Problem message={pending.error ?? action.error} onRetry={() => void reloadAll()} />
-      {action.done && <Success message={action.done} />}
+  const byHand = (
+    <>
       <h3 class="mt-4 text-lg">À traiter</h3>
       {pending.rows === null ? (
         !pending.error && <Loading />
@@ -254,7 +244,178 @@ function Donations() {
           </ul>
         )}
       </details>
+    </>
+  );
+
+  return (
+    <div data-testid="admin-donations">
+      <p class="text-sm text-muted">
+        {synced
+          ? "Les dons viennent de la liste d'OpenFront : il n'y a plus rien à valider ni à saisir ici. Ils comptent dès qu'un officier colle cette liste ci-dessous."
+          : "Vérifiez chaque don dans le jeu : fiche de [GAL], onglet « Dons ». Seul un don validé compte, et personne ne valide les siens. Dès votre validation, le don fait pendant la saison arrive en troupes dans la réserve du joueur."}
+      </p>
+      <Problem message={pending.error ?? action.error} onRetry={() => void reloadAll()} />
+      {action.done && <Success message={action.done} />}
+      {pending.rows !== null && <ImportDonations rank={rank} onDone={reloadAll} />}
+      {!synced && byHand}
     </div>
+  );
+}
+
+/** Ce qu'il manque encore après un import : le total annoncé sert de contrôle, même pour une copie partielle. */
+const stillMissing = (result: DonationImportResult, expected: number | null) =>
+  expected !== null && result.ledger < expected ? `Le site connaît ${plural(result.ledger, "don", "dons")} sur ${fmtInt(expected)} annoncés : il en manque sans doute encore. Collez aussi les pages suivantes.` : null;
+
+/**
+ * La liste des dons, copiée à la main dans le jeu. Le navigateur la lit et montre ce qu'il a compris
+ * avant tout envoi ; le texte collé reste ici, seuls le montant, la date et une empreinte partent.
+ * Le serveur revérifie le rôle, chaque ligne et les conditions de la première lecture.
+ */
+function ImportDonations({ rank, onDone }: { rank: number; onDone: () => Promise<void> }) {
+  const [state, setState] = useState<DonationImportState | null>(null);
+  const [stateError, setStateError] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [report, setReport] = useState<DonationImport | null>(null);
+  const [reading, setReading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [warning, setWarning] = useState<string | null>(null);
+  const action = useAction(onDone);
+
+  const loadState = async () => {
+    try {
+      setState(await call<DonationImportState>("get_donation_import_state"));
+      setStateError(null);
+    } catch (e) {
+      setStateError(messageOf(e));
+    }
+  };
+
+  useEffect(() => {
+    void loadState();
+    // Une seule lecture à l'ouverture : l'envoi relance `loadState` lui-même.
+  }, []);
+
+  const changeText = (value: string) => {
+    setText(value);
+    setReport(null);
+    setConfirmed(false);
+  };
+
+  const read = async () => {
+    setReading(true);
+    setReadError(null);
+    setWarning(null);
+    try {
+      // Chargé ici seulement : ce lecteur ne pèse pas sur l'écran de ceux qui ne s'en servent pas.
+      const { readDonationPages } = await import("../../lib/conquete/donation-import");
+      setReport(await readDonationPages(text));
+    } catch {
+      setReport(null);
+      setReadError("Ce texte n'a pas pu être lu. Rechargez la page, puis réessayez.");
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const send = (read: DonationImport) =>
+    action.run(
+      async () => {
+        const result = await call<DonationImportResult>("import_openfront_donations", { p_rows: read.rows, p_expected: read.expected, p_first_read: confirmed });
+        setWarning(stillMissing(result, read.expected));
+        // Ces dons ne sont visibles que des membres dans le jeu : le texte ne reste pas à l'écran.
+        changeText("");
+        await loadState();
+        return result;
+      },
+      (result) => `${plural(result.new, "nouveau don", "nouveaux dons")}, ${plural(result.known, "déjà connu", "déjà connus")}.${result.first_read ? " Première lecture faite : les déclarations et la saisie sont fermées." : ""}`,
+    );
+
+  const first = state !== null && !state.synced;
+  const allowed = !first || (rank >= 3 && report?.complete === true && confirmed);
+
+  return (
+    <details class="mt-4" data-testid="import-donations" open={state?.synced}>
+      <summary class="cursor-pointer font-semibold">Importer la liste des dons copiée depuis le jeu</summary>
+      <p class="mt-3 text-sm text-muted">Collez ici une ou plusieurs réponses de la liste des dons, copiées à la main depuis votre navigateur, l'une derrière l'autre et dans n'importe quel ordre. Le texte reste sur votre appareil : seuls le montant, la date et une empreinte du donneur sont envoyés, jamais son pseudo ni son identifiant. Seules les capsules comptent.</p>
+      <Problem message={stateError} onRetry={() => void loadState()} />
+      {state && (
+        <p class="tnum mt-2 text-sm" data-testid="import-state">
+          {state.synced && state.read_at
+            ? `Dernière lecture le ${fmtDateTime(state.read_at)}. Le site connaît ${plural(state.known, "don", "dons")}${state.newest_at ? `, le plus récent du ${fmtDateTime(state.newest_at)} : inutile de recopier plus loin que ce don` : ""}.`
+            : "Aucune lecture pour l'instant. La première doit contenir toute la liste."}
+        </p>
+      )}
+      <form
+        class="mt-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void read();
+        }}
+      >
+        <label class="text-sm font-semibold" for="import-text">
+          Réponses copiées, collées à la suite
+        </label>
+        <textarea id="import-text" class="field tnum mt-1" rows={8} spellcheck={false} autocomplete="off" value={text} onInput={(e) => changeText(e.currentTarget.value)} />
+        <button type="submit" class="btn btn-secondary mt-2 !min-h-10 !py-1.5" disabled={reading || text.trim() === ""}>
+          Lire ce texte
+        </button>
+      </form>
+      <Problem message={readError} />
+      <div aria-live="polite" data-testid="import-report">
+        {report && (
+          <div class="mt-3 grid gap-2 text-sm">
+            <p class="tnum">
+              {plural(report.pages, "réponse lue", "réponses lues")} : {plural(report.read, "don différent", "dons différents")}
+              {report.duplicates > 0 ? `, ${plural(report.duplicates, "doublon retiré", "doublons retirés")}` : ""}
+              {report.read > report.rows.length ? `, dont ${plural(report.read - report.rows.length, "en Plutonium, ignoré", "en Plutonium, ignorés")}` : ""}.
+              {report.announced !== null ? ` La liste en annonce ${fmtInt(report.announced)}.` : ""}
+            </p>
+            {report.problems.length > 0 && (
+              <ul class="conq-problem !mt-0" data-testid="import-problems">
+                {report.problems.map((p) => (
+                  <li key={p.position}>
+                    Réponse n° {fmtInt(p.position)}
+                    {p.page === null ? "" : ` (page ${fmtInt(p.page)})`} : {p.reason}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {report.missingPages.length > 0 && (
+              <p class="tnum" data-testid="import-missing">
+                {first ? `Pages à recoller : ${fmtRanges(report.missingPages)}.` : `Pages absentes de ce texte : ${fmtRanges(report.missingPages)}. Inutile de les coller si leurs dons sont déjà connus.`}
+              </p>
+            )}
+            {report.rows.length === 0 && <Empty>Aucun don en capsules à importer dans ce texte.</Empty>}
+          </div>
+        )}
+      </div>
+      {report && report.rows.length > 0 && (
+        <>
+          {first && (
+            <div class="mt-3 grid gap-2 rounded-lg border border-line p-3 text-sm" data-testid="first-read">
+              <p>
+                <strong class="text-warn">Première lecture : elle est définitive.</strong> Cette liste remplace les dons déclarés ou saisis à la main, qu'elle contient déjà. Les totaux sont recalculés depuis la liste, ces dons ne redonnent pas de troupes, puis les déclarations et la saisie se ferment. Revenir en arrière demande une intervention à la main dans la base.
+              </p>
+              {!report.complete && <p class="conq-problem !mt-0">Il faut d'abord toute la liste : {plural(report.read, "don lu", "dons lus")} sur {fmtInt(report.announced)} annoncés.</p>}
+              {rank < 3 && <p class="font-semibold">Seuls un admin ou le fondateur peuvent la faire.</p>}
+              {rank >= 3 && report.complete && (
+                <label class="flex items-start gap-3">
+                  <input type="checkbox" class="mt-1 size-5" data-testid="first-read-confirm" checked={confirmed} onChange={(e) => setConfirmed(e.currentTarget.checked)} />
+                  <span>Je comprends que c'est définitif.</span>
+                </label>
+              )}
+            </div>
+          )}
+          <button type="button" class="btn btn-primary mt-3 !min-h-10 !py-1.5" data-testid="import-send" disabled={action.busy || !allowed} onClick={() => void send(report)}>
+            {first ? "Faire la première lecture" : `Importer ${plural(report.rows.length, "don", "dons")}`}
+          </button>
+        </>
+      )}
+      <Problem message={action.error} />
+      {action.done && <Success message={action.done} />}
+      <Problem message={warning} />
+    </details>
   );
 }
 
@@ -735,7 +896,7 @@ export default function AdminApp() {
       </div>
       <div class="mt-5" role="tabpanel">
         {tab === "requests" && <Requests />}
-        {tab === "donations" && <Donations />}
+        {tab === "donations" && <Donations rank={rank} />}
         {tab === "members" && <Members me={me} />}
         {tab === "moderation" && <Moderation />}
         {tab === "seasons" && <Seasons />}

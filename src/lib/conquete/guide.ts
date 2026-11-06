@@ -200,7 +200,7 @@ const COPY: Record<string, (c: GuideContext) => StepCopy> = {
     title: "Vous êtes prêt !",
     body: [
       "Le fil d'actualité, les classements et la liste des terres sont sous la carte. Les règles complètes sont sur la page « Les règles », et le bouton « Guide » relance ces conseils.",
-      c.config.troopsPerCapsule > 0 ? `Vos dons de capsules au clan deviennent des troupes : ${plural(c.config.troopsPerCapsule, "troupe", "troupes")} par capsule, à déclarer sur « Mon compte ». Rien ne vous oblige à donner.` : "",
+      c.config.troopsPerCapsule > 0 ? `Vos dons de capsules au clan deviennent des troupes : ${plural(c.config.troopsPerCapsule, "troupe", "troupes")} par capsule. « Mon compte » explique comment ils sont pris en compte. Rien ne vous oblige à donner.` : "",
     ].filter(Boolean),
     primary: ACK("Terminer"),
   }),

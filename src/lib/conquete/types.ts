@@ -48,10 +48,26 @@ export interface Donation {
   troops_granted: number;
 }
 
-/** Vide tant qu'OpenFront n'a pas donné d'accès : les dons sont alors déclarés et validés à la main. */
+/** Vide avant la première lecture de la liste d'OpenFront : les dons sont alors déclarés et validés à la main. */
 export interface DonationSync {
   since: string;
   read_at: string;
+}
+
+/** Où en est la liste des dons, pour savoir jusqu'où la recopier. */
+export interface DonationImportState {
+  synced: boolean;
+  read_at: string | null;
+  known: number;
+  newest_at: string | null;
+}
+
+export interface DonationImportResult {
+  new: number;
+  known: number;
+  first_read: boolean;
+  /** Le nombre de dons que le site connaît maintenant. */
+  ledger: number;
 }
 
 export interface DonorRow {

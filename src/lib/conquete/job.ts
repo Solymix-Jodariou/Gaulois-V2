@@ -5,8 +5,8 @@
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { z } from "zod";
 import { ApiMembersPage } from "../schemas";
+import { ApiDonationsPage, type DonationRow } from "./donation-import";
 
 const API = "https://api.openfront.io/public";
 const DONATIONS_API = "https://api.openfront.io/clans";
@@ -64,26 +64,6 @@ export async function fetchRoster(deps: Pick<JobDeps, "fetch" | "sleep" | "tag" 
 }
 
 /* ---------- Les dons, si OpenFront a donné un accès ---------- */
-
-const ApiDonationsPage = z.object({
-  results: z.array(
-    z.object({
-      id: z.string().regex(/^\d{1,40}$/),
-      currencyType: z.string(),
-      amount: z.string().regex(/^\d{1,18}$/),
-      createdBy: z.string().nullable(),
-      createdAt: z.iso.datetime({ offset: true }),
-    }),
-  ),
-  total: z.number(),
-});
-
-export interface DonationRow {
-  id: string;
-  hash: string | null;
-  capsules: number;
-  at: string;
-}
 
 /**
  * Lit les dons du plus récent au plus ancien, jusqu'à retrouver ce qu'on connaît déjà.

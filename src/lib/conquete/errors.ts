@@ -45,7 +45,11 @@ export const ERROR_MESSAGES: Record<string, string | ((detail: Detail) => string
   too_many_pending: "Vous avez déjà beaucoup de dons en attente : attendez qu'un officier les traite.",
   donation_not_found: "Ce don n'existe plus.",
   donation_closed: "Ce don a déjà été traité.",
-  donations_synced: "Les dons sont maintenant lus directement chez OpenFront : il n'y a plus rien à déclarer ni à saisir ici.",
+  donations_synced: "Les dons viennent maintenant de la liste d'OpenFront : il n'y a plus rien à déclarer ni à saisir ici.",
+  invalid_donations: "Un don de cette liste n'est pas valable : rien n'a été enregistré.",
+  too_many_donations: (d) => `Trop de dons d'un coup : ${num(d, "limit")} au plus. Collez-en moins à la fois.`,
+  first_read_unconfirmed: "Confirmez d'abord la première lecture : elle est définitive.",
+  first_read_incomplete: (d) => `La première lecture demande la liste complète : ${num(d, "received")} dons reçus sur ${num(d, "expected")} annoncés.`,
 
   no_active_season: "Aucune saison n'est en cours.",
   territory_not_found: "Ce territoire n'existe pas.",

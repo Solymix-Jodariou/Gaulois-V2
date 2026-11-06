@@ -6,7 +6,7 @@ import { DiscordButton, Empty, Loading, Problem, Success, messageOf, useMe } fro
 
 const today = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
 
-const DONATION_LABELS: Record<DonationStatus, string> = { pending: "En attente d'un officier", approved: "Validé", refused: "Refusé", cancelled: "Annulé", superseded: "Remplacé par la lecture automatique" };
+const DONATION_LABELS: Record<DonationStatus, string> = { pending: "En attente d'un officier", approved: "Validé", refused: "Refusé", cancelled: "Annulé", superseded: "Remplacé par la lecture de la liste du jeu" };
 
 /** Lier son profil OpenFront et demander sa validation. */
 function MembershipRequest({ me, onChange }: { me: Me; onChange: () => Promise<void> }) {
@@ -235,7 +235,7 @@ function MyDonations({ me, userId, onChange }: { me: Me; userId: string; onChang
       </p>
 
       <p class="mt-3 rounded-lg border border-line p-3 text-sm text-muted">
-        <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong> Le don se fait dans le jeu, sur la fiche de [GAL]. {synced ? "Ici, il apparaît tout seul après sa lecture." : "Ici, vous le déclarez seulement."} Seules les capsules comptent, jamais le Plutonium.
+        <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong> Le don se fait dans le jeu, sur la fiche de [GAL]. {synced ? "Ici, il apparaît à la prochaine lecture de la liste du jeu." : "Ici, vous le déclarez seulement."} Seules les capsules comptent, jamais le Plutonium.
       </p>
 
       <label class="mt-4 flex items-start gap-3">

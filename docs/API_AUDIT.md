@@ -386,7 +386,7 @@ Pour la Conquête des Gaulois uniquement : voir [CONQUETE.md](CONQUETE.md). Test
 
 Le code du jeu (`packages/shared/src/ClanApiSchemas.ts`) confirme que ces listes séparent les capsules (`soft`) du Plutonium (`hard`), et qu'elles excluent la part des victoires. La somme des dons n'est donc pas le trésor.
 
-**Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Un membre déclare son don, un officier le vérifie dans l'onglet Dons du jeu.
+**Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Un membre déclare son don, un officier le vérifie dans l'onglet Dons du jeu. Depuis le 6 novembre 2026, un officier peut aussi recopier la liste à la main : voir « Les dons copiés à la main » dans [CONQUETE.md](CONQUETE.md).
 
 **Vérifié de plus le 6 novembre 2026, quand la question du temps réel s'est posée :**
 
