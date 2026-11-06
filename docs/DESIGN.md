@@ -155,6 +155,10 @@ Le code est dans `src/scripts/fx.ts`, et sa logique testable dans `src/lib/fx/te
 
 ## La Conquête des Gaulois
 
+**Un écran de jeu, pas une page.** Sur un écran d'au moins 960 px de large, la carte remplit la fenêtre sous l'en-tête, et tout se pose dessus : la saison et le classement à gauche, la terre choisie à droite, les troupes, l'or et le ratio d'attaque en bas. Le fil complet, la liste des terres et les saisons passées restent sous la carte. Sur téléphone, la carte passe d'abord, puis les commandes, puis le reste, sans rien poser dessus.
+
+C'est l'esprit d'OpenFront, avec l'habillage du clan : ni ses images, ni ses couleurs, ni sa mise en page exacte. Les bâtiments ont leur propre repère : une lettre dans un carré sombre.
+
 Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle identité. Ses règles et son architecture sont dans [CONQUETE.md](CONQUETE.md).
 
 **Une carte d'hexagones, pas de pays.** Tous les territoires ont la même surface réelle, ce qui rend la carte équitable. Elle ne dessine aucune frontière contestée, et les six voisins se voient d'un coup d'œil.

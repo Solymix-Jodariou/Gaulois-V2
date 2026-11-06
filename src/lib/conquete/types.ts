@@ -1,4 +1,4 @@
-import type { ConquestConfig, Terrain } from "./rules";
+import type { BuildingKind, ConquestConfig, Terrain } from "./rules";
 
 export type Role = "member" | "officer" | "admin" | "founder";
 export type MemberStatus = "pending" | "validated" | "suspended";
@@ -102,6 +102,8 @@ export interface Player {
   territories: number;
   captured: number;
   lost: number;
+  /** Il a rompu une alliance : jusqu'à cette date, l'attaquer coûte moins cher. */
+  traitor_until?: string | null;
 }
 
 export interface TerritoryState {
@@ -109,12 +111,21 @@ export interface TerritoryState {
   owner: number;
   garrison: number;
   protected_until?: string | null;
+  building?: BuildingKind | null;
+  taken_at?: string | null;
+}
+
+export interface AllianceRow {
+  a: number;
+  b: number;
+  expires_at: string;
 }
 
 export interface GameState {
   season: Season | null;
   players?: Player[];
   territories?: TerritoryState[];
+  alliances?: AllianceRow[];
   me?: number | null;
   read_at: string;
 }
@@ -136,9 +147,15 @@ export interface MyGame {
   cooldown_until?: string | null;
   captured?: number;
   lost?: number;
+  gold?: number;
+  gold_per_hour?: number;
+  traitor_until?: string | null;
+  bomb_ready_at?: string | null;
+  alliance_requests?: { number: number; name: string }[];
+  alliance_sent?: number[];
 }
 
-export type EventKind = "season_started" | "war_started" | "season_closed" | "start" | "expand" | "attack_won" | "attack_lost" | "player_excluded" | "donation" | "donation_cancelled";
+export type EventKind = "season_started" | "war_started" | "season_closed" | "start" | "expand" | "attack_won" | "attack_lost" | "player_excluded" | "donation" | "donation_cancelled" | "building" | "bomb" | "bomb_intercepted" | "alliance_made" | "alliance_broken" | "victory";
 
 export interface FeedRow {
   id: number;
@@ -150,6 +167,8 @@ export interface FeedRow {
   garrison_after: number | null;
   /** Pour un don : les capsules données. Les troupes reçues sont dans `sent`. */
   capsules: number | null;
+  /** Pour un bâtiment : son type. */
+  detail?: string | null;
   actor: string | null;
   target: string | null;
   territory: string | null;

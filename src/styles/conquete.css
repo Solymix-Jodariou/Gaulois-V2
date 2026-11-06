@@ -491,3 +491,275 @@ svg[data-names="true"] .conq-names {
   color: var(--color-blue-text);
   text-decoration: underline;
 }
+
+/* ---------- L'écran de jeu : la carte prend toute la place, les commandes se posent dessus ---------- */
+.conq-topnav {
+  display: flex;
+  justify-content: center;
+  padding: 0.375rem 1rem;
+}
+.conq-map-stage {
+  position: relative;
+}
+.conq-panel {
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.75rem;
+  background: rgb(6 11 34 / 0.9);
+  pointer-events: auto;
+}
+.conq-side-empty {
+  font-size: 0.9375rem;
+}
+.conq-hud {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+.conq-arena .conq-map-view {
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+}
+/* Sur téléphone, les commandes viennent juste sous la carte, avant le reste. */
+.conq-hud-bottom {
+  order: 1;
+}
+.conq-hud-right {
+  order: 2;
+}
+.conq-hud-left {
+  order: 3;
+}
+.conq-stat-troops {
+  grid-column: span 2;
+}
+.conq-arena .conq-map-view svg {
+  height: 62dvh;
+}
+.conq-ticker {
+  display: none;
+}
+.conq-tag {
+  margin-left: 0.375rem;
+  padding: 0 0.3125rem;
+  border-radius: 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+.conq-tag.is-ally {
+  background: #1d5b3a;
+  color: #d3f5e0;
+}
+.conq-tag.is-traitor {
+  background: #7a1c29;
+  color: #ffd9de;
+}
+.conq-swatch.is-ally {
+  border: 2px solid #5fe39a;
+  background: transparent;
+}
+.conq-hex.is-ally {
+  stroke: #5fe39a;
+  stroke-width: 1.4px;
+}
+.conq-hex.is-fresh {
+  animation: conq-fresh 1.6s ease-in-out infinite;
+}
+@keyframes conq-fresh {
+  50% {
+    fill: rgb(255 255 255 / 0.3);
+  }
+}
+.conq-labels .is-traitor text {
+  fill: #ffb4bb;
+}
+/* Les bâtiments : un repère à nous, lisible dès qu'on zoome un peu. */
+.conq-buildings {
+  display: none;
+  pointer-events: none;
+}
+svg[data-marks="true"] .conq-buildings {
+  display: block;
+}
+.conq-building rect {
+  fill: var(--color-night);
+  stroke: #fff;
+  stroke-width: 0.16px;
+}
+.conq-building text {
+  fill: #fff;
+  font-family: var(--font-sans);
+  font-size: 1.55px;
+  font-weight: 800;
+  text-anchor: middle;
+}
+.conq-build {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: 0.5rem;
+  text-align: left;
+  cursor: pointer;
+}
+.conq-build:hover:not(:disabled) {
+  border-color: #fff;
+}
+.conq-build:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.conq-build-mark {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-right: 0.125rem;
+  border: 1px solid #fff;
+  border-radius: 0.25rem;
+  background: var(--color-night);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.conq-command {
+  display: grid;
+  gap: 0.5rem;
+}
+.conq-command .conq-stats {
+  margin: 0;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+}
+.conq-command .conq-stats > div {
+  padding: 0;
+  background: transparent;
+}
+.conq-command .conq-stats dd {
+  font-size: 1.0625rem;
+  white-space: nowrap;
+}
+.conq-of {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.conq-gold {
+  color: var(--color-warn);
+}
+.conq-gold .conq-of {
+  display: block;
+  line-height: 1.1;
+}
+.conq-meter {
+  height: 0.25rem;
+  margin-top: 0.1875rem;
+  overflow: hidden;
+  border-radius: 0.125rem;
+  background: rgb(255 255 255 / 0.16);
+}
+.conq-meter > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-blue), #fff);
+}
+.conq-ratio {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.625rem;
+}
+.conq-ratio-range {
+  width: 100%;
+  min-height: 1.75rem;
+  accent-color: var(--color-red);
+}
+/* Sur un écran assez grand, tout se pose sur la carte, qui remplit la fenêtre. */
+@media (min-width: 60rem) {
+  .conq-arena {
+    /* En-tête du site et petits onglets au-dessus. */
+    height: calc(100dvh - 7.25rem);
+    min-height: 34rem;
+  }
+  .conq-arena .conq-map,
+  .conq-arena .conq-map-view,
+  .conq-arena .conq-map-stage {
+    height: 100%;
+  }
+  .conq-arena .conq-map-view svg {
+    height: 100%;
+    touch-action: none;
+  }
+  .conq-hud {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .conq-hud-left {
+    top: 0;
+    left: 0;
+    width: 15.5rem;
+    max-height: 100%;
+  }
+  .conq-hud-left .conq-rank-bar {
+    display: none;
+  }
+  .conq-hud-left .conq-rank {
+    font-size: 0.8125rem;
+  }
+  .conq-hud-right {
+    top: 0;
+    right: 0;
+    bottom: 3rem;
+    width: 21rem;
+  }
+  .conq-panel-scroll {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  .conq-hud-bottom {
+    left: 50%;
+    translate: -50% 0;
+    width: min(46rem, calc(100% - 37rem));
+    bottom: 0;
+  }
+  .conq-arena .conq-invite {
+    margin: 0;
+    pointer-events: auto;
+  }
+  .conq-arena .conq-map-tools {
+    right: 21.5rem;
+    bottom: auto;
+    top: 0.5rem;
+  }
+  .conq-arena .conq-flash {
+    top: 0.5rem;
+    left: 50%;
+    translate: -50% 0;
+    max-width: 24rem;
+    width: max-content;
+  }
+  .conq-ticker {
+    display: block;
+    left: 16rem;
+    top: 0.5rem;
+    max-width: 20rem;
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-shadow: 0 0 0.25rem #000, 0 1px 0.25rem #000;
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conq-hex.is-fresh {
+    animation: none;
+    fill: rgb(255 255 255 / 0.18);
+  }
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { basePath, call } from "../../lib/conquete/api";
 import { feedDetail, feedText, playerColor } from "../../lib/conquete/feed";
-import { TERRAIN_LABELS, ranked } from "../../lib/conquete/rules";
+import { BUILDINGS, TERRAIN_LABELS, ranked, troopsForRatio, type BuildingKind } from "../../lib/conquete/rules";
 import { ownerLabels } from "../../lib/conquete/shapes";
 import type { ClosedSeason, DonorRow, FeedRow, GameMap, GameState, HistoryRow, MyGame, TerritoryState } from "../../lib/conquete/types";
 import { fmtClock, fmtDateTime, fmtInt } from "../../lib/format";
@@ -15,6 +15,22 @@ const PULSE_MS = 15_000;
 const FULL_MS = 5 * 60_000;
 const FLASH_MS = 12_000;
 const FEED_PAGE = 30;
+/** Le classement se pose sur la carte : il ne doit pas la cacher. Le classement complet reste en bas de page. */
+const RANKING_ROWS = 6;
+/** Le ratio d'attaque de départ : le cinquième de la réserve, comme l'attaque par défaut d'OpenFront. */
+const DEFAULT_RATIO = 20;
+const RATIO_KEY = "gal-conquete-ratio";
+/** Deux clics plus rapprochés que ça sont un double-clic par mégarde : il ne lance rien. */
+const FIRE_MIN_GAP_MS = 400;
+
+function readRatio(): number {
+  try {
+    const saved = Number(localStorage.getItem(RATIO_KEY));
+    return saved >= 1 && saved <= 100 ? saved : DEFAULT_RATIO;
+  } catch {
+    return DEFAULT_RATIO;
+  }
+}
 const NO_TARGETS: ReadonlySet<number> = new Set();
 const plural = (n: number, one: string, many: string) => `${fmtInt(n)} ${n > 1 ? many : one}`;
 
@@ -33,26 +49,31 @@ function loadMap(version: string): Promise<GameMap> {
 }
 
 /** Le classement par territoire, dans la colonne de la carte : un clic y retrouve le joueur. */
-function TerritoryRanking({ rows, total, onPick }: { rows: { key: number; rank: number; name: string; value: number; me: boolean; color: string; anchor: number | undefined }[]; total: number; onPick: (id: number) => void }) {
+function TerritoryRanking({ rows, total, onPick, mapSize, victoryShare, allies, traitors }: { rows: { key: number; rank: number; name: string; value: number; me: boolean; color: string; anchor: number | undefined }[]; total: number; onPick: (id: number) => void; mapSize: number; victoryShare: number; allies: ReadonlySet<number>; traitors: ReadonlySet<number> }) {
   const top = rows[0]?.value ?? 1;
   return (
-    <section class="mt-5 border-t border-line pt-4" data-testid="rank-biggest">
+    <section data-testid="rank-biggest">
       <div class="flex items-baseline justify-between gap-2">
         <h3 class="text-sm font-bold uppercase tracking-wide">Plus grand territoire</h3>
-        {rows.length > 0 && <p class="tnum text-xs text-muted">{rows.length > 12 ? `12 premiers sur ${fmtInt(total)}` : plural(total, "joueur", "joueurs")}</p>}
+        {rows.length > 0 && <p class="tnum text-xs text-muted">{rows.length > RANKING_ROWS ? `${RANKING_ROWS} premiers sur ${fmtInt(total)}` : plural(total, "joueur", "joueurs")}</p>}
       </div>
       {rows.length === 0 ? (
         <p class="mt-2 text-sm text-muted">Personne pour l'instant.</p>
       ) : (
         <ol class="mt-2 grid gap-1.5">
-          {rows.slice(0, 12).map((r) => (
+          {rows.slice(0, RANKING_ROWS).map((r) => (
             <li key={r.key} class={["conq-rank tnum", r.me && "is-me"].filter(Boolean).join(" ")}>
               <button type="button" class="conq-rank-button" onClick={() => r.anchor !== undefined && onPick(r.anchor)}>
                 <span class="text-muted">{r.rank}</span>
                 <i class="conq-dot" style={{ background: r.color }} aria-hidden="true"></i>
-                <span class="truncate font-semibold">{r.name}</span>
+                <span class="truncate font-semibold">
+                  {r.name}
+                  {allies.has(r.key) && <span class="conq-tag is-ally">allié</span>}
+                  {traitors.has(r.key) && <span class="conq-tag is-traitor">traître</span>}
+                </span>
                 <span>
-                  {fmtInt(r.value)} <span class="text-xs text-muted">terres</span>
+                  {mapSize > 0 ? `${((r.value / mapSize) * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : fmtInt(r.value)}
+                  <span class="sr-only"> de la carte, {fmtInt(r.value)} terres</span>
                 </span>
                 <span class="sr-only"> : trouver sur la carte</span>
               </button>
@@ -61,7 +82,7 @@ function TerritoryRanking({ rows, total, onPick }: { rows: { key: number; rank: 
           ))}
         </ol>
       )}
-      {rows.length > 0 && <p class="mt-2 text-xs text-muted">Cliquez sur un joueur pour le trouver sur la carte.</p>}
+      {mapSize > 0 && <p class="mt-2 text-xs text-muted">Il faut {Math.round(victoryShare * 100)} % de la carte pour remporter la saison.</p>}
     </section>
   );
 }
@@ -133,6 +154,18 @@ export default function ConquestApp() {
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [flash, setFlash] = useState<FeedRow | null>(null);
   const [focus, setFocus] = useState(0);
+  const [ratio, setRatioState] = useState(readRatio);
+  const [fire, setFire] = useState(0);
+  const lastPick = useRef({ id: 0, at: 0 });
+
+  const setRatio = (percent: number) => {
+    setRatioState(percent);
+    try {
+      localStorage.setItem(RATIO_KEY, String(percent));
+    } catch {
+      // Sans stockage, le ratio tient jusqu'au prochain chargement.
+    }
+  };
 
   /** La dernière version de la partie lue, et quand. */
   const revision = useRef<string | null>(null);
@@ -237,6 +270,21 @@ export default function ConquestApp() {
   const frozenNames = useMemo(() => new Map((closed?.standings ?? []).map((s) => [s.number, s.name])), [closed]);
   const frozenNameOf = useCallback((owner: number) => frozenNames.get(owner) ?? "Ancien membre", [frozenNames]);
 
+  const allies = useMemo(() => {
+    const out = new Set<number>();
+    for (const a of state?.alliances ?? []) {
+      if (a.a === myNumber) out.add(a.b);
+      if (a.b === myNumber) out.add(a.a);
+    }
+    return out;
+  }, [state, myNumber]);
+  const traitors = useMemo(() => new Set((state?.players ?? []).filter((p) => p.traitor_until && Date.parse(p.traitor_until) > Date.now()).map((p) => p.number)), [state]);
+  const myBuildings = useMemo(() => {
+    const out: Partial<Record<BuildingKind, number>> = {};
+    for (const t of state?.territories ?? []) if (t.owner === myNumber && t.building) out[t.building] = (out[t.building] ?? 0) + 1;
+    return out;
+  }, [state, myNumber]);
+
   const targets = useMemo(() => {
     const out = new Set<number>();
     if (!map || !season || !validated || mine?.excluded) return out;
@@ -247,11 +295,12 @@ export default function ConquestApp() {
     for (const id of owned) {
       for (const n of map.territories[id - 1]?.neighbours ?? []) {
         if (owned.has(n)) continue;
-        if (!states.has(n) || season.phase === "war") out.add(n);
+        const holder = states.get(n);
+        if (!holder || (season.phase === "war" && !allies.has(holder.owner))) out.add(n);
       }
     }
     return out;
-  }, [map, season, validated, mine, owned, states]);
+  }, [map, season, validated, mine, owned, states, allies]);
 
   const describe = useCallback(
     (id: number) => {
@@ -259,7 +308,7 @@ export default function ConquestApp() {
       if (!t) return "";
       const s = states.get(id);
       const owner = s ? (playersByNumber.get(s.owner)?.name ?? "Ancien membre") : "Terre libre";
-      return `${t.name} · ${TERRAIN_LABELS[t.terrain]} · ${owner}${s ? ` · garnison ${fmtInt(s.garrison)}` : ""}`;
+      return `${t.name} · ${TERRAIN_LABELS[t.terrain]} · ${owner}${s ? ` · garnison ${fmtInt(s.garrison)}` : ""}${s?.building ? ` · ${BUILDINGS[s.building].label}` : ""}`;
     },
     [map, states, playersByNumber],
   );
@@ -267,6 +316,23 @@ export default function ConquestApp() {
   const onDone = async () => {
     await load();
     await Promise.all([loadMine(), refreshMe()]);
+  };
+
+  /** Un clic choisit la terre. Un second clic sur la même lance l'action, sauf un double-clic par mégarde. */
+  const pick = (id: number) => {
+    const now = Date.now();
+    if (id === selected && now - lastPick.current.at > FIRE_MIN_GAP_MS) setFire((n) => n + 1);
+    else setSelected(id);
+    lastPick.current = { id, at: now };
+  };
+
+  const answerAlliance = async (fn: "propose_alliance" | "refuse_alliance", number: number) => {
+    try {
+      await call(fn, { p_number: number });
+      await onDone();
+    } catch (e) {
+      setProblem(messageOf(e));
+    }
   };
 
   const openClosed = async (id: number) => {
@@ -333,6 +399,12 @@ export default function ConquestApp() {
 
   const chosen = selected !== null && map ? (map.territories[selected - 1] ?? null) : null;
   const chosenState = selected !== null ? (states.get(selected) ?? null) : null;
+  // Un poste de défense couvre sa terre et les voisines du même joueur : le serveur fait le même calcul.
+  const chosenFortified = chosen !== null && chosenState !== null && [chosen.id, ...chosen.neighbours].some((id) => {
+    const s = states.get(id);
+    return s?.owner === chosenState.owner && s.building === "post";
+  });
+  const reserve = mine?.in_game === false ? (mine.start_troops ?? 0) : (mine?.troops ?? 0);
   const biggest = ranked(state.players ?? [], (p) => p.territories).filter((p) => p.territories > 0);
   const conquerors = ranked((state.players ?? []).filter((p) => p.captured > 0), (p) => p.captured);
   const options = map ? [...map.territories].sort((a, b) => a.name.localeCompare(b.name, "fr")) : [];
@@ -348,115 +420,206 @@ export default function ConquestApp() {
   );
 
   return (
-    <div class="wrap conq-wrap">
+    <div>
       {!season ? (
-        <div class="conq-banner" data-testid="no-season">
-          <p>
-            <strong>Aucune saison en cours.</strong> La prochaine sera annoncée sur le Discord du clan.
-          </p>
+        <div class="wrap conq-wrap">
+          <div class="conq-banner" data-testid="no-season">
+            <p>
+              <strong>Aucune saison en cours.</strong> La prochaine sera annoncée sur le Discord du clan.
+            </p>
+          </div>
         </div>
       ) : (
         <>
-          <div class="conq-banner" data-testid="season-banner">
-            <div>
-              <p class="font-display text-xl font-extrabold uppercase">{season.name}</p>
-              <p class="text-sm" data-testid="season-phase">
-                {season.phase === "war" ? "Phase 2 : la guerre" : `Phase 1 : l'expansion${season.war_starts_at ? `, jusqu'au ${fmtDateTime(season.war_starts_at)}` : ""}`}
-              </p>
-            </div>
-            <p class="tnum text-xs text-muted">
-              {plural((state.players ?? []).length, "joueur", "joueurs")} · {plural(states.size, "territoire occupé", "territoires occupés")} sur {map?.territories.length ?? "…"}
-              {occupied !== null ? ` (${occupied} %)` : ""}
-              <br />
-              <span data-testid="checked-at">Actualisé à {fmtClock(checkedAt ?? state.read_at)}, heure de Paris.</span>
-            </p>
+          <div class="conq-arena" data-testid="arena">
+            {map ? (
+              <ConquestMap arena map={map} states={states} selected={selected} targets={owned.size > 0 ? targets : NO_TARGETS} me={myNumber} nameOf={nameOf} describe={describe} onSelect={pick} focus={focus} allies={allies} traitors={traitors}>
+                <p class="conq-flash" role="status" data-testid="donation-flash">
+                  {flash ? feedText(flash) : ""}
+                </p>
+
+                <div class="conq-hud conq-hud-left">
+                  <div class="conq-panel" data-testid="season-banner">
+                    <p class="font-display text-base font-extrabold uppercase">{season.name}</p>
+                    <p class="text-sm" data-testid="season-phase">
+                      {season.phase === "war" ? "Phase 2 : la guerre" : `Phase 1 : l'expansion${season.war_starts_at ? `, jusqu'au ${fmtDateTime(season.war_starts_at)}` : ""}`}
+                    </p>
+                    <p class="tnum mt-1 text-xs text-muted">
+                      {plural((state.players ?? []).length, "joueur", "joueurs")} · {occupied !== null ? `${occupied} % de la carte occupée` : "…"}
+                      <br />
+                      <span data-testid="checked-at">Actualisé à {fmtClock(checkedAt ?? state.read_at)}</span>
+                    </p>
+                  </div>
+                  <div class="conq-panel conq-panel-scroll">
+                    <TerritoryRanking
+                      rows={biggest.map((p) => ({ key: p.number, rank: p.rank, name: p.name, value: p.territories, me: p.number === myNumber, color: playerColor(p.number), anchor: anchors.get(p.number) }))}
+                      total={biggest.length}
+                      mapSize={map.territories.length}
+                      victoryShare={season.config.victoryShare}
+                      allies={allies}
+                      traitors={traitors}
+                      onPick={(id) => {
+                        setSelected(id);
+                        setFocus((n) => n + 1);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div class="conq-hud conq-hud-right">
+                  {(mine?.alliance_requests ?? []).length > 0 && (
+                    <div class="conq-panel" data-testid="alliance-requests">
+                      <h3 class="text-sm font-bold">Alliances proposées</h3>
+                      <ul class="mt-2 grid gap-2">
+                        {(mine?.alliance_requests ?? []).map((r) => (
+                          <li key={r.number}>
+                            <p class="truncate text-sm font-semibold">{r.name}</p>
+                            <div class="mt-1 flex gap-2">
+                              <button type="button" class="chip !min-h-9" onClick={() => void answerAlliance("propose_alliance", r.number)}>
+                                Accepter
+                              </button>
+                              <button type="button" class="chip !min-h-9" onClick={() => void answerAlliance("refuse_alliance", r.number)}>
+                                Refuser
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <div class="conq-panel conq-panel-scroll">
+                    <ActionPanel
+                      season={season}
+                      territory={chosen}
+                      state={chosenState}
+                      owner={chosenState ? (playersByNumber.get(chosenState.owner) ?? null) : null}
+                      me={me}
+                      mine={mine}
+                      myNumber={myNumber}
+                      owned={owned}
+                      allies={allies}
+                      fortified={chosenFortified}
+                      myBuildings={myBuildings}
+                      ratio={ratio}
+                      onRatio={setRatio}
+                      fire={fire}
+                      onDone={onDone}
+                    />
+                  </div>
+                </div>
+
+                <div class="conq-hud conq-hud-bottom">
+                  {validated && mine ? (
+                    <div class="conq-panel conq-command" data-testid="command-bar">
+                      <dl class="conq-stats tnum" data-testid="my-reserve">
+                        <div class="conq-stat-troops">
+                          <dt>Troupes</dt>
+                          <dd>
+                            <span data-testid="my-troops">{fmtInt(reserve)}</span>
+                            {mine.in_game !== false && <span class="conq-of"> / {fmtInt(mine.capacity ?? null)}</span>}
+                          </dd>
+                          {mine.in_game !== false && (mine.capacity ?? 0) > 0 && (
+                            <div class="conq-meter" aria-hidden="true">
+                              <i style={{ width: `${Math.min(100, (reserve / (mine.capacity ?? 1)) * 100)}%` }}></i>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <dt>Par heure</dt>
+                          <dd>{mine.in_game === false ? "—" : `+${fmtInt(Math.max(mine.next_regen ?? 0, 0))}`}</dd>
+                        </div>
+                        <div>
+                          <dt>Or</dt>
+                          <dd class="conq-gold">
+                            <span data-testid="my-gold">{mine.in_game === false ? fmtInt(season.config.gold.start) : fmtInt(mine.gold ?? 0)}</span>
+                            {mine.in_game !== false && <span class="conq-of"> +{fmtInt(mine.gold_per_hour ?? 0)}/h</span>}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Conquêtes</dt>
+                          <dd>
+                            {mine.expansions_today ?? 0} / {season.config.limits.expansionsPerDay}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Attaques</dt>
+                          <dd>
+                            {mine.attacks_today ?? 0} / {season.config.limits.attacksPerDay}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div class="conq-ratio">
+                        <label for="conq-ratio" class="text-sm font-semibold">
+                          Ratio d'attaque
+                        </label>
+                        <input id="conq-ratio" class="conq-ratio-range" type="range" min={1} max={100} step={1} value={ratio} data-testid="attack-ratio" onInput={(e) => setRatio(Number(e.currentTarget.value))} />
+                        <output for="conq-ratio" class="tnum text-sm font-bold" data-testid="attack-ratio-value">
+                          {ratio} % · {fmtInt(troopsForRatio(reserve, ratio))}
+                        </output>
+                      </div>
+                    </div>
+                  ) : me && !me.signed_in ? (
+                    <div class="conq-panel conq-invite">
+                      <p>Membre de GAL ? Connectez-vous pour jouer. Les visiteurs suivent la partie en lecture seule.</p>
+                      <DiscordButton returnPath="/compte" />
+                    </div>
+                  ) : me?.signed_in && !validated ? (
+                    <div class="conq-panel conq-invite">
+                      <p>Votre compte n'est pas encore validé : vous suivez la partie sans pouvoir y jouer.</p>
+                      <a class="btn btn-secondary" href={`${basePath()}/compte`}>
+                        Voir mon statut
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
+
+                {feed.length > 0 && (
+                  <ol class="conq-hud conq-ticker" aria-hidden="true">
+                    {feed.slice(0, 2).map((e) => (
+                      <li key={e.id}>{feedText(e)}</li>
+                    ))}
+                  </ol>
+                )}
+              </ConquestMap>
+            ) : (
+              <div class="wrap conq-wrap">
+                <Loading label="Lecture de la carte…" />
+              </div>
+            )}
           </div>
 
-          {validated && mine && (
-            <dl class="conq-stats tnum" data-testid="my-reserve">
-              <div>
-                <dt>Ma réserve</dt>
-                <dd data-testid="my-troops">{fmtInt(mine.in_game === false ? (mine.start_troops ?? 0) : (mine.troops ?? 0))}</dd>
-              </div>
-              <div>
-                <dt>Capacité</dt>
-                <dd>{mine.in_game === false ? "—" : fmtInt(mine.capacity ?? null)}</dd>
-              </div>
-              <div>
-                <dt>Prochain gain</dt>
-                <dd>{mine.in_game === false ? "—" : `+${fmtInt(Math.max(mine.next_regen ?? 0, 0))} / h`}</dd>
-              </div>
-              <div>
-                <dt>Mes capsules validées</dt>
-                <dd>{fmtInt(mine.capsules)}</dd>
-              </div>
-              <div>
-                <dt>Conquêtes du jour</dt>
-                <dd>
-                  {mine.expansions_today ?? 0} / {season.config.limits.expansionsPerDay}
-                </dd>
-              </div>
-              <div>
-                <dt>Attaques du jour</dt>
-                <dd>
-                  {mine.attacks_today ?? 0} / {season.config.limits.attacksPerDay}
-                </dd>
-              </div>
-            </dl>
-          )}
-          {validated && mine && season.config.troopsPerCapsule > 0 && (
-            <p class="mt-2 text-xs text-muted" data-testid="donation-rule">
-              1 capsule donnée pendant la saison = {plural(season.config.troopsPerCapsule, "troupe", "troupes")} en renfort, dès que le don est validé, dans la limite de votre capacité.
-            </p>
-          )}
+          <div class="wrap conq-wrap">
+            <div class="conq-legend mt-3 text-xs text-muted" data-testid="map-legend">
+              <span>
+                <i class="conq-swatch is-mine"></i> Vos terres
+              </span>
+              <span>
+                <i class="conq-swatch is-target"></i> À votre portée
+              </span>
+              <span>
+                <i class="conq-swatch is-ally"></i> Vos alliés
+              </span>
+              {(Object.keys(BUILDINGS) as BuildingKind[]).map((kind) => (
+                <span key={kind}>
+                  <b class="conq-build-mark" aria-hidden="true">
+                    {BUILDINGS[kind].mark}
+                  </b>
+                  {BUILDINGS[kind].label}
+                </span>
+              ))}
+              <span>Molette ou deux doigts pour zoomer. Glisser pour se déplacer.</span>
+            </div>
+            {validated && mine && season.config.troopsPerCapsule > 0 && (
+              <p class="mt-2 text-xs text-muted" data-testid="donation-rule">
+                {fmtInt(mine.capsules)} capsules validées. 1 capsule donnée pendant la saison = {plural(season.config.troopsPerCapsule, "troupe", "troupes")} en renfort, dès que le don est validé, dans la limite de votre capacité.
+              </p>
+            )}
 
-          {me && !me.signed_in && (
-            <div class="conq-invite">
-              <p>Membre de GAL ? Connectez-vous pour jouer. Les visiteurs peuvent suivre la partie en lecture seule.</p>
-              <DiscordButton returnPath="/compte" />
-            </div>
-          )}
-          {me?.signed_in && !validated && (
-            <div class="conq-invite">
-              <p>Votre compte n'est pas encore validé : vous suivez la partie sans pouvoir y jouer.</p>
-              <a class="btn btn-secondary" href={`${basePath()}/compte`}>
-                Voir mon statut
-              </a>
-            </div>
-          )}
-
-          <div class="conq-board">
-            <div class="conq-board-map">
-              {map ? (
-                <ConquestMap map={map} states={states} selected={selected} targets={owned.size > 0 ? targets : NO_TARGETS} me={myNumber} nameOf={nameOf} describe={describe} onSelect={setSelected} focus={focus}>
-                  <p class="conq-flash" role="status" data-testid="donation-flash">
-                    {flash ? feedText(flash) : ""}
-                  </p>
-                </ConquestMap>
-              ) : (
-                <Loading label="Lecture de la carte…" />
-              )}
-              <div class="conq-legend text-xs text-muted">
-                <span>
-                  <i class="conq-swatch is-free"></i> Terre libre
-                </span>
-                <span>
-                  <i class="conq-swatch is-mine"></i> Vos terres
-                </span>
-                <span>
-                  <i class="conq-swatch is-target"></i> À votre portée
-                </span>
-                <span>^ Colline et ^^ Montagne, en zoomant : plus chères à prendre</span>
-              </div>
-            </div>
-            <aside class="conq-side">
-              <ActionPanel season={season} territory={chosen} state={chosenState} owner={chosenState ? (playersByNumber.get(chosenState.owner) ?? null) : null} me={me} mine={mine} myNumber={myNumber} owned={owned} onDone={onDone} />
-              <TerritoryRanking rows={biggest.map((p) => ({ key: p.number, rank: p.rank, name: p.name, value: p.territories, me: p.number === myNumber, color: playerColor(p.number), anchor: anchors.get(p.number) }))} total={biggest.length} onPick={(id) => {
-                setSelected(id);
-                setFocus((n) => n + 1);
-              }} />
-              <div class="mt-5 border-t border-line pt-4">
-                <label for="conq-pick" class="text-sm font-semibold">
+            <div class="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <section class="conq-board-feed">{feedSection}</section>
+              <section>
+                <h2 class="section-title">Toutes les terres</h2>
+                <label for="conq-pick" class="mt-4 block text-sm font-semibold">
                   Aller à un territoire
                 </label>
                 <select id="conq-pick" class="field mt-1" value={selected ?? ""} data-testid="territory-select" onChange={(e) => setSelected(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
@@ -485,13 +648,13 @@ export default function ConquestApp() {
                     </ul>
                   </details>
                 )}
-              </div>
-            </aside>
-            <section class="conq-board-feed">{feedSection}</section>
+              </section>
+            </div>
           </div>
         </>
       )}
 
+      <div class="wrap conq-wrap">
       {season && (
         <div class="mt-8 grid gap-4 md:grid-cols-2">
           <Ranking title="Meilleurs conquérants" unit="prises" testid="rank-conquerors" rows={conquerors.map((p) => ({ key: p.number, rank: p.rank, name: p.name, value: p.captured, me: p.number === myNumber, color: playerColor(p.number) }))} />
@@ -529,6 +692,7 @@ export default function ConquestApp() {
           <Problem message={`Dernière lecture impossible : ${problem} Les chiffres affichés datent de la lecture précédente.`} onRetry={() => void load()} />
         </div>
       )}
+      </div>
     </div>
   );
 }

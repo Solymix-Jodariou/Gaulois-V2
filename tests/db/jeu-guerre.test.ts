@@ -112,17 +112,18 @@ describe("les conditions d'une attaque", () => {
 });
 
 describe("les garde-fous", () => {
-  it("recharge d'une heure entre deux attaques", async () => {
+  it("recharge entre deux attaques", async () => {
     const res = await attack(db, attacker, target, 500);
     expect(res).toMatchObject({ ok: true, won: false });
     const again = await attack(db, attacker, target, 500);
     expect(again).toMatchObject({ ok: false, error: "attack_cooldown" });
-    expect(Date.parse((again.detail as { until: string }).until)).toBeGreaterThan(Date.now() + 3_500_000);
-    await db.sql("update public.players set last_attack_at = now() - interval '61 minutes' where user_id = $1", [attacker]);
+    expect(Date.parse((again.detail as { until: string }).until)).toBeGreaterThan(Date.now() + 14 * 60_000);
+    await db.sql("update public.players set last_attack_at = now() - interval '16 minutes' where user_id = $1", [attacker]);
     expect(await attack(db, attacker, target, 500)).toMatchObject({ ok: true });
   });
 
-  it("5 attaques par jour, puis plus rien jusqu'au lendemain", async () => {
+  it("un plafond d'attaques par jour, puis plus rien jusqu'au lendemain", async () => {
+    await db.sql("update public.seasons set config = jsonb_set(config, '{limits,attacksPerDay}', '5') where id = $1", [season]);
     for (let i = 0; i < 5; i++) {
       await db.sql("update public.players set last_attack_at = null where user_id = $1", [attacker]);
       expect(await attack(db, attacker, target, 100)).toMatchObject({ ok: true });
@@ -134,10 +135,10 @@ describe("les garde-fous", () => {
     expect((await playerRow(db, season, attacker))!.attacks_today).toBe(1);
   });
 
-  it("un territoire fraîchement pris est protégé 24 h, puis attaquable", async () => {
+  it("un territoire fraîchement pris est protégé, puis attaquable", async () => {
     await attack(db, attacker, target, 15_000);
     const row = await stateRow(db, season, target);
-    expect(row!.protected_until!.getTime()).toBeGreaterThan(Date.now() + 23.9 * 3_600_000);
+    expect(row!.protected_until!.getTime()).toBeGreaterThan(Date.now() + 11.9 * 3_600_000);
     // Le défenseur tente de reprendre aussitôt, depuis une terre voisine. L'attaquant garde une autre terre.
     await db.sql("update public.territory_state set owner_id = $1 where season_id = $2 and territory_id = $3", [defender, season, home]);
     await place(db, season, attacker, plainsCluster(9).find((id) => ![home, target, extra].includes(id))!, 100);

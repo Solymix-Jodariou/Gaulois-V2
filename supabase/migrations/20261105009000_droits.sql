@@ -45,6 +45,11 @@ grant execute on function public.choose_start(uuid, integer, bigint) to authenti
 grant execute on function public.expand(uuid, integer, bigint) to authenticated;
 grant execute on function public.reinforce(uuid, integer, bigint) to authenticated;
 grant execute on function public.attack(uuid, integer, bigint) to authenticated;
+grant execute on function public.build(uuid, integer, text) to authenticated;
+grant execute on function public.launch_bomb(uuid, integer) to authenticated;
+grant execute on function public.propose_alliance(integer) to authenticated;
+grant execute on function public.refuse_alliance(integer) to authenticated;
+grant execute on function public.break_alliance(integer) to authenticated;
 
 -- Officiers et au-dessus : la fonction le vérifie elle-même.
 grant execute on function public.list_membership_requests(public.request_status) to authenticated;

@@ -2,6 +2,8 @@
 
 La Conquête des Gaulois est un jeu de territoires réservé aux membres de GAL. La carte du monde est découpée en hexagones de même surface. Chaque saison, vous partez d'une terre et vous vous étendez, puis la guerre commence entre membres. Plus vous avez donné de capsules au clan, plus votre armée est grande, sans que cela suffise à gagner seul.
 
+On y retrouve ce qui fait OpenFront : le ratio d'attaque, l'or, les bâtiments, les bombes, les alliances et leurs trahisons, la victoire à 80 % de la carte. Seul le rythme change : une saison dure des jours, pas vingt minutes.
+
 C'est un jeu du site du clan. Rien n'est envoyé à OpenFront : vos parties, votre compte et vos capsules dans le jeu ne changent pas.
 
 ## Pour jouer
@@ -52,7 +54,7 @@ Le site ne peut pas lire vos dons tout seul : OpenFront les réserve aux membres
 | Colline | 2 000 | 1 000 tiennent garnison |
 | Montagne | 2 400 | 600 tiennent garnison |
 
-Vous pouvez conquérir **3 terres libres par jour**, gros donneur ou non. Deux hexagones séparés par une seule case de mer sont voisins, et quelques routes de haute mer relient les continents.
+Vous pouvez conquérir **10 terres libres par jour**, gros donneur ou non. Deux hexagones séparés par une seule case de mer sont voisins, et quelques routes de haute mer relient les continents.
 
 **Renforcez vos terres** quand vous voulez : vos troupes passent de la réserve à la garnison, sans frais. Une garnison ne revient pas dans la réserve.
 
@@ -77,15 +79,47 @@ Après une victoire, l'ancienne garnison disparaît et vos survivants prennent s
 
 ### Ce qui protège chacun
 
-- **5 attaques par jour** au plus, et **1 heure** d'attente entre deux attaques.
-- Une terre tout juste prise est **protégée pendant 24 heures**.
+- **10 attaques par jour** au plus, et **15 minutes** d'attente entre deux attaques.
+- Une terre tout juste prise est **protégée pendant 12 heures**.
 - **Le dernier territoire d'un joueur ne peut pas être attaqué** : personne n'est éliminé de la saison.
 
 Si la guerre a commencé et qu'il reste des terres libres, on peut encore s'y étendre. Quand il n'en reste plus, un nouveau joueur attend la saison suivante.
 
+## Le ratio d'attaque
+
+La réglette en bas de l'écran fixe la part de votre réserve que vous envoyez. Cliquez une fois sur une terre : l'écran montre le résultat exact. Cliquez une seconde fois : vos troupes partent. Vous pouvez aussi taper le nombre exact dans le panneau.
+
+## L'or et les bâtiments
+
+Chaque terre rapporte **100 d'or par heure**. Vous démarrez avec **5 000 d'or**. Une terre porte un seul bâtiment, et il change de main avec elle.
+
+| Bâtiment | Prix de base | Ce qu'il fait |
+|---|---:|---|
+| Ville | 10 000 | +100 000 de capacité |
+| Port | 8 000 | +300 d'or par heure, et +50 par port d'un autre joueur, sur 10 ports au plus |
+| Poste de défense | 5 000 | Attaquer cette terre ou ses voisines du même joueur coûte 1,5 fois plus de pertes |
+| Défense antiaérienne | 15 000 | Arrête toute bombe sur cette terre ou ses voisines du même joueur |
+| Silo | 30 000 | Permet de lancer des bombes, partout sur la carte |
+
+Chaque bâtiment du même type coûte le double du précédent, jusqu'à 16 fois le prix de base.
+
+## Les bombes
+
+Une bombe coûte **20 000 d'or**, demande un silo et ne se lance qu'en guerre, **une fois toutes les 24 heures**. Elle détruit le bâtiment de la terre visée et **75 % de sa garnison**. Elle ne prend pas la terre : il faut encore l'attaquer. Elle ne vise ni un allié ni une terre protégée. Une défense antiaérienne l'arrête à coup sûr, et l'or est perdu.
+
+## Les alliances
+
+Proposez une alliance depuis une terre d'un autre joueur. S'il accepte, vous ne pouvez plus vous attaquer ni vous bombarder pendant **48 heures**. Toutes les alliances sont publiques.
+
+**Rompre une alliance, c'est trahir :** tout le monde le voit, et pendant **24 heures** vous attaquer coûte **moitié moins de pertes**.
+
+## Gagner la saison
+
+Le premier à tenir **80 % de la carte** remporte la saison : elle se termine aussitôt.
+
 ## Fin de saison
 
-Un admin clôture la saison. La carte et le classement sont figés et restent consultables. Trois classements mettent à l'honneur les joueurs : le **plus grand territoire**, le **meilleur conquérant** et les **plus gros donneurs**. À égalité, deux joueurs partagent la même place.
+Un admin peut aussi clôturer la saison. La carte et le classement sont figés et restent consultables. Trois classements mettent à l'honneur les joueurs : le **plus grand territoire**, le **meilleur conquérant** et les **plus gros donneurs**. À égalité, deux joueurs partagent la même place.
 
 ## Les règles du jeu entre membres
 

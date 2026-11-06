@@ -1,7 +1,7 @@
 -- Étape 5 : la phase de guerre.
 
 create function internal.resolve_attack(
-  p_sent bigint, p_garrison bigint, p_terrain public.terrain_type, c jsonb,
+  p_sent bigint, p_garrison bigint, p_terrain public.terrain_type, c jsonb, p_factor float8 default 1,
   out won boolean, out ratio float8, out losses float8, out survivors bigint, out garrison_after bigint
 ) language plpgsql immutable as $$
 declare
@@ -15,7 +15,7 @@ begin
   losses := internal.terrain_mag(p_terrain, c) * ratio * (
     (c #>> '{combat,lossBase}')::float8 * v_tiles
     + (c #>> '{combat,garrisonBonus}')::float8 * (c #>> '{combat,lossDensity}')::float8 * p_garrison::float8
-  );
+  ) * p_factor;
   won := losses < p_sent::float8;
   if won then
     survivors := greatest(1, floor(p_sent::float8 - losses + 0.5));
@@ -58,6 +58,7 @@ begin
     select * into v_state from public.territory_state where season_id = v_season.id and territory_id = p_territory;
     if not found then perform internal.fail('territory_free'); end if;
     if v_state.owner_id = v_uid then perform internal.fail('own_territory'); end if;
+    if internal.allied(v_season.id, v_uid, v_state.owner_id) then perform internal.fail('ally'); end if;
     if not exists (
       select 1 from public.territory_state
       where season_id = v_season.id and owner_id = v_uid and territory_id = any (v_territory.neighbours)
@@ -88,7 +89,7 @@ begin
     -- Le défenseur régénère jusqu'à cet instant, avant de perdre éventuellement une terre.
     perform internal.touch_player(v_season, v_state.owner_id);
 
-    select * into v_result from internal.resolve_attack(p_troops, v_state.garrison, v_territory.terrain, v_season.config);
+    select * into v_result from internal.resolve_attack(p_troops, v_state.garrison, v_territory.terrain, v_season.config, internal.defence_factor(v_season, v_territory, v_state.owner_id));
 
     update public.players
     set troops = troops - p_troops, attacks_today = attacks_today + 1, last_attack_at = v_now,
@@ -114,6 +115,7 @@ begin
       least(p_troops, floor(v_result.losses + 0.5))::bigint,
       v_state.garrison, v_result.garrison_after
     );
+    if v_result.won then perform internal.check_victory(v_season, v_uid); end if;
 
     return internal.remember(p_request_id, v_uid, jsonb_build_object(
       'ok', true,

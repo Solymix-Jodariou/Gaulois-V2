@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "preact/hooks";
 import { basePath } from "../../lib/conquete/api";
 import { playerBorder, playerColor } from "../../lib/conquete/feed";
 import { WORLD_VIEW, hexPath } from "../../lib/conquete/geo";
+import { BUILDINGS } from "../../lib/conquete/rules";
 import { labelFontSize, outlinesOf, ownerLabels, ownerLayers, shortName } from "../../lib/conquete/shapes";
 import type { GameMap, TerritoryState } from "../../lib/conquete/types";
 import { fmtDec1, fmtInt } from "../../lib/format";
@@ -24,6 +25,8 @@ const TAP_DISTANCE = 8;
 const LIGHT_RELIEF_PX_PER_UNIT = 3.3;
 /** Le premier affichage se décide sur la largeur de la fenêtre : les petits écrans n'ont que l'image légère à charger. */
 const FULL_RELIEF_WINDOW_PX = 1200;
+/** Une terre prise depuis moins longtemps que ça pulse : on voit la carte bouger. */
+const FRESH_MS = 15 * 60_000;
 
 interface Props {
   map: GameMap;
@@ -39,6 +42,11 @@ interface Props {
   onSelect: (id: number) => void;
   /** Change à chaque demande de « trouver » un territoire, même s'il est déjà choisi : la carte y retourne. */
   focus?: number;
+  /** Mes alliés et les traîtres du moment, par numéro de joueur. */
+  allies?: ReadonlySet<number>;
+  traitors?: ReadonlySet<number>;
+  /** La carte occupe tout l'écran : la molette zoome, sans Ctrl. */
+  arena?: boolean;
   /** Ce qui se pose par-dessus la carte : l'annonce d'un don, par exemple. */
   children?: ComponentChildren;
 }
@@ -48,7 +56,7 @@ interface Props {
  * depuis la liste des territoires, au clavier. Le déplacement et le zoom ne repassent pas
  * par Preact : seul le groupe bouge, et la carte reste fluide sur téléphone.
  */
-export default function ConquestMap({ map, states, selected, targets, me, nameOf, describe, onSelect, focus = 0, children }: Props) {
+export default function ConquestMap({ map, states, selected, targets, me, nameOf, describe, onSelect, focus = 0, allies, traitors, arena = false, children }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
   const relief = useRef<SVGImageElement>(null);
@@ -204,9 +212,9 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     apply();
     const node = svg.current;
     if (!node) return;
-    // Sans Ctrl, la molette continue de faire défiler la page.
+    // Hors de l'écran de jeu, sans Ctrl, la molette continue de faire défiler la page.
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (!arena && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const { x, y } = toMap(e.clientX, e.clientY);
       zoomAt(e.deltaY < 0 ? 1.25 : 0.8, x, y);
@@ -219,7 +227,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
       resized.disconnect();
     };
     // Les bornes ne changent pas pour une même carte.
-  }, [map]);
+  }, [map, arena]);
 
   /** De nouvelles étiquettes : on leur applique le niveau de zoom en cours. */
   useEffect(() => {
@@ -284,6 +292,8 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // Les flèches restent à la réglette et aux champs posés sur la carte.
+    if ((e.target as Element | null)?.closest?.("input, select, textarea, button, a, summary")) return;
     const step = (width / 12) * 1;
     const actions: Record<string, () => void> = {
       ArrowLeft: () => panBy(step, 0),
@@ -304,6 +314,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   return (
     <div class="conq-map" data-testid="conquest-map">
       <div class="conq-map-view" tabIndex={0} role="group" aria-label="Carte des territoires. Flèches pour se déplacer, plus et moins pour zoomer. Tous les territoires sont aussi dans la liste juste à côté." onKeyDown={onKeyDown}>
+        <div class="conq-map-stage">
         <svg
           ref={svg}
           viewBox={`${minX} ${minY} ${width} ${height}`}
@@ -352,13 +363,15 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
               const state = states.get(t.id);
               const mine = state !== undefined && state.owner === me;
               const isProtected = state?.protected_until ? Date.parse(state.protected_until) > Date.now() : false;
+              const isFresh = state?.taken_at ? Date.now() - Date.parse(state.taken_at) < FRESH_MS : false;
+              const isAlly = state !== undefined && (allies?.has(state.owner) ?? false);
               return (
                 <path
                   key={t.id}
                   data-t={t.id}
                   data-owner={state?.owner}
                   d={d}
-                  class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected"].filter(Boolean).join(" ")}
+                  class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected", isAlly && "is-ally", isFresh && "is-fresh"].filter(Boolean).join(" ")}
                 ></path>
               );
             })}
@@ -371,7 +384,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
             </g>
             <g ref={labelsGroup} class="conq-labels" aria-hidden="true" data-testid="owner-labels">
               {labels.map((label) => (
-                <g key={label.owner} data-size={label.size} data-x={label.x} data-y={label.y} data-owner={label.owner}>
+                <g key={label.owner} class={traitors?.has(label.owner) ? "is-traitor" : undefined} data-size={label.size} data-x={label.x} data-y={label.y} data-owner={label.owner}>
                   <text x={label.x} y={label.y - label.size * 0.08} font-size={label.size}>
                     {label.name}
                   </text>
@@ -381,10 +394,23 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
                 </g>
               ))}
             </g>
+            <g class="conq-buildings" aria-hidden="true" data-testid="map-buildings">
+              {hexes.map(({ t }) => {
+                const kind = states.get(t.id)?.building;
+                if (!kind) return null;
+                return (
+                  <g key={t.id} class={`conq-building is-${kind}`}>
+                    <rect x={t.x - 1.05} y={t.y - 1.05} width={2.1} height={2.1} rx={0.45} />
+                    <text x={t.x} y={t.y + 0.58}>
+                      {BUILDINGS[kind].mark}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
           </g>
         </svg>
         <div ref={tip} class="conq-tip" hidden></div>
-        {children}
         <div class="conq-map-tools">
           <button type="button" class="conq-tool" onClick={() => zoomCentre(1 / 1.4)} aria-label="Dézoomer">
             −
@@ -399,8 +425,10 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
             Monde<span class="sr-only"> : vue d'ensemble</span>
           </button>
         </div>
+        </div>
+        {children}
       </div>
-      <p class="mt-2 text-xs text-muted">Glisser pour se déplacer. Ctrl + molette ou deux doigts pour zoomer. Le nombre sous un nom : ses troupes en garnison.</p>
+      {!arena && <p class="mt-2 text-xs text-muted">Glisser pour se déplacer. Ctrl + molette ou deux doigts pour zoomer. Le nombre sous un nom : ses troupes en garnison.</p>}
     </div>
   );
 }

@@ -80,7 +80,7 @@ begin
   if v_player.user_id is null or v_player.excluded_at is not null then return 0; end if;
 
   select capsules_total into v_capsules from public.profiles where user_id = v_donation.user_id;
-  v_capacity := internal.capacity(internal.territory_count(v_season.id, v_donation.user_id), v_capsules, v_season.config);
+  v_capacity := internal.capacity(internal.territory_count(v_season.id, v_donation.user_id), v_capsules, v_season.config) + internal.city_capacity(v_season, v_donation.user_id);
   v_granted := internal.donation_troops(v_donation.capsules, v_player.troops, v_capacity, v_season.config);
 
   update public.players set troops = troops + v_granted where season_id = v_season.id and user_id = v_donation.user_id;

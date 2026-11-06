@@ -537,6 +537,114 @@ test("phase 2 : le combat suit l'aperçu, et les garde-fous s'appliquent", async
   await expect(brenn.getByText("compte maintenant")).toBeVisible();
 });
 
+test("l'écran de jeu : le ratio d'attaque, l'or, les bâtiments, les alliances, la trahison et la bombe", async () => {
+  const landsOf = async (name: string) => (await sql("select s.territory_id id from public.territory_state s join public.profiles p on p.user_id = s.owner_id where p.display_name = $1 order by s.territory_id", [name])).map((r) => r["id"] as number);
+  await sql("update public.players set gold = 200000, troops = 60000, troops_at = now(), gold_at = now()");
+  await sql("update public.territory_state set protected_until = null");
+  const astraLands = await landsOf("Astra");
+  const [brennLand] = await landsOf("Brenn");
+  const home = byId(astraLands.find((id) => byId(id).neighbours.includes(brennLand!)) ?? astraLands[0]!);
+  const enemy = byId(brennLand!);
+
+  // La carte remplit l'écran : pas de grand titre au-dessus, et les commandes se posent dessus.
+  await astra.goto("/conquete");
+  const arena = astra.getByTestId("arena");
+  const box = (await arena.boundingBox())!;
+  expect(box.width).toBe(1280);
+  expect(box.y + box.height).toBeLessThanOrEqual(800);
+  expect(box.height).toBeGreaterThan(600);
+
+  // Le ratio d'attaque : il règle l'envoi, et il reste d'une visite à l'autre.
+  await expect(astra.getByTestId("my-gold")).toHaveText(fr(200_000));
+  await astra.getByTestId("attack-ratio").fill("50");
+  await expect(astra.getByTestId("attack-ratio-value")).toContainText("50 %");
+  await astra.reload();
+  await expect(astra.getByTestId("attack-ratio-value")).toContainText("50 %");
+  await pickTerritory(astra, enemy.name);
+  await expect(astra.getByTestId("action-amount")).toHaveValue("30000");
+
+  // Construire : l'or part, la capacité monte, et le bâtiment se voit sur la carte.
+  await pickTerritory(astra, home.name);
+  const capacityBefore = digits(await astra.getByTestId("my-reserve").locator(".conq-of").first().textContent());
+  await astra.getByTestId("build-city").click();
+  await expect(astra.getByText(`Ville construit à ${home.name}`)).toBeVisible();
+  await expect(astra.getByTestId("territory-building")).toHaveText("Ville");
+  await expect(astra.getByTestId("my-gold")).toHaveText(fr(190_000));
+  await expect(astra.getByTestId("build-menu")).toHaveCount(0);
+  await expect(astra.getByTestId("map-buildings").locator(".is-city")).toHaveCount(1);
+  expect(digits(await astra.getByTestId("my-reserve").locator(".conq-of").first().textContent())).toBe(capacityBefore + 100_000);
+  await expect(astra.getByTestId("game-feed")).toContainText(`Astra construit une ville à ${home.name}`);
+
+  // Le serveur refuse ce que l'écran ne propose plus.
+  expect((await directCall(astra, "build", { p_request_id: crypto.randomUUID(), p_territory: home.id, p_kind: "port" })).body).toMatchObject({ ok: false, error: "building_exists" });
+  expect((await directCall(astra, "build", { p_request_id: crypto.randomUUID(), p_territory: enemy.id, p_kind: "port" })).body).toMatchObject({ ok: false, error: "not_your_territory" });
+
+  // S'allier : il faut être deux, et l'alliance se voit.
+  await pickTerritory(astra, enemy.name);
+  await astra.getByTestId("alliance-propose").click();
+  await expect(astra.getByText("Alliance proposée à Brenn")).toBeVisible();
+  await brenn.goto("/conquete");
+  const requests = brenn.getByTestId("alliance-requests");
+  await expect(requests).toContainText("Astra");
+  await requests.getByRole("button", { name: "Accepter" }).click();
+  await expect(requests).toHaveCount(0);
+  await astra.reload();
+  await pickTerritory(astra, enemy.name);
+  await expect(astra.getByTestId("action-why")).toContainText("votre allié");
+  await expect(astra.getByTestId("action-submit")).toHaveCount(0);
+  await expect(astra.getByTestId("rank-biggest").getByText("allié")).toBeVisible();
+  expect((await directCall(astra, "attack", { p_request_id: crypto.randomUUID(), p_territory: enemy.id, p_troops: 5000 })).body).toMatchObject({ ok: false, error: "ally" });
+
+  // Trahir : il faut confirmer, et tout le monde le voit.
+  const betray = astra.getByTestId("alliance-break");
+  await betray.click();
+  await expect(astra.getByText("Vous avez trahi")).toHaveCount(0);
+  await betray.click();
+  await expect(astra.getByText("Vous avez trahi Brenn")).toBeVisible();
+  await expect(astra.getByTestId("game-feed")).toContainText("Astra a trahi Brenn !");
+  await expect(astra.getByTestId("rank-biggest").getByText("traître")).toBeVisible();
+
+  // Le second clic sur la carte lance l'action. Un double-clic par mégarde, non.
+  await sql("update public.players set expansions_today = 0");
+  const taken = new Set((await sql("select territory_id id from public.territory_state")).map((r) => r["id"] as number));
+  const freeLand = byId(astraLands.flatMap((id) => byId(id).neighbours).find((n) => !taken.has(n))!);
+  await astra.reload();
+  await astra.getByTestId("attack-ratio").fill("100");
+  await pickTerritory(astra, freeLand.name);
+  await astra.getByTestId("attack-ratio").fill("20");
+  await expect(astra.getByTestId("territory-name")).toHaveText(freeLand.name);
+  const hex = astra.locator(`.conq-hex[data-t="${freeLand.id}"]`);
+  await astra.waitForTimeout(450);
+  await hex.click();
+  await expect(astra.getByText(`${freeLand.name} est à vous`)).toBeVisible();
+
+  const other = byId(freeLand.neighbours.find((n) => !taken.has(n)) ?? astraLands.flatMap((id) => byId(id).neighbours).find((n) => !taken.has(n) && n !== freeLand.id)!);
+  await astra.locator(`.conq-hex[data-t="${other.id}"]`).dblclick();
+  await expect(astra.getByTestId("territory-name")).toHaveText(other.name);
+  await astra.waitForTimeout(300);
+  await expect(astra.getByText(`${other.name} est à vous`)).toHaveCount(0);
+
+  // La bombe : un silo, de l'or, une confirmation. Elle décime sans prendre la terre.
+  await brenn.reload();
+  await pickTerritory(brenn, enemy.name);
+  await brenn.getByTestId("build-silo").click();
+  await expect(brenn.getByText("Silo construit")).toBeVisible();
+  await sql("update public.territory_state set garrison = 8000 where territory_id = $1", [home.id]);
+  await brenn.reload();
+  await pickTerritory(brenn, home.name);
+  const launch = brenn.getByTestId("bomb-launch");
+  await launch.click();
+  await launch.click();
+  await expect(brenn.getByText(`Bombe tombée sur ${home.name}`)).toBeVisible();
+  await expect(brenn.getByTestId("territory-garrison")).toHaveText(fr(2000));
+  await expect(brenn.getByTestId("territory-building")).toHaveCount(0);
+  await expect(brenn.getByTestId("game-feed")).toContainText(`Brenn a bombardé ${home.name}`);
+  await expect(brenn.getByTestId("my-gold")).toHaveText(fr(200_000 - 30_000 - 20_000));
+
+  await accessible(brenn);
+  await noOverflow(brenn);
+});
+
 test("les rôles se gèrent depuis l'administration, et un officier n'y voit que sa part", async () => {
   await openAdmin(founder, "Membres");
   const row = founder.getByTestId("member-row").filter({ hasText: "Brenn" });

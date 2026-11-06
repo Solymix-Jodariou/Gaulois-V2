@@ -196,6 +196,31 @@ Toute la chaîne est prête et testée, avec des dons fictifs :
 
 **Limite restante :** la tâche planifiée de GitHub tourne environ une fois par heure, avec du retard. Pour lire chaque minute, il faudra une fonction planifiée chez Supabase (`pg_cron` et Edge Function). Elle n'est pas écrite : elle dépend de la réponse d'OpenFront et de son accord sur la fréquence, et elle ne peut pas être essayée sans le vrai Supabase.
 
+## L'ADN d'OpenFront
+
+La Conquête reprend ce qui fait jouer à OpenFront, et change ce qu'il faut pour une saison de plusieurs jours entre membres d'un clan.
+
+| Dans OpenFront | Dans la Conquête |
+|---|---|
+| La carte remplit l'écran, les commandes se posent dessus | Pareil, avec notre propre habillage |
+| Le ratio d'attaque, un clic pour attaquer | Une réglette en %, un clic montre le résultat exact, un second clic envoie |
+| Les noms et les troupes sur les territoires | Pareil |
+| L'or, les villes, les ports et leur commerce, les postes de défense, les silos, les défenses antiaériennes | Pareil, un bâtiment par terre. Le prix double à chaque bâtiment du même type |
+| Les bombes | Détruisent le bâtiment et 75 % de la garnison, sans prendre la terre. Une défense antiaérienne les arrête à coup sûr |
+| Les alliances, visibles de tous, avec une durée | 48 heures au lieu de 5 minutes |
+| La trahison : défense du traître divisée par 2 | Pareil, pendant 24 heures au lieu de 30 secondes |
+| Gagner à 80 % de la carte | Pareil : la saison se termine aussitôt |
+
+**Ce qui diffère volontairement :**
+
+- **Pas de temps réel.** Une partie d'OpenFront dure quelques minutes, et une saison plusieurs jours : les joueurs n'ont pas à être connectés ensemble. Un combat se résout donc d'un coup, et une terre change de main entière.
+- **Des hexagones, pas des pixels.** Le serveur (Postgres) ne pourrait pas suivre des millions de tuiles.
+- **Aucun hasard, aucun bot, aucun navire.** Les bots demanderaient un serveur qui tourne en continu. Les transports par mer sont remplacés par les voisinages de mer et les routes de haute mer.
+- **Pas de chat ni d'émotes :** le clan a déjà son Discord.
+- **Des limites par jour** (conquêtes, attaques), pour que personne ne perde tout pendant son sommeil. Elles se règlent dans `/admin`.
+
+**Rien n'est copié.** Le code d'OpenFront est sous AGPL-3.0 et ses images sous CC BY-SA 4.0 : tout est réécrit ici, sans ses images, ses couleurs ni sa mise en page exacte. Les mécaniques et les règles d'un jeu ne sont pas protégées en elles-mêmes, mais ce point n'a pas été relu par un juriste.
+
 ## Les réglages
 
 `config/conquete.json` donne les valeurs par défaut, copiées dans chaque saison à sa création. Les admins les modifient depuis `/admin` : un fichier seul obligerait à republier le site à chaque changement. Toute modification en cours de saison s'applique aussitôt, et l'ancienne valeur reste au journal. Le serveur refuse une valeur hors limites.
@@ -214,12 +239,24 @@ Toute la chaîne est prête et testée, avec des dons fictifs :
 | `combat.ratioMin`, `ratioMax` | 0,6, 2 | Les bornes du rapport |
 | `combat.lossBase`, `lossDensity` | 0,463, 0,0039 | Les constantes de `attackLogic` |
 | `combat.garrisonBonus` | 5 | Le bonus de garnison |
-| `limits.expansionsPerDay` | 3 | Conquêtes de terre libre par jour |
-| `limits.attacksPerDay` | 5 | Attaques par jour |
-| `limits.attackCooldownMinutes` | 60 | Attente entre deux attaques |
-| `limits.protectionHours` | 24 | Protection d'une terre tout juste prise |
+| `limits.expansionsPerDay` | 10 | Conquêtes de terre libre par jour |
+| `limits.attacksPerDay` | 10 | Attaques par jour |
+| `limits.attackCooldownMinutes` | 15 | Attente entre deux attaques |
+| `limits.protectionHours` | 12 | Protection d'une terre tout juste prise |
 | `limits.lastTerritoryProtected` | oui | Le dernier territoire d'un joueur est inattaquable |
 | `limits.actionsPerMinute` | 30 | Actions par minute et par joueur |
+| `victoryShare` | 0,8 | Part de la carte pour remporter la saison |
+| `gold.start`, `perTerritoryPerHour` | 5 000, 100 | L'or de départ, et par terre et par heure |
+| `structures.cityCost`, `portCost`, `postCost`, `samCost`, `siloCost` | 10 000, 8 000, 5 000, 15 000, 30 000 | Le prix de base de chaque bâtiment |
+| `structures.maxCostDoublings` | 4 | Le prix double à chaque bâtiment du même type, 4 fois au plus |
+| `structures.cityCapacity` | 100 000 | Capacité apportée par une ville |
+| `structures.postFactor` | 1,5 | Pertes de l'attaquant face à un poste de défense |
+| `structures.portGoldPerHour`, `tradeGoldPerPort` | 300, 50 | L'or d'un port, et par port étranger, sur 10 au plus |
+| `structures.bombCost`, `bombDamage`, `bombCooldownHours` | 20 000, 0,75, 24 | Le prix d'une bombe, la part de garnison détruite, l'attente entre deux bombes |
+| `alliance.hours`, `requestHours` | 48, 24 | La durée d'une alliance et d'une demande |
+| `alliance.traitorHours`, `traitorFactor` | 24, 0,5 | La durée du statut de traître, et les pertes de qui l'attaque |
+
+Ces prix et ces durées sont des estimations : **aucune vraie saison n'a encore été jouée**. Ils se règlent dans `/admin`, même en cours de saison.
 
 ## La carte
 
@@ -250,8 +287,9 @@ Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terr
 | `file_cleanup` | Captures à effacer | Personne : serveur seul |
 | `seasons` | Phase, dates, réglages, classement et carte figés | Par fonction |
 | `territories` | Noms, relief, voisins | Membres connectés |
-| `territory_state` | Propriétaire, garnison, fin de protection. Une terre sans ligne est libre. | Par fonction |
-| `players` | Réserve, compteurs du jour, prises et pertes | Soi-même, officiers |
+| `territory_state` | Propriétaire, garnison, bâtiment, fin de protection. Une terre sans ligne est libre. | Par fonction |
+| `players` | Réserve, or, compteurs du jour, prises et pertes, statut de traître | Soi-même, officiers |
+| `alliances` | Demandes et alliances en cours | Par fonction |
 | `game_events` | Fil d'actualité | Par fonction |
 | `action_limits`, `action_requests` | Limite de requêtes, demandes déjà traitées | Personne : serveur seul |
 | `app_state` | Dernière relecture de la liste, dernière sauvegarde, lecture des dons | Personne : serveur seul |

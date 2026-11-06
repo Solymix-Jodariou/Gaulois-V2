@@ -130,23 +130,13 @@ language sql stable security definer set search_path = public, pg_temp as $$
 $$;
 
 -- Clôture : le classement et la carte sont figés, tels quels, pour toujours.
-create function public.close_season(p_season bigint) returns jsonb
+-- Appelée sous le verrou de la saison, par un admin ou par une victoire.
+create function internal.freeze_season(p_season bigint) returns void
 language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  v_actor uuid;
-  v_season public.seasons;
   v_map jsonb;
   v_donors jsonb;
-  v_detail text;
 begin
-  if internal.limit_exceeded() then return internal.error_json('rate_limited', ''); end if;
-  begin
-    v_actor := internal.require_rank(3);
-    perform pg_advisory_xact_lock(727001, p_season::integer);
-    select * into v_season from public.seasons where id = p_season;
-    if not found then perform internal.fail('season_not_found'); end if;
-    if v_season.status not in ('expansion', 'war') then perform internal.fail('season_not_running'); end if;
-
     select coalesce(jsonb_agg(row_to_json(t) order by t.id), '[]') into v_map from (
       select s.territory_id as id, p.gaul_number as owner, s.garrison
       from public.territory_state s
@@ -168,6 +158,23 @@ begin
     where id = p_season;
     insert into public.game_events (season_id, kind) values (p_season, 'season_closed');
     delete from public.action_requests where created_at < now() - interval '7 days';
+end $$;
+
+create function public.close_season(p_season bigint) returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_actor uuid;
+  v_season public.seasons;
+  v_detail text;
+begin
+  if internal.limit_exceeded() then return internal.error_json('rate_limited', ''); end if;
+  begin
+    v_actor := internal.require_rank(3);
+    perform pg_advisory_xact_lock(727001, p_season::integer);
+    select * into v_season from public.seasons where id = p_season;
+    if not found then perform internal.fail('season_not_found'); end if;
+    if v_season.status not in ('expansion', 'war') then perform internal.fail('season_not_running'); end if;
+    perform internal.freeze_season(p_season);
     perform internal.log_admin(v_actor, 'season_closed', null, jsonb_build_object('season', p_season));
     return jsonb_build_object('ok', true);
   exception when sqlstate 'GA001' then
@@ -385,6 +392,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
     'seasons', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.seasons t),
     'players', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.players t),
     'territory_state', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.territory_state t),
+    'alliances', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.alliances t),
     'game_events', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.game_events t),
     'admin_log', (select coalesce(jsonb_agg(to_jsonb(t)), '[]') from public.admin_log t)
   )

@@ -43,6 +43,8 @@ create table public.territory_state (
   garrison bigint not null check (garrison >= 1),
   taken_at timestamptz not null,
   protected_until timestamptz,
+  -- Un seul bâtiment par terre. Il change de main avec elle.
+  building text check (building in ('city', 'port', 'post', 'sam', 'silo')),
   primary key (season_id, territory_id)
 );
 create index territory_state_by_owner on public.territory_state (season_id, owner_id);
@@ -58,17 +60,34 @@ create table public.players (
   last_attack_at timestamptz,
   captured integer not null default 0,
   lost integer not null default 0,
+  gold bigint not null default 0 check (gold >= 0),
+  gold_at timestamptz not null default now(),
+  -- Pendant ce temps, attaquer ce joueur coûte moitié moins : il a rompu une alliance.
+  traitor_until timestamptz,
+  last_bomb_at timestamptz,
   excluded_at timestamptz,
   excluded_reason text,
   joined_at timestamptz not null default now(),
   primary key (season_id, user_id)
 );
 
+-- Une ligne par paire de joueurs, le plus petit identifiant dans `a`.
+create table public.alliances (
+  season_id bigint not null references public.seasons (id) on delete cascade,
+  a uuid not null references public.profiles (user_id) on delete cascade,
+  b uuid not null references public.profiles (user_id) on delete cascade,
+  requested_by uuid not null references public.profiles (user_id) on delete cascade,
+  status text not null check (status in ('pending', 'active')),
+  expires_at timestamptz not null,
+  primary key (season_id, a, b),
+  check (a < b)
+);
+
 create table public.game_events (
   id bigint generated always as identity primary key,
   season_id bigint not null references public.seasons (id) on delete cascade,
   at timestamptz not null default now(),
-  kind text not null check (kind in ('season_started', 'war_started', 'season_closed', 'start', 'expand', 'attack_won', 'attack_lost', 'player_excluded', 'donation', 'donation_cancelled')),
+  kind text not null check (kind in ('season_started', 'war_started', 'season_closed', 'start', 'expand', 'attack_won', 'attack_lost', 'player_excluded', 'donation', 'donation_cancelled', 'building', 'bomb', 'bomb_intercepted', 'alliance_made', 'alliance_broken', 'victory')),
   actor_id uuid references public.profiles (user_id) on delete set null,
   target_id uuid references public.profiles (user_id) on delete set null,
   territory_id integer,
@@ -78,6 +97,8 @@ create table public.game_events (
   garrison_after bigint,
   -- Pour un don : les capsules données. Les troupes reçues sont dans `sent`.
   capsules bigint,
+  -- Pour un bâtiment : son type.
+  detail text,
   notified_at timestamptz
 );
 create index game_events_feed on public.game_events (season_id, id desc);
@@ -120,7 +141,27 @@ begin
       ('{limits,attacksPerDay}', 1, 1000),
       ('{limits,attackCooldownMinutes}', 0, 10080),
       ('{limits,protectionHours}', 0, 720),
-      ('{limits,actionsPerMinute}', 1, 600)
+      ('{limits,actionsPerMinute}', 1, 600),
+      ('{victoryShare}', 0.01, 1),
+      ('{gold,start}', 0, 1000000000),
+      ('{gold,perTerritoryPerHour}', 0, 1000000),
+      ('{structures,cityCost}', 0, 1000000000),
+      ('{structures,portCost}', 0, 1000000000),
+      ('{structures,postCost}', 0, 1000000000),
+      ('{structures,samCost}', 0, 1000000000),
+      ('{structures,siloCost}', 0, 1000000000),
+      ('{structures,bombCost}', 0, 1000000000),
+      ('{structures,maxCostDoublings}', 0, 20),
+      ('{structures,cityCapacity}', 0, 1000000000),
+      ('{structures,postFactor}', 1, 100),
+      ('{structures,portGoldPerHour}', 0, 1000000),
+      ('{structures,tradeGoldPerPort}', 0, 1000000),
+      ('{structures,bombDamage}', 0, 1),
+      ('{structures,bombCooldownHours}', 0, 720),
+      ('{alliance,hours}', 1, 720),
+      ('{alliance,requestHours}', 1, 720),
+      ('{alliance,traitorHours}', 0, 720),
+      ('{alliance,traitorFactor}', 0.01, 1)
     ) as v (path, low, high)
   loop
     if jsonb_typeof(c #> v_item.path::text[]) is distinct from 'number'
@@ -132,7 +173,8 @@ begin
   for v_item in
     select * from (values
       ('{regen,tickMinutes}'), ('{limits,expansionsPerDay}'), ('{limits,attacksPerDay}'),
-      ('{limits,attackCooldownMinutes}'), ('{limits,protectionHours}'), ('{limits,actionsPerMinute}')
+      ('{limits,attackCooldownMinutes}'), ('{limits,protectionHours}'), ('{limits,actionsPerMinute}'),
+      ('{structures,maxCostDoublings}'), ('{structures,bombCooldownHours}'), ('{alliance,hours}'), ('{alliance,requestHours}'), ('{alliance,traitorHours}')
     ) as v (path)
   loop
     if (c #>> v_item.path::text[])::float8 <> floor((c #>> v_item.path::text[])::float8) then
@@ -266,6 +308,28 @@ language sql stable security definer set search_path = public, pg_temp as $$
   select count(*)::integer from public.territory_state where season_id = p_season and owner_id = p_user
 $$;
 
+-- La capacité apportée par les villes d'un joueur, en plus de celle de ses terres et de ses capsules.
+create function internal.city_capacity(p_season public.seasons, p_user uuid) returns float8
+language sql stable security definer set search_path = public, pg_temp as $$
+  select count(*)::float8 * (p_season.config #>> '{structures,cityCapacity}')::float8
+  from public.territory_state
+  where season_id = p_season.id and owner_id = p_user and building = 'city'
+$$;
+
+-- L'or gagné par heure : chaque terre rapporte, et chaque port commerce avec ceux des autres joueurs.
+create function internal.gold_rate(p_season public.seasons, p_user uuid) returns bigint
+language sql stable security definer set search_path = public, pg_temp as $$
+  select (
+    count(*) filter (where owner_id = p_user) * (p_season.config #>> '{gold,perTerritoryPerHour}')::float8
+    + count(*) filter (where owner_id = p_user and building = 'port') * (
+        (p_season.config #>> '{structures,portGoldPerHour}')::float8
+        + (p_season.config #>> '{structures,tradeGoldPerPort}')::float8 * least(count(*) filter (where owner_id <> p_user and building = 'port'), 10)
+      )
+  )::bigint
+  from public.territory_state
+  where season_id = p_season.id
+$$;
+
 -- Met la réserve et les compteurs du jour d'un joueur à l'heure. Appelée sous le verrou de la saison.
 create function internal.touch_player(p_season public.seasons, p_user uuid) returns public.players
 language plpgsql security definer set search_path = public, pg_temp as $$
@@ -276,15 +340,19 @@ declare
   v_now timestamptz := clock_timestamp();
   v_today date := internal.paris_today();
   v_settled record;
+  v_hours integer;
 begin
   select * into v_player from public.players where season_id = p_season.id and user_id = p_user;
   if not found then return null; end if;
   select capsules_total into v_capsules from public.profiles where user_id = p_user;
-  v_cap := internal.capacity(internal.territory_count(p_season.id, p_user), v_capsules, p_season.config);
+  v_cap := internal.capacity(internal.territory_count(p_season.id, p_user), v_capsules, p_season.config) + internal.city_capacity(p_season, p_user);
   select * into v_settled from internal.settled(v_player.troops, v_player.troops_at, v_now, v_cap, p_season.config);
+  v_hours := floor(extract(epoch from v_now - v_player.gold_at) / 3600);
   update public.players
   set troops = v_settled.troops,
     troops_at = v_settled.since,
+    gold = gold + v_hours * internal.gold_rate(p_season, p_user),
+    gold_at = gold_at + make_interval(hours => v_hours),
     counters_day = v_today,
     expansions_today = case when counters_day = v_today then expansions_today else 0 end,
     attacks_today = case when counters_day = v_today then attacks_today else 0 end
@@ -356,9 +424,9 @@ begin
     end if;
     if v_player.user_id is null then
       select capsules_total into v_capsules from public.profiles where user_id = v_uid;
-      insert into public.players (season_id, user_id, troops, troops_at, counters_day)
+      insert into public.players (season_id, user_id, gold, gold_at, troops, troops_at, counters_day)
       values (
-        v_season.id, v_uid,
+        v_season.id, v_uid, (v_season.config #>> '{gold,start}')::bigint, v_now,
         -- Les dons faits depuis le lancement de la saison l'attendaient.
         internal.start_reserve(v_uid, v_capsules, v_season),
         v_now, internal.paris_today()
@@ -434,6 +502,7 @@ begin
     insert into public.game_events (season_id, kind, actor_id, territory_id, sent, losses, garrison_after)
     values (v_season.id, 'expand', v_uid, p_territory, p_troops, v_cost, v_garrison);
     perform internal.war_if_full(v_season);
+    perform internal.check_victory(v_season, v_uid);
     return internal.remember(p_request_id, v_uid, jsonb_build_object('ok', true, 'territory', p_territory, 'cost', v_cost, 'garrison', v_garrison, 'troops', v_player.troops));
   exception when sqlstate 'GA001' then
     get stacked diagnostics v_detail = pg_exception_detail;
@@ -483,6 +552,7 @@ declare
   v_season public.seasons;
   v_players jsonb;
   v_territories jsonb;
+  v_alliances jsonb;
   v_uid uuid := auth.uid();
   v_me integer;
 begin
@@ -493,6 +563,7 @@ begin
 
   select coalesce(jsonb_agg(row_to_json(t) order by t.territories desc, t.number), '[]') into v_players from (
     select p.gaul_number as number, p.display_name as name, g.captured, g.lost,
+      case when g.traitor_until > now() then g.traitor_until end as traitor_until,
       (select count(*) from public.territory_state s where s.season_id = g.season_id and s.owner_id = g.user_id) as territories
     from public.players g
     join public.profiles p on p.user_id = g.user_id
@@ -500,10 +571,19 @@ begin
   ) t;
 
   select coalesce(jsonb_agg(row_to_json(t) order by t.id), '[]') into v_territories from (
-    select s.territory_id as id, p.gaul_number as owner, s.garrison, s.protected_until
+    select s.territory_id as id, p.gaul_number as owner, s.garrison, s.protected_until, s.building, s.taken_at
     from public.territory_state s
     join public.profiles p on p.user_id = s.owner_id
     where s.season_id = v_season.id
+  ) t;
+
+  -- Les alliances se voient : c'est toute leur force, et ce qui rend la trahison publique.
+  select coalesce(jsonb_agg(row_to_json(t)), '[]') into v_alliances from (
+    select pa.gaul_number as a, pb.gaul_number as b, l.expires_at
+    from public.alliances l
+    join public.profiles pa on pa.user_id = l.a
+    join public.profiles pb on pb.user_id = l.b
+    where l.season_id = v_season.id and l.status = 'active' and l.expires_at > now()
   ) t;
 
   select gaul_number into v_me from public.profiles where user_id = v_uid;
@@ -523,6 +603,7 @@ begin
     ),
     'players', v_players,
     'territories', v_territories,
+    'alliances', v_alliances,
     'me', v_me,
     'read_at', now()
   );
@@ -542,7 +623,7 @@ begin
   if not found then return jsonb_build_object('ok', true, 'rows', '[]'::jsonb); end if;
 
   select coalesce(jsonb_agg(row_to_json(t)), '[]') into v_rows from (
-    select e.id, e.at, e.kind, e.sent, e.losses, e.garrison_before, e.garrison_after, e.capsules,
+    select e.id, e.at, e.kind, e.sent, e.losses, e.garrison_before, e.garrison_after, e.capsules, e.detail,
       -- Un donneur anonyme le reste aussi dans le fil.
       case when e.kind in ('donation', 'donation_cancelled') and a.anonymous_donations then null else a.display_name end as actor,
       d.display_name as target, t.name as territory, t.id as territory_id
@@ -571,6 +652,8 @@ declare
   v_settled record;
   v_today date := internal.paris_today();
   v_tick float8;
+  v_gold_rate bigint;
+  v_hours integer;
   v_detail text;
 begin
   v_uid := internal.require_rank(1);
@@ -590,7 +673,9 @@ begin
   end if;
 
   v_count := internal.territory_count(v_season.id, v_uid);
-  v_cap := internal.capacity(v_count, v_capsules, v_season.config);
+  v_cap := internal.capacity(v_count, v_capsules, v_season.config) + internal.city_capacity(v_season, v_uid);
+  v_gold_rate := internal.gold_rate(v_season, v_uid);
+  v_hours := floor(extract(epoch from now() - v_player.gold_at) / 3600);
   select * into v_settled from internal.settled(v_player.troops, v_player.troops_at, now(), v_cap, v_season.config);
   v_tick := (v_season.config #>> '{regen,tickMinutes}')::float8 * 60;
 
@@ -611,7 +696,19 @@ begin
     'cooldown_until', case when v_player.last_attack_at is null then null
       else v_player.last_attack_at + make_interval(mins => (v_season.config #>> '{limits,attackCooldownMinutes}')::integer) end,
     'captured', v_player.captured,
-    'lost', v_player.lost
+    'lost', v_player.lost,
+    'gold', v_player.gold + v_hours * v_gold_rate,
+    'gold_per_hour', v_gold_rate,
+    'traitor_until', case when v_player.traitor_until > now() then v_player.traitor_until end,
+    'bomb_ready_at', case when v_player.last_bomb_at is null then null
+      else v_player.last_bomb_at + make_interval(hours => (v_season.config #>> '{structures,bombCooldownHours}')::integer) end,
+    -- Les joueurs qui attendent ma réponse, et ceux à qui j'ai proposé.
+    'alliance_requests', (select coalesce(jsonb_agg(jsonb_build_object('number', p.gaul_number, 'name', p.display_name)), '[]')
+      from public.alliances l join public.profiles p on p.user_id = l.requested_by
+      where l.season_id = v_season.id and l.status = 'pending' and l.expires_at > now() and l.requested_by <> v_uid and v_uid in (l.a, l.b)),
+    'alliance_sent', (select coalesce(jsonb_agg(p.gaul_number), '[]')
+      from public.alliances l join public.profiles p on p.user_id = case when l.a = v_uid then l.b else l.a end
+      where l.season_id = v_season.id and l.status = 'pending' and l.expires_at > now() and l.requested_by = v_uid)
   );
 exception when sqlstate 'GA001' then
   get stacked diagnostics v_detail = pg_exception_detail;
@@ -625,8 +722,9 @@ alter table public.territories enable row level security;
 alter table public.territory_state enable row level security;
 alter table public.players enable row level security;
 alter table public.game_events enable row level security;
+alter table public.alliances enable row level security;
 
-revoke all on public.seasons, public.territories, public.territory_state, public.players, public.game_events from anon, authenticated;
+revoke all on public.seasons, public.territories, public.territory_state, public.players, public.game_events, public.alliances from anon, authenticated;
 
 -- Le public lit tout par des fonctions, qui ne montrent jamais l'identifiant d'un compte.
 -- Un membre connecté peut aussi lire ses propres lignes.

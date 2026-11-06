@@ -2,6 +2,7 @@ import { fmtInt } from "../format";
 import type { FeedRow } from "./types";
 
 const FORMER_MEMBER = "Un ancien membre";
+const BUILT: Record<string, string> = { city: "une ville", port: "un port", post: "un poste de défense", sam: "une défense antiaérienne", silo: "un silo" };
 
 const plural = (n: number | null, one: string, many: string) => `${fmtInt(n ?? 0)} ${(n ?? 0) > 1 ? many : one}`;
 /** Une réserve déjà pleine ne reçoit rien : on le dit, plutôt qu'un « +0 » incompréhensible. */
@@ -33,11 +34,24 @@ export function feedText(e: FeedRow): string {
       return `${e.actor ?? "Un membre anonyme"} offre ${plural(e.capsules, "capsule", "capsules")} au clan : ${gain(e.sent)}.`;
     case "donation_cancelled":
       return `Un don de ${plural(e.capsules, "capsule", "capsules")} a été annulé par un officier : ${plural(e.sent, "troupe repart", "troupes repartent")}.`;
+    case "building":
+      return `${actor} construit ${BUILT[e.detail ?? ""] ?? "un bâtiment"} à ${territory}.`;
+    case "bomb":
+      return `${actor} a bombardé ${territory}, tenu par ${target}.`;
+    case "bomb_intercepted":
+      return `La bombe de ${actor} sur ${territory} a été arrêtée par la défense de ${target}.`;
+    case "alliance_made":
+      return `${actor} et ${target} s'allient.`;
+    case "alliance_broken":
+      return `${actor} a trahi ${target} !`;
+    case "victory":
+      return `${actor} domine la carte et remporte la saison !`;
   }
 }
 
 /** Les chiffres d'un combat, pour qui veut les détails. */
 export function feedDetail(e: FeedRow): string | null {
+  if (e.kind === "bomb" && e.garrison_before !== null && e.garrison_after !== null) return `Garnison : de ${fmtInt(e.garrison_before)} à ${fmtInt(e.garrison_after)}.`;
   if (e.kind !== "attack_won" && e.kind !== "attack_lost") return null;
   if (e.sent === null || e.garrison_before === null || e.garrison_after === null) return null;
   const outcome = e.kind === "attack_won" ? `${fmtInt(e.garrison_after)} tiennent la place` : `garnison réduite à ${fmtInt(e.garrison_after)}`;

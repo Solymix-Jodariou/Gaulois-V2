@@ -118,7 +118,7 @@ export async function seedDemo(pool: pg.Pool): Promise<DemoPlayers> {
   const byName = new Map(MAP.territories.map((t) => [t.name, t]));
   const taken = new Set<number>();
   for (const player of players) {
-    await pool.query("insert into public.players (season_id, user_id, troops, troops_at, counters_day) values ($1, $2, $3, now(), current_date)", [season, player.id, 60_000]);
+    await pool.query("insert into public.players (season_id, user_id, troops, troops_at, counters_day, gold) values ($1, $2, $3, now(), current_date, $4)", [season, player.id, 60_000, 45_000]);
     const start = byName.get(player.seed);
     if (!start) throw new Error(`Ville absente de la carte : ${player.seed}`);
     const queue = [start.id];
@@ -132,6 +132,22 @@ export async function seedDemo(pool: pg.Pool): Promise<DemoPlayers> {
       queue.push(...MAP.territories[id - 1]!.neighbours);
     }
   }
+
+  // De quoi tout voir : des bâtiments sur les villes de départ, une alliance, un traître, une terre tout juste prise.
+  const building = (name: string, kind: string) => pool.query("update public.territory_state set building = $3 where season_id = $1 and territory_id = $2", [season, byName.get(name)!.id, kind]);
+  await building("Paris", "city");
+  await building("Berlin", "post");
+  await building("Madrid", "port");
+  await building("Moscou", "silo");
+  await building("Le Caire", "sam");
+  await building("Pékin", "city");
+  await building("Tokyo", "port");
+  const pair = [member, founder].sort() as [string, string];
+  await pool.query("insert into public.alliances (season_id, a, b, requested_by, status, expires_at) values ($1, $2, $3, $4, 'active', now() + interval '36 hours')", [season, pair[0], pair[1], founder]);
+  const pending = [member, others[1]!].sort() as [string, string];
+  await pool.query("insert into public.alliances (season_id, a, b, requested_by, status, expires_at) values ($1, $2, $3, $4, 'pending', now() + interval '20 hours')", [season, pending[0], pending[1], others[1]]);
+  await pool.query("update public.players set traitor_until = now() + interval '20 hours' where season_id = $1 and user_id = $2", [season, others[2]]);
+  await pool.query("update public.territory_state set taken_at = now() where season_id = $1 and territory_id = $2", [season, byName.get("Moscou")!.id]);
 
   const events = [
     ["season_started", null, null, null],

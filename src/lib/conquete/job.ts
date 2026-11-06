@@ -159,6 +159,12 @@ export function announcement(e: NotifyEvent): string {
       return `La saison « ${e.season} » est terminée : le classement et la carte sont figés.`;
     case "attack_won":
       return `${e.actor ?? "Un ancien membre"} a pris ${e.territory ?? "un territoire"} à ${e.target ?? "un ancien membre"}.`;
+    case "alliance_broken":
+      return `${e.actor ?? "Un ancien membre"} a trahi ${e.target ?? "un ancien membre"} dans la Conquête !`;
+    case "bomb":
+      return `${e.actor ?? "Un ancien membre"} a bombardé ${e.territory ?? "un territoire"}, tenu par ${e.target ?? "un ancien membre"}.`;
+    case "victory":
+      return `${e.actor ?? "Un ancien membre"} domine la carte et remporte la saison « ${e.season} » !`;
     case "donation":
       return `${e.actor ?? "Un membre anonyme"} offre ${count(e.capsules)} capsules au clan : +${count(e.sent)} troupes dans la Conquête.`;
     default:

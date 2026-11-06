@@ -95,7 +95,8 @@ describe("conquérir une terre libre", () => {
     expect(await expand(db, member, cluster[0]!, 3000)).toMatchObject({ ok: false, error: "no_start" });
   });
 
-  it("limité à 3 par jour pour tous, même un gros donneur, et ça repart le lendemain", async () => {
+  it("limité chaque jour pour tous, même un gros donneur, et ça repart le lendemain", async () => {
+    await db.sql("update public.seasons set config = jsonb_set(config, '{limits,expansionsPerDay}', '3') where id = $1", [season]);
     const whale = await db.addMember("Terre6");
     await db.sql("update public.profiles set capsules_total = 1000000 where user_id = $1", [whale]);
     await chooseStart(db, whale, cluster[0]!, 1000);

@@ -95,7 +95,7 @@ describe("les réglages", () => {
     const state = await db.rpc<RpcResult & { season: { config: { limits: { expansionsPerDay: number } } } }>(ANON, "get_game_state");
     expect(state.season.config.limits.expansionsPerDay).toBe(7);
     const [log] = await db.sql<{ details: { before: { limits: { expansionsPerDay: number } }; after: { limits: { expansionsPerDay: number } } } }>("select details from public.admin_log where action = 'season_config_changed' order by id desc limit 1");
-    expect(log!.details.before.limits.expansionsPerDay).toBe(3);
+    expect(log!.details.before.limits.expansionsPerDay).toBe(DEFAULT_CONFIG.limits.expansionsPerDay);
     expect(log!.details.after.limits.expansionsPerDay).toBe(7);
 
     await db.rpc(asUser(admin), "close_season", { p_season: id });

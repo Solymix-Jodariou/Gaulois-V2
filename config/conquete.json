@@ -30,11 +30,37 @@
     "garrisonBonus": 5
   },
   "limits": {
-    "expansionsPerDay": 3,
-    "attacksPerDay": 5,
-    "attackCooldownMinutes": 60,
-    "protectionHours": 24,
+    "expansionsPerDay": 10,
+    "attacksPerDay": 10,
+    "attackCooldownMinutes": 15,
+    "protectionHours": 12,
     "lastTerritoryProtected": true,
     "actionsPerMinute": 30
+  },
+  "victoryShare": 0.8,
+  "gold": {
+    "start": 5000,
+    "perTerritoryPerHour": 100
+  },
+  "structures": {
+    "cityCost": 10000,
+    "portCost": 8000,
+    "postCost": 5000,
+    "samCost": 15000,
+    "siloCost": 30000,
+    "bombCost": 20000,
+    "maxCostDoublings": 4,
+    "cityCapacity": 100000,
+    "postFactor": 1.5,
+    "portGoldPerHour": 300,
+    "tradeGoldPerPort": 50,
+    "bombDamage": 0.75,
+    "bombCooldownHours": 24
+  },
+  "alliance": {
+    "hours": 48,
+    "requestHours": 24,
+    "traitorHours": 24,
+    "traitorFactor": 0.5
   }
 }

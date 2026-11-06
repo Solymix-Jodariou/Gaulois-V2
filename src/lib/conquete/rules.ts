@@ -14,6 +14,32 @@ export const DEFAULT_CONFIG: ConquestConfig = defaults;
 
 export const TERRAIN_LABELS: Record<Terrain, string> = { plains: "Plaine", highland: "Colline", mountain: "Montagne" };
 
+export type BuildingKind = "city" | "port" | "post" | "sam" | "silo";
+
+export const BUILDINGS: Record<BuildingKind, { label: string; mark: string; effect: (c: ConquestConfig) => string }> = {
+  city: { label: "Ville", mark: "V", effect: (c) => `+${c.structures.cityCapacity.toLocaleString("fr-FR")} de capacité` },
+  port: { label: "Port", mark: "P", effect: (c) => `+${c.structures.portGoldPerHour} d'or par heure, plus le commerce avec les ports des autres` },
+  post: { label: "Poste de défense", mark: "D", effect: (c) => `Cette terre et vos voisines coûtent ${String(c.structures.postFactor).replace(".", ",")} fois plus de pertes` },
+  sam: { label: "Défense antiaérienne", mark: "A", effect: () => "Arrête les bombes sur cette terre et vos voisines" },
+  silo: { label: "Silo", mark: "S", effect: () => "Permet de lancer des bombes, partout sur la carte" },
+};
+
+/** Chaque bâtiment du même type coûte le double du précédent, jusqu'à un plafond. */
+export function buildingCost(kind: BuildingKind, owned: number, c: ConquestConfig = DEFAULT_CONFIG): number {
+  return Math.floor(c.structures[`${kind}Cost`] * Math.pow(2, Math.min(owned, c.structures.maxCostDoublings)));
+}
+
+/** Ce qui multiplie les pertes de l'attaquant. Le serveur fait le même calcul dans `internal.defence_factor`. */
+export function defenceFactor(fortified: boolean, traitor: boolean, c: ConquestConfig = DEFAULT_CONFIG): number {
+  return (fortified ? c.structures.postFactor : 1) * (traitor ? c.alliance.traitorFactor : 1);
+}
+
+/** Les troupes envoyées pour un ratio d'attaque : au moins une, jamais plus que la réserve. */
+export function troopsForRatio(reserve: number, percent: number): number {
+  if (reserve <= 0) return 0;
+  return Math.min(reserve, Math.max(1, Math.floor((reserve * percent) / 100)));
+}
+
 /**
  * `maxTroops` d'OpenFront : `2 × (tuiles^0,6 × 1000 + 50 000) + villes`.
  * Un territoire vaut 100 tuiles, et les capsules données prennent la place des villes.
@@ -71,10 +97,10 @@ export interface AttackResult {
  * Le ×5 est le bonus du poste de défense : toute garnison est retranchée.
  * En cas d'échec, la garnison perd la part du territoire que l'attaque aurait prise.
  */
-export function resolveAttack(sent: number, garrison: number, terrain: Terrain, c: ConquestConfig = DEFAULT_CONFIG): AttackResult {
+export function resolveAttack(sent: number, garrison: number, terrain: Terrain, c: ConquestConfig = DEFAULT_CONFIG, factor = 1): AttackResult {
   const { ratioMin, ratioMax, lossBase, lossDensity, garrisonBonus } = c.combat;
   const ratio = Math.min(Math.max(garrison / sent, ratioMin), ratioMax);
-  const losses = c.terrain[terrain] * ratio * (lossBase * c.tilesPerTerritory + garrisonBonus * lossDensity * garrison);
+  const losses = c.terrain[terrain] * ratio * (lossBase * c.tilesPerTerritory + garrisonBonus * lossDensity * garrison) * factor;
   if (losses < sent) {
     const survivors = Math.max(1, nearest(sent - losses));
     return { won: true, ratio, losses, survivors, garrisonAfter: survivors };
@@ -86,12 +112,12 @@ export function resolveAttack(sent: number, garrison: number, terrain: Terrain, 
 export const nearest = (value: number): number => Math.floor(value + 0.5);
 
 /** Le plus petit envoi qui gagne, pour l'indiquer au joueur. */
-export function troopsToWin(garrison: number, terrain: Terrain, c: ConquestConfig = DEFAULT_CONFIG): number {
+export function troopsToWin(garrison: number, terrain: Terrain, c: ConquestConfig = DEFAULT_CONFIG, factor = 1): number {
   let low = 1;
   let high = Math.max(garrison, 1000) * 64;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
-    if (resolveAttack(middle, garrison, terrain, c).won) high = middle;
+    if (resolveAttack(middle, garrison, terrain, c, factor).won) high = middle;
     else low = middle + 1;
   }
   return low;

@@ -66,7 +66,7 @@ describe("les réglages", () => {
   it("se modifient sans toucher à l'original", () => {
     const changed = withValue(DEFAULT_CONFIG, "limits.attacksPerDay", 9);
     expect(changed.limits.attacksPerDay).toBe(9);
-    expect(DEFAULT_CONFIG.limits.attacksPerDay).toBe(5);
+    expect(DEFAULT_CONFIG.limits.attacksPerDay).toBe(10);
     expect(changed.capacity.base).toBe(DEFAULT_CONFIG.capacity.base);
   });
 });
@@ -95,7 +95,7 @@ describe("le fil d'actualité", () => {
   });
 
   it("a un texte pour chaque événement", () => {
-    const kinds: EventKind[] = ["season_started", "war_started", "season_closed", "start", "expand", "attack_won", "attack_lost", "player_excluded", "donation", "donation_cancelled"];
+    const kinds: EventKind[] = ["season_started", "war_started", "season_closed", "start", "expand", "attack_won", "attack_lost", "player_excluded", "donation", "donation_cancelled", "building", "bomb", "bomb_intercepted", "alliance_made", "alliance_broken", "victory"];
     for (const kind of kinds) expect(feedText({ ...base, kind }).length).toBeGreaterThan(5);
     const declared = /kind in \(([^)]*)\)/.exec(SQL)![1]!.match(/'([a-z_]+)'/g)!.map((s) => s.replaceAll("'", ""));
     expect(declared.sort()).toEqual([...kinds].sort());
@@ -143,8 +143,7 @@ describe("les règles écrites pour les membres", () => {
     const { limits } = DEFAULT_CONFIG;
     expect(RULES).toContain(`**${limits.expansionsPerDay} terres libres par jour**`);
     expect(RULES).toContain(`**${limits.attacksPerDay} attaques par jour**`);
-    expect(RULES).toContain("**1 heure**");
-    expect(limits.attackCooldownMinutes).toBe(60);
+    expect(RULES).toContain(`**${limits.attackCooldownMinutes} minutes**`);
     expect(RULES).toContain(`**protégée pendant ${limits.protectionHours} heures**`);
     expect(limits.lastTerritoryProtected).toBe(true);
     expect(RULES).toContain("**Le dernier territoire d'un joueur ne peut pas être attaqué**");
