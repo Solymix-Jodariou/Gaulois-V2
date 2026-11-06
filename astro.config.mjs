@@ -10,5 +10,7 @@ export default defineConfig({
   base: process.env.BASE_PATH || "/",
   trailingSlash: "ignore",
   integrations: [preact()],
+  // Les guides n'affichent que des formules : ni coloration, ni défilement dans les blocs de code.
+  markdown: { syntaxHighlight: false },
   vite: { plugins: [tailwindcss()] },
 });

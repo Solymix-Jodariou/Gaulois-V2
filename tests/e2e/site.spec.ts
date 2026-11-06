@@ -91,7 +91,12 @@ test("parcours principal", async ({ page }, testInfo) => {
   // Débuter : le calculateur réagit et ne dépend pas de la frontière.
   await page.goto("/debuter");
   await hydrated(page);
-  await expect(page.getByTestId("guide-card")).toHaveCount(4);
+  await expect(page.getByTestId("guide-card")).toHaveCount(5);
+  await expect(page.getByTestId("guide-chapter")).toHaveCount(11);
+  await expect(page.getByTestId("growth-chart").locator("svg")).toBeVisible();
+  await expect(page.getByText("Ce guide reste à rédiger")).toHaveCount(0);
+  // Le wiki est sous CC BY-SA : sa mention ne doit pas disparaître de la page.
+  await expect(page.getByTestId("guide-sources").getByRole("link", { name: "CC BY-SA 4.0" })).toBeVisible();
   await expect(page.getByText("Repère indicatif, pas une garantie.")).toBeVisible();
   const minimum = page.getByTestId("calc-minimum");
   await expect(minimum).not.toBeEmpty();

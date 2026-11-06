@@ -374,6 +374,128 @@ main .card:hover::before {
 .data-table .num {
   text-align: right;
 }
+/* Les guides de /debuter, écrits en Markdown dans content/ : titres, listes, tableaux, encadrés, formules. */
+.guide-body > * + *,
+.guide-body details > * + * {
+  margin-top: 0.75rem;
+}
+.guide-body h4 {
+  margin-top: 1.25rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: #fff;
+}
+.guide-body h4:first-child {
+  margin-top: 0;
+}
+.guide-body strong {
+  font-weight: 600;
+  color: #fff;
+}
+.guide-body ul,
+.guide-body ol {
+  padding-left: 1.25rem;
+}
+.guide-body ul {
+  list-style: disc;
+}
+.guide-body ol {
+  list-style: decimal;
+}
+.guide-body li + li {
+  margin-top: 0.375rem;
+}
+.guide-body li::marker {
+  color: var(--color-blue-text);
+}
+.guide-body table {
+  width: 100%;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  /* Sinon `anywhere`, posé sur body, autorise le navigateur à couper les mots pour tasser les colonnes. */
+  overflow-wrap: break-word;
+}
+.guide-body th {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.guide-body td {
+  padding: 0.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 55%, transparent);
+}
+.guide-body blockquote {
+  padding: 0.625rem 0.875rem;
+  border-left: 3px solid var(--color-blue-text);
+  border-radius: 0.5rem;
+  background: var(--color-surface-2);
+  font-size: 0.875rem;
+}
+.guide-body code {
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--color-night);
+  font-size: 0.8125rem;
+  color: #fff;
+}
+.guide-body pre {
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-night);
+  white-space: pre-wrap;
+  font-size: 0.8125rem;
+  color: #fff;
+}
+.guide-body pre code {
+  padding: 0;
+  background: none;
+}
+.guide-body details {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-line);
+}
+.guide-body summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #fff;
+}
+/* Sur grand écran, une fiche très large se lit en colonnes plutôt qu'en lignes interminables. */
+@media (min-width: 64rem) {
+  .guide-columns {
+    columns: 2;
+    column-gap: 2rem;
+  }
+  .guide-columns h4 {
+    break-after: avoid;
+  }
+  .guide-columns ul,
+  .guide-columns table,
+  .guide-columns blockquote {
+    break-inside: avoid;
+  }
+}
+.guide-toc {
+  padding-left: 1.5rem;
+  list-style: decimal;
+  font-size: 0.875rem;
+}
+.guide-toc li + li {
+  margin-top: 0.375rem;
+}
+.guide-toc li::marker {
+  color: var(--color-muted);
+}
+@media (min-width: 48rem) {
+  .guide-toc {
+    columns: 2;
+    column-gap: 2rem;
+  }
+}
 .data-table tbody tr {
   transition: background-color 0.15s;
 }

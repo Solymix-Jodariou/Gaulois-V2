@@ -73,6 +73,7 @@ Le build en tire des versions légères dans `public/generated/`, et le site n'a
 - **Rang et score :** deux graphiques distincts, jamais de double axe. Le rang a l'axe inversé.
 - **Heatmap :** une seule teinte, du sombre au clair, avec le nombre écrit dans chaque case. C'est un vrai tableau HTML. En dessous de 1 024 px, il pivote en une ligne par heure pour tenir sans défilement horizontal.
 - **Période en cours :** barre plus pâle.
+- **Croissance des troupes (page Débuter) :** une seule courbe calculée, en bleu `#4C86F5`, avec la zone de 35 à 42 % en surbrillance. Le survol lit une valeur, et un tableau repliable donne les mêmes chiffres sans survol.
 
 ## Mouvement et interactions
 
