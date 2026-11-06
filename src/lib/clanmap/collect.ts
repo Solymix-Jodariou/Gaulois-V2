@@ -2,10 +2,11 @@
  * Collecte de la carte officielle des clans, une fois par jour.
  *
  * L'historique vient de `/public/clanmap/history`, la route documentée par OpenFront
- * pour construire ce genre de film. Il reste hors de Git, dans `cacheDir` : il pèse
- * plusieurs dizaines de mégaoctets et grossit vite. Perdu, il se retélécharge
- * entièrement. Seul le film compilé est écrit dans `data/clanmap/`, et seulement si
- * le rejeu retombe sur l'ancien propriétaire annoncé par chaque événement.
+ * pour construire ce genre de film, et le terrain du dépôt public du jeu. Ils restent
+ * hors de Git, dans `cacheDir` : l'historique pèse plusieurs dizaines de mégaoctets et
+ * grossit vite. Perdus, ils se retéléchargent entièrement. Seul le film compilé est écrit
+ * dans `data/clanmap/`, et seulement si le rejeu retombe sur l'ancien propriétaire
+ * annoncé par chaque événement.
  */
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, rename, rm, truncate, writeFile } from "node:fs/promises";
@@ -13,11 +14,12 @@ import { join } from "node:path";
 import { z } from "zod";
 import { encodeFrames } from "./codec";
 import { analyzeTerritory, replayHistory, type EventLog } from "./replay";
-import { OFFICIAL_MAP } from "./terrain";
+import { OFFICIAL_MAP, TERRAIN_ORIGIN, TERRAIN_PATH, countLand } from "./terrain";
 import { API_ORIGIN, ApiClient, markError, markOk, readJson, writeJson, type Deps } from "../pipeline";
 import { ApiClanCard, ApiClanMapHistory, ClanMapJournal, Meta, StoredClanMapFilm, emptyMeta } from "../schemas";
 import { parisParts } from "../time";
 
+const FILM_VERSION = 3;
 const SCALE = 2;
 const RECORD_BYTES = 16;
 const MIN_INTERVAL_MS = 20 * 3_600_000;
@@ -94,6 +96,29 @@ async function fetchClanCard(api: ApiClient, deps: ClanMapDeps): Promise<z.outpu
   }
 }
 
+/**
+ * Le terrain, gardé dans le cache. Il sert à reconnaître la terre : sans lui, le film
+ * reste valable et la page n'affiche pas ce chiffre. Un fichier qui ne donne pas la
+ * surface de terre attendue n'est ni utilisé ni gardé.
+ */
+async function loadTerrain(api: ApiClient, deps: ClanMapDeps, map: typeof OFFICIAL_MAP): Promise<Uint8Array | null> {
+  const path = join(deps.cacheDir, "terrain.bin");
+  const matches = (bytes: Uint8Array) => bytes.length === map.width * map.height && countLand(bytes) === map.land;
+  try {
+    if (existsSync(path)) {
+      const cached = await readFile(path);
+      if (matches(cached)) return cached;
+    }
+    const terrain = await api.getBytes(TERRAIN_PATH, TERRAIN_ORIGIN);
+    if (!matches(terrain)) throw new Error("taille ou surface de terre inattendue");
+    await writeBytes(path, terrain);
+    return terrain;
+  } catch (e) {
+    deps.log(`carte : terrain indisponible (${e instanceof Error ? e.message : String(e)})`);
+    return null;
+  }
+}
+
 /** Où reprendre : après la dernière page complète, pour rester sur les pages en cache chez OpenFront. */
 async function resumePoint(logPath: string, deps: ClanMapDeps): Promise<number> {
   if (!existsSync(logPath)) return 0;
@@ -131,7 +156,8 @@ async function downloadHistory(api: ApiClient, deps: ClanMapDeps, width: number,
 }
 
 async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Promise<StoredClanMapFilm> {
-  const { width, height, land } = deps.map ?? OFFICIAL_MAP;
+  const map = deps.map ?? OFFICIAL_MAP;
+  const { width, height, land } = map;
   const dir = join(deps.dataDir, "clanmap");
   await mkdir(dir, { recursive: true });
   await mkdir(deps.cacheDir, { recursive: true });
@@ -154,6 +180,7 @@ async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Pro
     throw new Error(`le rejeu contredit l'historique sur ${result.check.mismatches} événements`);
   }
 
+  const terrain = await loadTerrain(api, deps, map);
   const card = await fetchClanCard(api, deps);
 
   const clanAt = (index: number) => {
@@ -161,7 +188,7 @@ async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Pro
     return { tag: entry?.tag ?? null, color: entry?.color ?? null };
   };
   const order = [...result.pixels.keys()].filter((i) => i > 0 && result.pixels[i]! > 0).sort((a, b) => result.pixels[b]! - result.pixels[a]! || a - b);
-  const analysis = result.gal !== null && result.galSummary ? analyzeTerritory(result.grid, width, height, SCALE, result.gal) : null;
+  const analysis = result.gal !== null && result.galSummary ? analyzeTerritory(result.grid, width, height, SCALE, result.gal, terrain) : null;
   const treasury = card
     ? {
         caps: card.softBalance === undefined ? null : Number(card.softBalance),
@@ -170,7 +197,7 @@ async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Pro
       }
     : null;
   const film: StoredClanMapFilm = {
-    version: 2,
+    version: FILM_VERSION,
     fetchedAt: at,
     seq: log.seq[log.length - 1]!,
     events: log.length,
@@ -203,6 +230,7 @@ async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Pro
             }),
             zones: analysis.zones,
             zoneCount: analysis.zoneCount,
+            neutralBorder: analysis.neutralBorder,
           }
         : null,
     standings: order.map((i) => ({ ...clanAt(i), pixels: result.pixels[i]! })),
@@ -232,12 +260,19 @@ export interface ClanMapRun {
   updated: boolean;
 }
 
+/** Un film d'un format plus ancien se refait au passage suivant, sans attendre le délai d'une journée. */
+async function filmIsOutdated(deps: ClanMapDeps): Promise<boolean> {
+  const stored = await readJson(join(deps.dataDir, "clanmap", "film.json"), z.object({ version: z.number() }));
+  return stored !== null && stored.version < FILM_VERSION;
+}
+
 /** Un échec garde le dernier film valide et se note dans `meta.json`. */
 export async function runClanMap(deps: ClanMapDeps): Promise<ClanMapRun> {
   const metaPath = join(deps.dataDir, "meta.json");
   const meta = (await readJson(metaPath, Meta)) ?? emptyMeta();
   const last = meta.clanmap.lastSuccessAt ? Date.parse(meta.clanmap.lastSuccessAt) : 0;
-  if (!deps.force && deps.now().getTime() - last < MIN_INTERVAL_MS) return { errors: [], updated: false };
+  const recent = deps.now().getTime() - last < MIN_INTERVAL_MS;
+  if (!deps.force && recent && !(await filmIsOutdated(deps))) return { errors: [], updated: false };
 
   const at = deps.now().toISOString();
   const errors: string[] = [];

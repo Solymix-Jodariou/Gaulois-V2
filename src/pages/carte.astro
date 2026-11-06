@@ -7,7 +7,6 @@ import { clan } from "../../config/clan";
 import { clanRgb } from "../lib/clanmap/codec";
 import { RULES_CHECKED_ON, TROOPS_PER_CAP, NEUTRAL_PIXEL_TROOPS, ENEMY_PIXEL_BASE_TROOPS, capsToTroops, neutralPixelsFor, objectiveFor } from "../lib/clanmap/economy";
 import { findMoments } from "../lib/clanmap/moments";
-import { LAND_CHECKED_ON } from "../lib/clanmap/terrain";
 import { loadClanMapFilm, loadClanMapJournal, loadMapHeroes, loadMembers, loadMeta } from "../lib/data";
 import { fmtDate, fmtDay, fmtDec1, fmtInt } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
@@ -223,6 +222,7 @@ const previousDay = journal.at(-2);
                       </p>
                     </>
                   )}
+                  {gal && gal.neutralBorder !== null && <p class="tnum mt-2 text-sm text-muted" data-testid="map-neutral-border">{fmtInt(gal.neutralBorder)} pixels de terre neutre touchent déjà notre territoire.</p>}
                   <p class="mt-2 text-xs text-muted">Repère indicatif, selon les règles lues dans le code de la carte le {fmtDate(`${RULES_CHECKED_ON}T12:00:00Z`)}.</p>
                 </div>
               </section>
@@ -484,12 +484,13 @@ const previousDay = journal.at(-2);
                 <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps.</li>
                 <li><strong class="text-white">Une mise à jour par jour.</strong> Ce ne sont pas des données en temps réel. La carte vient de l'historique public documenté par OpenFront, lu par la collecte du site et jamais par votre navigateur. Les réserves du clan viennent de sa fiche, une route non documentée : quand elle ne répond pas à la collecte, la page écrit « Pas de données ».</li>
                 <li><strong class="text-white">Vérifié à chaque mise à jour.</strong> Chaque événement officiel annonce l'ancien propriétaire du pixel. Rejoué depuis le premier pixel, l'historique retombe dessus, avec {fmtInt(film.check.mismatches)} écart sur {fmtInt(film.check.events)} événements. En cas d'écart, le film n'est pas mis à jour.</li>
-                <li><strong class="text-white">Ce que l'historique ne donne pas.</strong> Il ne dit ni les troupes des autres clans, ni où se trouve la terre. Le site n'affiche donc ni le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. La part des terres se calcule sur une surface relevée le {fmtDate(`${LAND_CHECKED_ON}T12:00:00Z`)}.</li>
+                <li><strong class="text-white">Ce que l'historique ne donne pas.</strong> Il ne dit pas les troupes des autres clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi.</li>
                 <li><strong class="text-white">Des coûts indicatifs.</strong> Ils viennent du code de la carte et ne tiennent pas compte de la forme du territoire ni des pixels verrouillés. Le jeu peut les changer.</li>
                 <li><strong class="text-white">Image allégée.</strong> Les chiffres sont calculés sur la carte complète, {fmtInt(film.width)} × {fmtInt(film.height)} pixels. Seul le film est affiché en résolution réduite.</li>
                 <li><strong class="text-white">Dessins des joueurs.</strong> Les motifs visibles sont peints par les joueurs, et le site ne les filtre pas.</li>
               </ul>
               <p class="mt-4 text-sm text-muted">Carte, terrain et données © OpenFront et ses contributeurs. <a href="https://clanmap.openfront.io/" rel="noopener">Voir la carte officielle</a>.</p>
+              <p class="mt-2 text-sm text-muted" data-testid="map-license">Le fond de carte et la surface de terre viennent de <a href="https://github.com/openfrontio/OpenFrontIO/tree/main/resources/maps/giantworldmap" rel="noopener">Giant World Map</a>, une carte d'OpenFront sous licence <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.fr" rel="noopener">CC BY-SA 4.0</a>. Ce site a réduit et assombri le fond de carte, qui reste sous la même licence.</p>
             </details>
           </div>
         </div>

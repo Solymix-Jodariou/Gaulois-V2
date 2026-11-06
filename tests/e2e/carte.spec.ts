@@ -72,6 +72,12 @@ test.describe("film de la carte", () => {
     await expect(page.getByText("pas le classement des clans").first()).toBeVisible();
     await page.getByTestId("fold-read").locator("summary").click();
     await expect(page.getByText(`${film.check.mismatches} écart sur`)).toBeVisible();
+    // La licence du fond de carte reste citée.
+    await expect(page.getByTestId("map-license").getByRole("link", { name: "CC BY-SA 4.0" })).toBeVisible();
+    // Un chiffre si le terrain est connu, sinon aucune phrase : jamais un zéro inventé.
+    const neutral = page.getByTestId("map-neutral-border");
+    if (film.galSummary.neutralBorder === undefined || film.galSummary.neutralBorder === null) await expect(neutral).toHaveCount(0);
+    else expect(digits(await neutral.textContent())).toBe(String(film.galSummary.neutralBorder));
     await expect(page.getByTestId("map-journal")).not.toContainText("..");
   });
 

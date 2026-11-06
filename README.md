@@ -106,7 +106,7 @@ Tout est écrit dans `data/` :
 | `members.json` | Membres et leurs stats d'équipe | Une fois par jour |
 | `history/AAAA-MM-JJ.json` | Instantané quotidien : rang, score, totaux | Chaque heure, dernière valeur du jour conservée |
 | `clanmap/film.bin`, `clanmap/film.json` | Film de la carte des clans : changements de cases et chiffres de chaque image | Une fois par jour |
-| `clanmap/terrain.webp` | Fond de carte, relevé le 5 novembre 2026 | Plus relu |
+| `clanmap/terrain.webp` | Fond de carte, tiré de Giant World Map d'OpenFront (CC BY-SA 4.0) | Une seule fois |
 | `clanmap/journal.json` | Un relevé par jour : pixels, rang, capsules et troupes de GAL | Une fois par jour |
 | `meta.json` | Date du dernier succès et dernière erreur de chaque jeu de données | Chaque heure |
 
@@ -118,7 +118,7 @@ La carte vient de `/public/clanmap/history`, la route documentée par OpenFront 
 
 À chaque mise à jour, tout l'historique est rejoué. Chaque événement annonce l'ancien propriétaire du pixel, et le rejeu doit retomber dessus. Au moindre écart, le film n'est pas remplacé et l'erreur s'affiche sur la page. Si OpenFront remet un jour sa carte à zéro, il faudra supprimer le cache `clanmap-…` dans l'onglet **Actions → Caches** pour repartir de son nouvel historique.
 
-La surface de terre et le fond de carte viennent d'un seul relevé de `/clanmap/terrain`, le 5 novembre 2026. Cette route n'est pas documentée et n'est plus lue : si OpenFront change son terrain, il faudra les refaire à la main (`OFFICIAL_MAP` dans `src/lib/clanmap/terrain.ts`).
+Le terrain est la carte publique Giant World Map, dans le dépôt du jeu, sous licence CC BY-SA 4.0 avec l'attribution « OpenFront » : `resources/maps/giantworldmap/map.bin`, fixé à un commit dans `src/lib/clanmap/terrain.ts`. La collecte le garde dans le même cache et s'en sert pour compter la terre neutre au contact de GAL. S'il ne répond pas, ou si sa surface de terre n'est plus celle de `OFFICIAL_MAP`, le film reste valable et ce chiffre disparaît de la page. Le fond de carte `terrain.webp` en est une version réduite et assombrie : la page cite sa source et sa licence, et ces mentions doivent rester. Si OpenFront change son terrain, il faudra refaire le fond et le commit à la main.
 
 Le film compte 480 images au plus, 5 000 événements par image pour l'instant. Cette taille ne double que si le film devient trop long. Les images déjà écrites ne changent donc pas d'un jour à l'autre, et `film.bin` reste non compressé pour que Git ne stocke presque que les nouvelles. Le fichier est déclaré binaire dans `.gitattributes`, sans quoi Git pourrait le corrompre sous Windows.
 
@@ -163,9 +163,8 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - La route de la liste des membres n'est pas documentée par OpenFront et peut changer. En cas de panne, le site garde la dernière liste valide.
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
-- La route documentée de la carte ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc ni le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le message prévu pour OpenFront, dans [docs/CONQUETE.md](docs/CONQUETE.md), demande ces données.
+- La route documentée de la carte ne donne pas les troupes des clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi. Le message prévu pour OpenFront, dans [docs/CONQUETE.md](docs/CONQUETE.md), demande cette donnée.
 - Le trésor vient de `/clans/GAL`, une route non documentée. Elle n'a pas répondu à la collecte sur GitHub le 6 novembre 2026 : la page écrit donc « Pas de données » pour les réserves du clan.
-- La licence du fond de carte reste à confirmer avant publication (voir [docs/API_AUDIT.md](docs/API_AUDIT.md), section 8).
 - Le film ne filtre pas les dessins peints par les joueurs sur la carte.
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.
 - De la Conquête des Gaulois, seules la connexion Discord et la désignation du fondateur ont été essayées en vrai. Ses parties n'ont tourné qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).

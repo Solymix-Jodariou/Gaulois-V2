@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { clanRgb, decodeFrames, encodeFrames } from "../../src/lib/clanmap/codec";
 import { FRAME_BASE, FRAME_MAX, analyzeTerritory, bucketSize, replayHistory, type EventLog } from "../../src/lib/clanmap/replay";
-import { OFFICIAL_MAP, blendOwners } from "../../src/lib/clanmap/terrain";
+import { OFFICIAL_MAP, blendOwners, countLand } from "../../src/lib/clanmap/terrain";
 
 const WIDTH = 8;
 const HEIGHT = 4;
@@ -217,10 +217,11 @@ describe("contrôle avec l'ancien propriétaire annoncé", () => {
 });
 
 describe("analyse du territoire", () => {
-  // Carte 300 × 300 : le clan 1 possède deux zones, le clan 2 touche la plus grande.
+  // Carte 300 × 300, sans mer : le clan 1 possède deux zones, le clan 2 touche la plus grande.
   const W = 300;
   const makeGrid = () => new Uint16Array(W * W);
-  const put =(grid: Uint16Array, x0: number, y0: number, x1: number, y1: number, clan: number) => {
+  const land = new Uint8Array(W * W).fill(128);
+  const put = (grid: Uint16Array, x0: number, y0: number, x1: number, y1: number, clan: number) => {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) grid[y * W + x] = clan;
   };
 
@@ -228,7 +229,7 @@ describe("analyse du territoire", () => {
     const grid = makeGrid();
     put(grid, 10, 10, 19, 19, 1);
     put(grid, 100, 100, 101, 101, 1);
-    const result = analyzeTerritory(grid, W, W, 2, 1);
+    const result = analyzeTerritory(grid, W, W, 2, 1, land);
     expect(result.zoneCount).toBe(2);
     expect(result.zones.map((z) => z.pixels)).toEqual([100, 4]);
     expect(result.zones[0]).toMatchObject({ x: 7, y: 7, halfWidth: 3, halfHeight: 3 });
@@ -237,7 +238,7 @@ describe("analyse du territoire", () => {
   it("ne garde que les plus grandes zones, mais les compte toutes", () => {
     const grid = makeGrid();
     for (let i = 0; i < 8; i++) put(grid, i * 10, 0, i * 10, 0, 1);
-    const result = analyzeTerritory(grid, W, W, 2, 1);
+    const result = analyzeTerritory(grid, W, W, 2, 1, land);
     expect(result.zoneCount).toBe(8);
     expect(result.zones).toHaveLength(5);
   });
@@ -247,7 +248,29 @@ describe("analyse du territoire", () => {
     put(grid, 10, 10, 10, 10, 1);
     put(grid, 12, 10, 12, 10, 1);
     put(grid, 11, 10, 11, 10, 2);
-    expect(analyzeTerritory(grid, W, W, 2, 1).borders.get(2)?.pixels).toBe(1);
+    expect(analyzeTerritory(grid, W, W, 2, 1, land).borders.get(2)?.pixels).toBe(1);
+  });
+
+  it("compte une seule fois un pixel neutre touché des deux côtés", () => {
+    const grid = makeGrid();
+    put(grid, 10, 10, 10, 10, 1);
+    put(grid, 12, 10, 12, 10, 1);
+    // Le pixel (11, 10) touche les deux. Chaque pixel a 4 voisins, soit 7 pixels neutres distincts.
+    expect(analyzeTerritory(grid, W, W, 2, 1, land).neutralBorder).toBe(7);
+  });
+
+  it("ne compte pas la mer comme une terre à prendre", () => {
+    const grid = makeGrid();
+    put(grid, 10, 10, 10, 10, 1);
+    expect(analyzeTerritory(grid, W, W, 2, 1, new Uint8Array(W * W)).neutralBorder).toBe(0);
+  });
+
+  it("sans terrain, ne donne aucun chiffre plutôt qu'un zéro, et garde le reste", () => {
+    const grid = makeGrid();
+    put(grid, 10, 10, 11, 10, 1);
+    const result = analyzeTerritory(grid, W, W, 2, 1, null);
+    expect(result.neutralBorder).toBeNull();
+    expect(result.zoneCount).toBe(1);
   });
 
   it("vise la plus grosse portion d'une frontière, pas la moyenne de ses morceaux", () => {
@@ -257,7 +280,7 @@ describe("analyse du territoire", () => {
     put(grid, 10, 11, 29, 11, 2);
     put(grid, 280, 200, 281, 200, 1);
     put(grid, 280, 201, 281, 201, 2);
-    const border = analyzeTerritory(grid, W, W, 2, 1).borders.get(2);
+    const border = analyzeTerritory(grid, W, W, 2, 1, land).borders.get(2);
     expect(border?.pixels).toBe(22);
     // Le centre reste sur le grand morceau, en cases réduites de moitié.
     expect(border?.x).toBeLessThan(20);
@@ -266,8 +289,12 @@ describe("analyse du territoire", () => {
 });
 
 describe("carte officielle", () => {
-  it("garde la taille documentée par OpenFront", () => {
-    expect(OFFICIAL_MAP).toMatchObject({ width: 4108, height: 1948 });
+  it("garde la taille documentée par OpenFront et la surface du manifeste de la carte", () => {
+    expect(OFFICIAL_MAP).toEqual({ width: 4108, height: 1948, land: 2_335_403 });
+  });
+
+  it("compte les terres", () => {
+    expect(countLand(Uint8Array.from([128, 128 + 31, 0, 31, 128]))).toBe(3);
   });
 
   it("ne teinte que les cases occupées", () => {

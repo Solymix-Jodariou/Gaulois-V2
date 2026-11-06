@@ -315,7 +315,7 @@ Depuis le 6 novembre 2026, la collecte lit `GET /public/clanmap/history`, docume
 - `createdAt` n'est pas encore conservé : le film suit l'ordre des événements, sans dates. Il pourrait devenir une vraie frise temporelle.
 - La route passe depuis GitHub : premier passage le 6 novembre 2026 à 13 h 01 UTC, en un peu plus de 3 minutes, avec 1 788 073 événements et 0 écart.
 
-La route ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc plus le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le nombre de pixels de terre (2 335 403) et le fond de carte viennent du relevé du 5 novembre.
+La route ne donne pas les troupes des clans : le site n'affiche donc plus le coût exact d'un pixel ennemi. Elle ne donne pas le terrain non plus, mais il est public : voir « Licences ».
 
 ### Routes de la page de la carte, plus lues par la collecte
 
@@ -390,7 +390,16 @@ Lu dans le code de la page de la carte (`clanmap.openfront.io`) et du jeu, le 5 
 
 ### Licences
 
-Le dépôt du jeu place le code sous AGPL-3.0 et le dossier `/resources` sous CC BY-SA 4.0, avec l'attribution « OpenFront ». **Le terrain de `/clanmap/terrain` n'est pas dans ce dossier, et sa licence n'est écrite nulle part : à confirmer avant publication.** Le site le cite et n'en tire qu'une version réduite et assombrie. Je ne peux pas trancher ce point juridiquement.
+Le dépôt du jeu place le code sous AGPL-3.0 et le dossier `/resources` sous CC BY-SA 4.0, avec l'attribution « OpenFront ». `LICENSE-ASSETS` y inclut les données de carte.
+
+**Le terrain de la carte des clans est la carte publique `resources/maps/giantworldmap/map.bin`.** Une version précédente de cet audit disait le contraire. Comparaison du 6 novembre 2026, au commit `641e462` du jeu, avec le terrain relevé la veille sur `/clanmap/terrain` :
+
+- La terre est au même endroit sur les 8 002 384 cases, et le relief est identique sur toute la terre. Les deux fichiers ne sont pas identiques octet par octet : l'écart ne touche que des cases sans terre.
+- Le manifeste de la carte annonce aussi 4 108 × 1 948 cases, dont 2 335 403 de terre.
+
+La collecte lit donc ce fichier public pour compter la terre neutre au contact de GAL. Le fond du film en est une version réduite et assombrie, identifiée comme telle sur la page, avec sa source et sa licence. C'est ma lecture de ces licences : je ne peux pas trancher ce point juridiquement.
+
+Le dépôt ne contient ni les réserves des clans, ni leurs troupes : ces chiffres vivent sur les serveurs d'OpenFront. Le serveur de la carte des clans n'y est pas non plus : le code du jeu décrit sa page comme « served by infra ».
 
 ### Données personnelles
 
