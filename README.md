@@ -150,7 +150,7 @@ Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque 
 
 ## La Conquête des Gaulois
 
-Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde en hexagones, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle n'est pas en ligne :** il faut d'abord créer les comptes décrits dans [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
+Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde en hexagones, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle est branchée à un vrai projet Supabase depuis le 6 novembre 2026,** mais aucune vraie partie n'a encore été jouée : voir [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
 
 ## Animations
 
@@ -165,5 +165,5 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - La licence du fond de carte reste à confirmer avant publication (voir [docs/API_AUDIT.md](docs/API_AUDIT.md), section 8).
 - Le film ne filtre pas les dessins peints par les joueurs sur la carte.
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.
-- La Conquête des Gaulois n'a été essayée qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).
+- De la Conquête des Gaulois, seules la connexion Discord et la désignation du fondateur ont été essayées en vrai. Ses parties n'ont tourné qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).
 - Les parcours décrits dans « Comment participer » viennent du code du jeu et n'ont pas été essayés avec un compte. Le texte devra être relu par un membre du clan.

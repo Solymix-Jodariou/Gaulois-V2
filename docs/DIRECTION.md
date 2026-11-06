@@ -2,7 +2,7 @@
 
 Comment les membres se connectent avec Discord, ce que chaque rôle peut faire, et comment la direction du clan publie depuis le site. L'installation complète de Supabase et de Discord est dans [CONQUETE.md](CONQUETE.md).
 
-**État :** construit et testé en local, sur un vrai Postgres et un vrai navigateur. **Rien n'est en ligne, et la vraie connexion Discord n'a jamais été essayée :** il faut d'abord les comptes du clan.
+**État au 6 novembre 2026 :** en ligne sur le vrai projet Supabase. La connexion Discord et la désignation du fondateur ont été essayées avec un vrai compte. Le reste n'a été testé qu'en local, sur un vrai Postgres et un vrai navigateur.
 
 ## Ce que voit chacun
 
@@ -69,11 +69,11 @@ Il vérifie que le projet répond, que Discord est activé, que l'e-mail est cou
 **Ce contrôle ne remplace pas un essai réel.** Il reste à faire, avec de vrais comptes :
 
 1. Se connecter avec Discord : le vrai nom Discord doit apparaître dans `/compte`.
-2. Se désigner fondateur, puis ouvrir `/direction`.
+2. Faire sa demande dans `/compte`, se désigner fondateur, valider sa propre demande dans `/admin` (détail à l'étape 4 de [CONQUETE.md](CONQUETE.md)), puis ouvrir `/direction`.
 3. Publier une annonce, puis la voir sur l'accueil dans une fenêtre privée.
 4. Connecter un second compte, faire une demande et la valider.
 
 ## Ce qui n'a pas été vérifié
 
-- **Le vrai Supabase et le vrai Discord.** La lecture de `auth.identities` suit le schéma et la documentation de Supabase, sur une imitation locale. C'est le premier point à contrôler : si le nom Discord reste vide après une vraie connexion, le déclencheur `on_auth_user_updated` est à revoir, et il faudra me le dire.
+- **L'espace Direction et un second compte sur le vrai Supabase.** La connexion Discord, elle, a été essayée le 6 novembre 2026 : `on_auth_user_updated` remplit bien le nom et l'identifiant depuis `auth.identities`. Le nom gardé est le nom d'utilisateur Discord, pas le nom affiché.
 - **Un vrai téléphone, Firefox et Safari.**

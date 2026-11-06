@@ -52,6 +52,51 @@ describe("l'identité Discord ne vient que de Discord", () => {
   });
 });
 
+describe("le premier fondateur et son profil OpenFront", () => {
+  const ROSTER = [
+    { hash: "a".repeat(64), username: "Brenn", role: "leader" },
+    { hash: "b".repeat(64), username: null, role: "member" },
+  ];
+
+  /** Une base sans fondateur, avec un compte Discord et la liste des membres. */
+  const firstAccount = async (fresh: TestDb) => {
+    await fresh.rpc(SERVICE, "sync_clan_roster", { p_entries: ROSTER, p_total: ROSTER.length });
+    const id = await fresh.addUser("Chef");
+    const [link] = await fresh.sql<{ discord_id: string }>("select discord_id from public.private_links where user_id = $1", [id]);
+    return { id, discordId: link!.discord_id };
+  };
+
+  it("fait sa demande avant d'être désigné, puis la valide lui-même : son nom de jeu et son lien arrivent", async () => {
+    const fresh = await TestDb.create(inject("pgPort"));
+    try {
+      const { id, discordId } = await firstAccount(fresh);
+      expect(await fresh.rpc(asUser(id), "request_membership", { p_claim: "Brenn" })).toMatchObject({ ok: true, in_roster: true, roster_username: "Brenn" });
+      expect(await fresh.rpc(SERVICE, "bootstrap_founder", { p_discord_id: discordId })).toMatchObject({ ok: true });
+
+      const { rows } = await fresh.rpc<{ rows: { id: number }[] }>(asUser(id), "list_membership_requests");
+      expect(rows).toHaveLength(1);
+      expect(await fresh.rpc(asUser(id), "review_membership", { p_request: rows[0]!.id, p_approve: true })).toMatchObject({ ok: true });
+      expect(await fresh.rpc(asUser(id), "get_me")).toMatchObject({ name: "Brenn", role: "founder", status: "validated", rank: 4, linked: true, openfront_username: "Brenn", discord_name: "Chef" });
+    } finally {
+      await fresh.close();
+    }
+  });
+
+  it("désigné avant toute demande, il ne peut plus en faire et garde son nom neutre : l'ordre compte", async () => {
+    const fresh = await TestDb.create(inject("pgPort"));
+    try {
+      const { id, discordId } = await firstAccount(fresh);
+      expect(await fresh.rpc(SERVICE, "bootstrap_founder", { p_discord_id: discordId })).toMatchObject({ ok: true });
+      expect(await fresh.rpc(asUser(id), "request_membership", { p_claim: "Brenn" })).toMatchObject({ ok: false, error: "already_validated" });
+      const me = await fresh.rpc(asUser(id), "get_me");
+      expect(me).toMatchObject({ role: "founder", linked: false });
+      expect(me.name).toMatch(/^Gaulois n° \d+$/);
+    } finally {
+      await fresh.close();
+    }
+  });
+});
+
 describe("la suspension ne se contourne pas", () => {
   it("un officier ne peut pas lever une suspension en validant une demande restée ouverte", async () => {
     const officer = await db.addMember("OffSusp", "officer");

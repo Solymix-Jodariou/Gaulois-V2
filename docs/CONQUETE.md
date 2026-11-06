@@ -2,7 +2,7 @@
 
 Le jeu de territoires des membres de GAL, avec connexion Discord, rôles et dons de capsules. Les règles expliquées aux joueurs sont dans [REGLES_CONQUETE.md](REGLES_CONQUETE.md), aussi publiées sur la page `/conquete/regles`.
 
-**État :** tout est construit et testé en local. **Rien n'est en ligne :** la mise en ligne demande les comptes décrits plus bas, que seul le clan peut créer. Sans ces réglages, le site reste entièrement statique et le jeu n'apparaît pas.
+**État au 6 novembre 2026 :** le jeu est branché à un vrai projet Supabase : la connexion Discord marche et le fondateur est désigné. Aucune vraie partie n'a encore été jouée. Sans les réglages décrits plus bas, le site reste entièrement statique et le jeu n'apparaît pas.
 
 C'est la seule partie du site qui a un serveur, une base de données et une connexion. Le cahier des charges du jeu lève ces interdictions pour lui seul. Le reste du site ne change pas, et il continue de marcher si le jeu tombe.
 
@@ -53,7 +53,7 @@ Notez, dans **Project Settings → API Keys** : l'adresse du projet, la clé **p
 
 Sur le [portail développeur de Discord](https://discord.com/developers/applications) : **New Application**, puis **OAuth2**.
 
-- Dans **Redirects**, ajoutez `https://<votre-projet>.supabase.co/auth/v1/callback`.
+- Dans **Redirects**, ajoutez `https://<votre-projet>.supabase.co/auth/v1/callback`, puis cliquez sur **Save Changes**. Sinon, Discord répond « redirect_uri OAuth2 non valide » à la connexion.
 - Copiez le **Client ID** et le **Client Secret**.
 
 Dans Supabase, **Authentication → Providers → Discord** : activez-le et collez ces deux valeurs. Le secret reste là, jamais dans le dépôt.
@@ -85,13 +85,19 @@ Sinon, collez chaque fichier de `supabase/migrations/` dans l'éditeur SQL de Su
 
 ### 4. Vous désigner fondateur
 
-Connectez-vous une fois sur le site avec Discord, une fois l'étape 5 faite. Puis, dans l'éditeur SQL de Supabase, avec **votre identifiant Discord** (mode développeur de Discord, clic droit sur votre nom, « Copier l'identifiant ») :
+Connectez-vous une fois sur le site avec Discord, une fois l'étape 5 faite.
+
+**Faites d'abord votre demande :** dans `/compte`, remplissez « Lier mon profil OpenFront ». Un compte déjà validé ne peut plus en faire : il resterait « Gaulois n° … », sans lien avec son joueur OpenFront.
+
+Puis, dans l'éditeur SQL de Supabase, avec **votre identifiant Discord** (mode développeur de Discord, clic droit sur votre nom, « Copier l'identifiant ») :
 
 ```sql
 select public.bootstrap_founder('VOTRE_IDENTIFIANT_DISCORD');
 ```
 
 Cette fonction ne marche qu'une fois, et personne ne peut l'appeler depuis le site.
+
+Enfin, dans `/admin`, onglet **Demandes**, validez votre propre demande : votre pseudo OpenFront devient votre nom de jeu.
 
 ### 5. Brancher le site
 
@@ -405,7 +411,7 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 
 **Pas vérifié :**
 
-- **Le vrai Supabase et la vraie connexion Discord.** Il faut leurs comptes. Le schéma tourne sur Postgres 18 avec une imitation des rôles de Supabase. Le comportement réel de leur API, de leur connexion et de leur stockage de fichiers reste à éprouver : c'est l'objet de l'étape 6.
+- **Le reste du vrai Supabase.** Essayés sur le vrai projet le 6 novembre 2026 : la connexion Discord d'un compte, le nom et l'identifiant Discord, la désignation du fondateur, la validation de sa demande et la tâche planifiée (liste relue, sauvegarde créée). Restent à éprouver un second compte, une saison et le stockage des captures : c'est l'objet de l'étape 6.
 - **Une vraie partie entre joueurs.** L'équilibre vient de calculs, pas de parties jouées. Les réglages pourront changer après la première saison.
 - **La lecture des vrais dons chez OpenFront.** Sans accès, `fetchDonations` n'a jamais tourné contre leur API : elle suit leur schéma public (`ClanApiSchemas.ts`) et n'est testée que contre une imitation.
 - **Un vrai téléphone, Firefox et Safari.** La fluidité est mesurée sur un processeur ralenti, sans vrai téléphone.
