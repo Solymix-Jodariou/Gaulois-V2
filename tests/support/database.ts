@@ -57,7 +57,8 @@ export async function startDatabaseServer(): Promise<{ port: number; stop(): Pro
     user: USER,
     password: PASSWORD,
     port,
-    persistent: false,
+    // Le dossier est supprimé dans `stop` ci-dessous : la bibliothèque, elle, ne réessaie pas.
+    persistent: true,
     // UTF-8 comme chez Supabase, quelle que soit la langue du poste : sous Windows, la base serait sinon en WIN1252.
     initdbFlags: ["--encoding=UTF8", "--locale-provider=builtin", "--builtin-locale=C.UTF-8"],
     postgresFlags: ["-c", "max_connections=400", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"],
@@ -90,7 +91,12 @@ export async function startDatabaseServer(): Promise<{ port: number; stop(): Pro
     port,
     stop: async () => {
       await server.stop();
-      rmSync(dir, { recursive: true, force: true });
+      // Windows garde le dossier verrouillé un court instant après l'arrêt de Postgres.
+      try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch {
+        // Toujours verrouillé : `removeOldServers` le retirera un prochain jour.
+      }
     },
   };
 }
@@ -152,6 +158,13 @@ export class TestDb {
 
   async close(): Promise<void> {
     await this.pool.end();
+    // `pool.end()` rend la main avant que Postgres ait fermé les connexions. Les couper de force
+    // à ce moment-là fait remonter une erreur 57P01 que personne n'écoute, et le test échoue.
+    for (let attempt = 0; attempt < 250; attempt++) {
+      const open = await this.admin.query<{ n: number }>("select count(*)::int as n from pg_stat_activity where datname = $1", [this.name]);
+      if (open.rows[0]!.n === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
     await this.admin.query(`drop database if exists ${this.name} with (force)`);
     await this.admin.end();
   }
