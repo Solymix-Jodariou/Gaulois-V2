@@ -146,7 +146,8 @@ export type HistorySnapshot = z.infer<typeof HistorySnapshot>;
 const count = z.number().int().nonnegative();
 
 export const StoredClanMapFilm = z.object({
-  version: z.literal(2),
+  // 2 : film sans `neutralBorder`, refait au passage suivant de la collecte.
+  version: z.union([z.literal(2), z.literal(3)]),
   fetchedAt: isoDate,
   // Numéro du dernier événement lu, et nombre d'événements rejoués.
   seq: count,
@@ -158,7 +159,7 @@ export const StoredClanMapFilm = z.object({
   rows: count,
   bucket: count,
   totalChanges: count,
-  // Pixels de terre de la carte, relevés une fois : voir OFFICIAL_MAP.
+  // Pixels de terre de la carte, d'après son manifeste public : voir OFFICIAL_MAP.
   land: count,
   claimed: count,
   // Événements dont l'ancien propriétaire annoncé diffère du rejeu.
@@ -190,6 +191,8 @@ export const StoredClanMapFilm = z.object({
       ),
       zones: z.array(z.object({ pixels: count, x: count, y: count, halfWidth: count, halfHeight: count })),
       zoneCount: count,
+      // Pixels de terre neutre au contact de GAL. `null` : terrain indisponible, ce n'est pas un zéro.
+      neutralBorder: count.nullable().default(null),
     })
     .nullable(),
   // Tous les clans présents, dans l'ordre de la carte officielle.
