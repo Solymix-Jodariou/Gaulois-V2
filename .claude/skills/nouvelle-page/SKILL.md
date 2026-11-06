@@ -38,7 +38,7 @@ const sessions = loadSessions();
 ```
 
 - `title` : court, il devient `Titre · [GAL] Les Gaulois`. `description` : une phrase pour les moteurs et les aperçus de lien. Une page personnelle prend `noindex`.
-- Les liens internes passent par `${base}` : le site vit sous `/Gaulois-V2/`.
+- Les liens internes passent par `${base}` : ainsi, le site ne dépend jamais de son adresse.
 - Les données viennent des fonctions de `src/lib/data.ts`, validées par Zod. `null` ou `[]` veut dire « Pas de données » : afficher `Empty.astro` (prop `title`, texte dans le slot) ou masquer la section, jamais un zéro, jamais un exemple.
 - Une donnée collectée s'accompagne de sa date : `DataStatus.astro` prend `state={meta.<jeu>}` et `maxAgeHours` depuis `MAX_AGE_HOURS` de `src/lib/freshness.ts` (4 h pour classement et sessions, 36 h pour membres et carte). C'est lui qui affiche la panne de collecte et la péremption côté visiteur.
 - Interactivité : un composant Preact `.tsx` dans `src/components/`, hydraté avec `client:idle` ou `client:visible`. Les valeurs finales sont déjà dans le HTML, le script ne fait que les animer. `src/lib/fx/motion.ts` dit si les animations sont permises.

@@ -21,7 +21,7 @@ export const clan = {
   links: {
     discord: "https://discord.gg/cjUc42T7Y2",
     openfront: "https://openfront.io/",
-    source: "https://github.com/Solymix-Jodariou/Gaulois-V2",
+    source: "https://github.com/les-gaulois/les-gaulois.github.io",
   },
 
   /**

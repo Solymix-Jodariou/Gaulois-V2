@@ -144,7 +144,9 @@ Le calculateur de troupes est documenté dans `src/lib/calculator.ts`. Il repren
 
 ## Déploiement sur GitHub Pages
 
-Rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite de GitHub Pages demande un dépôt public.
+Le site est publié sur <https://les-gaulois.github.io/>. Cette adresse vient du nom du dépôt : un dépôt nommé `les-gaulois.github.io`, dans l'organisation GitHub `les-gaulois`, publie à la racine de cette adresse. Ne pas le renommer : l'adresse du site changerait, sans renvoi automatique depuis l'ancienne.
+
+Pour réinstaller le site ailleurs, rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite de GitHub Pages demande un dépôt public.
 
 1. Créez un dépôt GitHub public et poussez le projet sur la branche `main`.
 2. Dans **Settings → Pages**, choisissez **GitHub Actions** comme source.

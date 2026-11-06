@@ -87,7 +87,7 @@ Trois failles ont été trouvées et corrigées le 6 novembre 2026, avant toute 
 
 En plus des étapes d'installation ci-dessous, il faut :
 
-- **Ajouter la redirection** `https://solymix-jodariou.github.io/Gaulois-V2/direction` dans **Authentication → URL Configuration → Redirect URLs**.
+- **Ajouter la redirection** `https://les-gaulois.github.io/direction` dans **Authentication → URL Configuration → Redirect URLs**.
 - **Couper l'inscription par e-mail** dans **Authentication → Providers → Email**. Le site ne s'en sert pas.
 
 Puis lancez le contrôle. Il n'écrit rien et n'affiche aucune clé. Sous PowerShell, renseignez d'abord les valeurs dans le terminal, sans les enregistrer dans un fichier du dépôt :
@@ -146,8 +146,8 @@ Dans Supabase, **Authentication → Providers → Discord** : activez-le et coll
 
 Toujours dans Supabase, **Authentication → URL Configuration** :
 
-- **Site URL :** `https://solymix-jodariou.github.io/Gaulois-V2/`
-- **Redirect URLs :** ajoutez `https://solymix-jodariou.github.io/Gaulois-V2/compte`, `https://solymix-jodariou.github.io/Gaulois-V2/admin` et `https://solymix-jodariou.github.io/Gaulois-V2/direction`
+- **Site URL :** `https://les-gaulois.github.io/`
+- **Redirect URLs :** ajoutez `https://les-gaulois.github.io/compte`, `https://les-gaulois.github.io/admin` et `https://les-gaulois.github.io/direction`
 
 Dans **Authentication → Providers → Email**, coupez l'inscription par e-mail : le site ne s'en sert pas.
 

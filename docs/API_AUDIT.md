@@ -438,15 +438,15 @@ D'après la documentation du jeu, un jeton d'identité dure 10 minutes, n'est va
 
 ## 10. Message à envoyer à l'équipe d'OpenFront
 
-À envoyer par vos soins, sur le canal que vous utilisez avec elle. Il est écrit en anglais, langue de la documentation du jeu. S'il est déjà parti, le paragraphe sur la carte peut être envoyé seul.
+À envoyer par vos soins, sur le canal que vous utilisez avec elle. Il est écrit en anglais, langue de la documentation du jeu. Si une version précédente est déjà partie, envoyez celle-ci en entier : l'ancienne citait une adresse du site qui n'existe plus, et un jeton d'identité n'est valable que pour le site choisi.
 
 > Hello OpenFront team,
 >
-> I run the community site of the clan [GAL] Les Gaulois: https://solymix-jodariou.github.io/Gaulois-V2/ (unofficial, not affiliated with OpenFront).
+> I run the community site of the clan [GAL] Les Gaulois: https://les-gaulois.github.io/ (unofficial, not affiliated with OpenFront).
 >
 > Clan members can sign in on our site with Discord. Could you add our site to the identity token list (Account settings → Link to a third-party site), so that members can prove they own their account?
 >
-> Requested audience: `solymix-jodariou.github.io`
+> Requested audience: `les-gaulois.github.io`
 >
 > How we would use it: our server validates the token once with `POST /public/identity_token/validate`, checks the public ID against `/public/clan/GAL/members`, then discards the token. We store neither the token nor the public ID, only a hash, and members without a public username stay anonymous.
 >

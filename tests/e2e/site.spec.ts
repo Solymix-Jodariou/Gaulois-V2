@@ -178,7 +178,7 @@ test("chaque page donne le code source et la mention d'OpenFront", async ({ page
   for (const path of [...PAGES, "/confidentialite", "/compte", "/admin", "/direction"]) {
     await page.goto(path);
     const footer = page.locator("footer");
-    await expect(footer.getByRole("link", { name: "Code source", exact: true }), path).toHaveAttribute("href", "https://github.com/Solymix-Jodariou/Gaulois-V2");
+    await expect(footer.getByRole("link", { name: "Code source", exact: true }), path).toHaveAttribute("href", "https://github.com/les-gaulois/les-gaulois.github.io");
     await expect(footer, path).toContainText("© OpenFront and Contributors");
   }
 });

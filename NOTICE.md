@@ -5,7 +5,7 @@ Copyright (C) 2026 les contributeurs de ce site.
 
 Le code de ce site est un logiciel libre : vous pouvez le redistribuer et le modifier selon les termes de la GNU Affero General Public License, version 3 uniquement (AGPL-3.0-only), publiée par la Free Software Foundation. Le texte complet est dans [LICENSE](LICENSE). Ce code est distribué sans aucune garantie, comme le précise cette licence.
 
-Code source de la version en ligne : <https://github.com/Solymix-Jodariou/Gaulois-V2>
+Code source de la version en ligne : <https://github.com/les-gaulois/les-gaulois.github.io>
 
 ## Ce que la licence ne couvre pas
 

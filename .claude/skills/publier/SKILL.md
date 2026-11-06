@@ -51,12 +51,12 @@ gh run list --workflow site.yml --limit 1
 gh run watch <id> --exit-status
 ```
 
-- Si `gh` manque ou n'est pas connecté : attendre trois minutes, puis lire <https://github.com/Solymix-Jodariou/Gaulois-V2/actions> ; dire dans le rapport que le suivi s'est fait sans `gh`.
+- Si `gh` manque ou n'est pas connecté : attendre trois minutes, puis lire <https://github.com/les-gaulois/les-gaulois.github.io/actions> ; dire dans le rapport que le suivi s'est fait sans `gh`.
 - En cas d'échec : `gh run view <id> --log-failed`, corriger, et recommencer depuis l'étape 1. Le site reste sur sa version précédente tant que le build échoue : rien n'est cassé en ligne, mais rien n'est publié non plus.
 
 ## 7. Contrôler le site en ligne
 
-Ouvrir <https://solymix-jodariou.github.io/Gaulois-V2/> et la ou les pages changées. Vérifier qu'au moins un élément visible du changement est bien là, que le pied de page affiche « Dernière collecte » et « © OpenFront and Contributors », et que la page ne montre ni erreur ni bloc vide. GitHub Pages peut servir l'ancienne version une ou deux minutes : réessayer avant de conclure.
+Ouvrir <https://les-gaulois.github.io/> et la ou les pages changées. Vérifier qu'au moins un élément visible du changement est bien là, que le pied de page affiche « Dernière collecte » et « © OpenFront and Contributors », et que la page ne montre ni erreur ni bloc vide. GitHub Pages peut servir l'ancienne version une ou deux minutes : réessayer avant de conclure.
 
 ## Schéma Supabase
 
