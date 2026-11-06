@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CONFIG_LABELS, flattenConfig, withValue } from "../../src/lib/conquete/config-labels";
 import { ERROR_MESSAGES, errorMessage } from "../../src/lib/conquete/errors";
-import { feedDetail, feedText, playerColor } from "../../src/lib/conquete/feed";
+import { feedDetail, feedText, playerColor, playerHue } from "../../src/lib/conquete/feed";
 import { DEFAULT_CONFIG, capacity, donationTroops, neutralCost, resolveAttack, settle, startingTroops } from "../../src/lib/conquete/rules";
 import type { EventKind, FeedRow } from "../../src/lib/conquete/types";
 
@@ -108,7 +108,8 @@ describe("le fil d'actualité", () => {
 
   it("donne à chaque joueur une couleur stable, et bien répartie", () => {
     expect(playerColor(7)).toBe(playerColor(7));
-    const hues = Array.from({ length: 40 }, (_, i) => Number(/hsl\(([\d.]+)/.exec(playerColor(i + 1))![1]));
+    expect(playerColor(7)).toMatch(/^rgb\(\d+ \d+ \d+\)$/);
+    const hues = Array.from({ length: 40 }, (_, i) => playerHue(i + 1));
     const sorted = [...hues].sort((a, b) => a - b);
     const gaps = sorted.slice(1).map((h, i) => h - sorted[i]!);
     expect(Math.min(...gaps)).toBeGreaterThan(1);

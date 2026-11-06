@@ -296,6 +296,9 @@ test("phase 1 : le départ, puis les terres libres voisines", async () => {
   await astra.getByTestId("action-amount").fill(String(cost + 1400));
   await expect(astra.getByTestId("action-preview")).toContainText(fr(1_400));
   await astra.getByTestId("action-submit").click();
+  // Sa nouvelle couleur s'y répand un instant, puis l'effet disparaît.
+  await expect(astra.getByTestId("map-captures").locator("circle")).toHaveCount(1);
+  await expect(astra.getByTestId("map-captures").locator("circle")).toHaveCount(0);
   await expect(astra.getByText(`${neighbour.name} est à vous`)).toBeVisible();
   await expect(astra.getByTestId("game-feed").locator("li").first()).toContainText(`Astra occupe ${neighbour.name}.`);
 
@@ -319,7 +322,7 @@ test("un don validé arrive en troupes sous les yeux du joueur, sans recharger l
   await expect(astra.getByTestId("donation-rule")).toContainText("100 troupes en renfort");
   await expect(astra.getByTestId("checked-at")).toContainText("Actualisé à");
 
-  // Le fond de la carte est le relief, dans la bonne taille selon l'écran, et il se charge.
+  // Le fond de la carte, dans la bonne taille selon l'écran, et il se charge.
   const relief = astra.locator(".conq-terrain");
   const href = (await relief.getAttribute("href"))!;
   expect(href).toMatch(/\/conquete\/terrain-v1(-small)?\.webp$/);
@@ -393,7 +396,7 @@ test("la carte se manipule à la souris, sans bloquer la page", async () => {
   await astra.getByRole("button", { name: "Vue d'ensemble" }).click();
   expect(await group.getAttribute("transform")).toBe(before);
 
-  // Cliquer sur un hexagone le choisit, sans déplacer la carte, et son nom s'affiche au survol.
+  // Cliquer sur une terre la choisit, sans déplacer la carte, et son nom s'affiche au survol.
   const target = astra.locator(`[data-t="${byName("Paris").id}"]`);
   await target.hover();
   await expect(astra.locator(".conq-tip")).toContainText("Paris");

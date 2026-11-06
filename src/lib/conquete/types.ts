@@ -86,8 +86,10 @@ export interface MapTerritory {
   name: string;
   terrain: Terrain;
   neighbours: number[];
-  /** Le contour dessiné : l'hexagone, arrêté aux côtes. */
+  /** Le contour dessiné : la case déformée, arrêtée aux côtes. */
   shape: string;
+  /** Ce que longe chaque segment du contour, anneau par anneau : le numéro du côté, ou « c » pour la côte. */
+  edges: string;
 }
 
 export interface GameMap {

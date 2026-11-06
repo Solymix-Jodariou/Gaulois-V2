@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { equalEarth, equalEarthInverse, hexArea, hexCorners, WORLD_VIEW } from "../../src/lib/conquete/geo";
-import { labelFontSize, outlinesOf, ownerLabels, ownerLayers, parseRings, shortName } from "../../src/lib/conquete/shapes";
+import { equalEarth, equalEarthInverse, hexArea, hexCenter, LAND_SIDE_SEGMENTS, landCell, landCellPath, warpPoint, WORLD_VIEW } from "../../src/lib/conquete/geo";
+import { capturedLands, labelFontSize, outlinesOf, ownerLabels, ownerLayers, parseRings, shortName } from "../../src/lib/conquete/shapes";
 import type { GameMap } from "../../src/lib/conquete/types";
 import { MAP } from "../support/game";
 
@@ -16,7 +16,10 @@ const signedArea = (ring: readonly (readonly [number, number])[]) => {
 const areaOf = (shape: string) => Math.abs(parseRings(shape).reduce((sum, ring) => sum + signedArea(ring), 0));
 
 /** Le premier territoire entièrement à l'intérieur des terres, et l'un de ses voisins directs. */
-const inland = map.territories.find((t) => parseRings(t.shape).length === 1 && parseRings(t.shape)[0]!.length === 6 && outlinesOf(map)[t.id - 1]!.sides.every((s) => s.across !== null))!;
+const SIDES = 6 * LAND_SIDE_SEGMENTS;
+const inland = map.territories.find((t) => parseRings(t.shape).length === 1 && parseRings(t.shape)[0]!.length === SIDES && outlinesOf(map)[t.id - 1]!.sides.every((s) => s.across !== null))!;
+/** La surface de la case entière d'une terre, mer comprise. */
+const cellArea = (t: { x: number; y: number }) => Math.abs(signedArea(landCell(t.x, t.y, map.hexSize)));
 const outlineOfInland = outlinesOf(map)[inland.id - 1]!;
 const neighbour = outlineOfInland.sides[0]!.across!;
 
@@ -41,8 +44,8 @@ describe("la projection inverse", () => {
 });
 
 describe("les contours des territoires", () => {
-  it("existent pour chaque territoire et restent dans son hexagone", () => {
-    const limit = hexArea(map.hexSize) * 1.02;
+  it("existent pour chaque territoire et restent autour de leur place dans la grille", () => {
+    const limit = hexArea(map.hexSize) * 1.75;
     for (const t of map.territories) {
       const rings = parseRings(t.shape);
       expect(rings.length, t.name).toBeGreaterThan(0);
@@ -50,15 +53,15 @@ describe("les contours des territoires", () => {
       expect(total, t.name).toBeGreaterThan(0);
       expect(total, t.name).toBeLessThanOrEqual(limit);
       for (const [x, y] of rings.flat()) {
-        expect(Math.hypot(x - t.x, y - t.y), t.name).toBeLessThanOrEqual(map.hexSize * 1.01);
+        expect(Math.hypot(x - t.x, y - t.y), t.name).toBeLessThanOrEqual(map.hexSize + 5);
       }
     }
   });
 
-  it("s'arrêtent à la côte : Paris n'est pas un hexagone complet, un territoire de l'intérieur l'est", () => {
+  it("s'arrêtent à la côte : Paris n'occupe pas toute sa case, un territoire de l'intérieur si", () => {
     const paris = map.territories.find((t) => t.name === "Paris")!;
-    expect(areaOf(paris.shape)).toBeLessThan(hexArea(map.hexSize) * 0.98);
-    expect(areaOf(inland.shape)).toBeCloseTo(hexArea(map.hexSize), 0);
+    expect(areaOf(paris.shape)).toBeLessThan(cellArea(paris) * 0.98);
+    expect(areaOf(inland.shape) / cellArea(inland)).toBeCloseTo(1, 1);
   });
 
   it("laissent les grands lacs à découvert : un trou ne se colorie pas", () => {
@@ -70,7 +73,25 @@ describe("les contours des territoires", () => {
     const corners = (id: number) => new Set(parseRings(byId.get(id)!.shape).flat().map(([x, y]) => `${x} ${y}`));
     const a = corners(inland.id);
     const shared = [...corners(neighbour)].filter((p) => a.has(p));
-    expect(shared.length).toBeGreaterThanOrEqual(2);
+    expect(shared.length).toBeGreaterThanOrEqual(LAND_SIDE_SEGMENTS + 1);
+  });
+
+  it("notent ce que longe chaque segment, sans oublier un seul anneau", () => {
+    for (const t of map.territories) {
+      const rings = parseRings(t.shape);
+      const codes = t.edges.split("|");
+      expect(codes, t.name).toHaveLength(rings.length);
+      rings.forEach((ring, i) => {
+        expect(codes[i], t.name).toHaveLength(ring.length);
+        expect(codes[i], t.name).toMatch(/^[0-5c]+$/);
+      });
+    }
+  });
+
+  it("donnent à un territoire de l'intérieur ses six côtés complets, sans aucune côte", () => {
+    const outline = outlinesOf(map)[inland.id - 1]!;
+    expect(outline.coast).toBe("");
+    for (const { path } of outline.sides) expect((path.match(/M/g) ?? []).length).toBe(LAND_SIDE_SEGMENTS);
   });
 
   it("trie chaque côté face au bon voisin", () => {
@@ -93,19 +114,62 @@ describe("les contours des territoires", () => {
   });
 });
 
+describe("les frontières naturelles", () => {
+  const SIZE = map.hexSize;
+
+  it("sont identiques des deux côtés : deux cases voisines ont exactement les mêmes points", () => {
+    const [ax, ay] = hexCenter(4, 3, SIZE);
+    const [bx, by] = hexCenter(5, 3, SIZE);
+    const points = (x: number, y: number) => new Set(landCell(x, y, SIZE).map(([px, py]) => `${px} ${py}`));
+    const a = points(ax, ay);
+    expect([...points(bx, by)].filter((p) => a.has(p))).toHaveLength(LAND_SIDE_SEGMENTS + 1);
+  });
+
+  it("donnent toujours le même résultat, et ne sont plus des hexagones droits", () => {
+    expect(landCell(10, 20, SIZE)).toEqual(landCell(10, 20, SIZE));
+    expect(landCell(10, 20, SIZE)).toHaveLength(SIDES);
+    expect(landCellPath(10, 20, SIZE)).toMatch(/^M.*Z$/);
+    const [x, y] = warpPoint(10, 20);
+    expect(Math.hypot(x - 10, y - 20)).toBeGreaterThan(0);
+    expect(Math.hypot(x - 10, y - 20)).toBeLessThan(5);
+  });
+});
+
+describe("une terre qui change de main", () => {
+  const free = map.territories.find((t) => t.id === neighbour)!;
+
+  it("part des terres voisines du même joueur", () => {
+    const before = owned([[inland.id, 1]]);
+    const after = owned([[inland.id, 1], [free.id, 1]]);
+    const [capture, ...rest] = capturedLands(map, before, after);
+    expect(rest).toEqual([]);
+    expect(capture).toMatchObject({ id: free.id, owner: 1 });
+    expect([capture!.fromX, capture!.fromY]).toEqual([...warpPoint(inland.x, inland.y)]);
+  });
+
+  it("se voit aussi quand elle change de propriétaire, mais pas si rien ne change", () => {
+    expect(capturedLands(map, owned([[inland.id, 1]]), owned([[inland.id, 2]])).map((c) => c.owner)).toEqual([2]);
+    expect(capturedLands(map, owned([[inland.id, 1]]), owned([[inland.id, 1]]))).toEqual([]);
+  });
+
+  it("ne fait pas clignoter toute la carte après un rattrapage", () => {
+    const many = owned(map.territories.slice(0, 40).map((t) => [t.id, 1]));
+    expect(capturedLands(map, owned([]), many)).toEqual([]);
+  });
+});
+
 describe("les terres d'un joueur", () => {
   const edges = (d: string) => (d.match(/M/g) ?? []).length;
-  const six = () => hexCorners(inland.x, inland.y, map.hexSize).length;
 
   it("se bordent seulement là où elles s'arrêtent", () => {
     const alone = ownerLayers(outlinesOf(map), owned([[inland.id, 1]]));
     expect(alone).toHaveLength(1);
-    expect(edges(alone[0]!.border)).toBe(six());
+    expect(edges(alone[0]!.border)).toBe(SIDES);
 
     const together = ownerLayers(outlinesOf(map), owned([[inland.id, 1], [neighbour, 1]]));
     expect(together).toHaveLength(1);
-    // Deux hexagones collés : douze côtés moins les deux qui se touchent.
-    const expected = edges(ownerLayers(outlinesOf(map), owned([[neighbour, 1]]))[0]!.border) + six() - 2;
+    // Deux terres collées : tous leurs segments, moins ceux de la frontière qu'elles partagent, de chaque côté.
+    const expected = edges(ownerLayers(outlinesOf(map), owned([[neighbour, 1]]))[0]!.border) + SIDES - 2 * LAND_SIDE_SEGMENTS;
     expect(edges(together[0]!.border)).toBe(expected);
     expect(together[0]!.fill).toContain(inland.shape);
   });
@@ -113,7 +177,7 @@ describe("les terres d'un joueur", () => {
   it("gardent leur bordure face à un autre joueur", () => {
     const layers = ownerLayers(outlinesOf(map), owned([[inland.id, 1], [neighbour, 2]]));
     expect(layers.map((l) => l.owner).sort()).toEqual([1, 2]);
-    expect(edges(layers.find((l) => l.owner === 1)!.border)).toBe(six());
+    expect(edges(layers.find((l) => l.owner === 1)!.border)).toBe(SIDES);
   });
 
   it("ne dessinent rien sans propriétaire", () => {

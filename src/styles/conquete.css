@@ -97,8 +97,8 @@
   overflow: hidden;
   border: 1px solid var(--color-line);
   border-radius: 1rem;
-  /* Notre mer, la même que celle de l'image du relief : aucun bord visible autour de la carte. */
-  background: #1c4e7e;
+  /* Le large, le même que sur l'image de la carte : aucun bord visible autour d'elle. */
+  background: #123c69;
 }
 .conq-map-view svg {
   display: block;
@@ -113,8 +113,9 @@
   cursor: grab;
   touch-action: none;
 }
+/* Le temps que l'image de la carte arrive. */
 .conq-land {
-  fill: #5d7a5c;
+  fill: #a9bb78;
 }
 .conq-terrain,
 .conq-grid,
@@ -126,12 +127,13 @@
 .conq-labels {
   pointer-events: none;
 }
-/* La grille : assez fine pour laisser voir le relief, là seulement où elle se lit. */
+/* Les limites des terres : assez fines pour laisser voir le terrain, là seulement où elles se lisent. */
 .conq-grid {
   display: none;
   fill: none;
-  stroke: rgb(255 255 255 / 0.2);
-  stroke-width: 0.6px;
+  stroke: rgb(24 32 46 / 0.2);
+  stroke-width: 0.7px;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 svg[data-grid="true"] .conq-grid {
@@ -145,56 +147,106 @@ svg[data-grid="true"] .conq-grid {
   opacity: 0.8;
   vector-effect: non-scaling-stroke;
 }
-/* Les terres d'un joueur : une seule masse translucide, le relief reste visible dessous. */
+/* Les terres d'un joueur : un voile léger au milieu pour laisser voir le terrain, une couleur franche vers le bord. */
 .conq-owner {
-  fill-opacity: 0.62;
+  fill-opacity: 0.38;
+}
+.conq-owner-glow {
+  fill: none;
+  stroke-opacity: 0.4;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.conq-owner-glow.is-wide {
+  stroke-opacity: 0.24;
+  stroke-width: 16px;
 }
 .conq-borders path {
   fill: none;
-  stroke-width: 1.4px;
+  stroke-width: 1.6px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 .conq-borders path.is-mine {
   stroke: #fff;
-  stroke-width: 2.2px;
+  stroke-width: 2.4px;
 }
-/* La case qu'on vise : invisible au repos, elle couvre tout l'hexagone pour rester facile à toucher. */
+/* La zone à toucher : toujours invisible, elle déborde sur la mer pour qu'une petite île reste facile à viser. */
 .conq-hex {
   fill: transparent;
-  stroke: transparent;
+  stroke: none;
   pointer-events: all;
+}
+/* Ce qui se voit d'une terre : son vrai contour, à l'état que porte la zone juste avant elle. */
+.conq-shape {
+  fill: transparent;
+  stroke: transparent;
+  stroke-linejoin: round;
+  pointer-events: none;
   vector-effect: non-scaling-stroke;
 }
-.conq-hex:hover {
-  fill: rgb(255 255 255 / 0.16);
+.conq-hex:hover + .conq-shape {
+  fill: rgb(255 255 255 / 0.2);
   stroke: #fff;
-  stroke-width: 1.4px;
-}
-.conq-hex.is-target {
-  fill: rgb(255 200 87 / 0.14);
-  stroke: var(--color-warn);
   stroke-width: 1.6px;
 }
-.conq-hex.is-target:hover {
-  fill: rgb(255 200 87 / 0.32);
+.conq-shape.is-target {
+  fill: rgb(255 200 87 / 0.16);
+  stroke: var(--color-warn);
+  stroke-width: 1.8px;
 }
-.conq-hex.is-protected {
-  stroke: rgb(255 255 255 / 0.75);
-  stroke-width: 1.1px;
+.conq-hex.is-target:hover + .conq-shape {
+  fill: rgb(255 200 87 / 0.36);
+  stroke: var(--color-warn);
+}
+.conq-shape.is-protected {
+  stroke: rgb(255 255 255 / 0.8);
+  stroke-width: 1.2px;
   stroke-dasharray: 3 3;
 }
-.conq-hex.is-selected {
-  fill: rgb(255 255 255 / 0.22);
+.conq-shape.is-selected {
+  fill: rgb(255 255 255 / 0.26);
   stroke: #fff;
-  stroke-width: 2.6px;
+  stroke-width: 2.8px;
   stroke-dasharray: none;
+}
+/* Une terre qui change de main : sa nouvelle couleur s'y répand, puis se fond dans celle du joueur. */
+.conq-captures {
+  pointer-events: none;
+}
+.conq-capture {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: conq-capture 1.1s ease-out forwards;
+}
+@keyframes conq-capture {
+  from {
+    transform: scale(0);
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+.fx-off .conq-captures {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .conq-captures {
+    display: none;
+  }
 }
 .conq-relief {
   display: none;
   fill: none;
-  stroke: rgb(255 255 255 / 0.7);
-  stroke-width: 0.9px;
+  stroke: rgb(28 22 16 / 0.62);
+  stroke-width: 1.1px;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 svg[data-marks="true"] .conq-relief {
@@ -209,12 +261,13 @@ svg[data-names="true"] .conq-names {
 .conq-names text {
   fill: #fff;
   font-family: var(--font-sans);
-  font-size: 1.15px;
+  font-size: calc(1.15px * var(--conq-mark-scale, 1));
   font-weight: 600;
   text-anchor: middle;
   paint-order: stroke;
   stroke: rgb(5 10 30 / 0.85);
-  stroke-width: 0.3px;
+  stroke-width: calc(0.3px * var(--conq-mark-scale, 1));
+  stroke-linejoin: round;
 }
 /* Sur ses terres : le nom du joueur, ses troupes juste dessous. */
 .conq-labels text {
@@ -403,7 +456,7 @@ svg[data-names="true"] .conq-names {
   }
 }
 /* La terre que le guide conseille : un repère fixe, qui ne redessine pas la carte en boucle. */
-.conq-hex.is-suggested {
+.conq-shape.is-suggested {
   fill: rgb(255 200 87 / 0.3);
   stroke: var(--color-warn);
   stroke-width: 2.4px;
@@ -683,12 +736,12 @@ svg[data-names="true"] .conq-names {
   border: 2px solid #5fe39a;
   background: transparent;
 }
-.conq-hex.is-ally {
+.conq-shape.is-ally {
   stroke: #5fe39a;
   stroke-width: 1.4px;
 }
-/* Quelques battements, pas une boucle sans fin : animer une case redessine toute la carte, relief compris. */
-.conq-hex.is-fresh {
+/* Quelques battements, pas une boucle sans fin : animer une terre redessine toute la carte. */
+.conq-shape.is-fresh {
   animation: conq-fresh 1.6s ease-in-out 6;
 }
 @keyframes conq-fresh {
@@ -706,6 +759,11 @@ svg[data-names="true"] .conq-names {
 }
 svg[data-marks="true"] .conq-buildings {
   display: block;
+}
+.conq-building {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(var(--conq-mark-scale, 1));
 }
 .conq-building rect {
   fill: var(--color-night);
@@ -923,7 +981,7 @@ svg[data-marks="true"] .conq-buildings {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .conq-hex.is-fresh {
+  .conq-shape.is-fresh {
     animation: none;
     fill: rgb(255 255 255 / 0.18);
   }

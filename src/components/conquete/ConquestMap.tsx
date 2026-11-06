@@ -1,11 +1,12 @@
-import type { ComponentChildren } from "preact";
-import { useEffect, useMemo, useRef } from "preact/hooks";
+import { Fragment, type ComponentChildren } from "preact";
+import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import { basePath } from "../../lib/conquete/api";
 import { playerBorder, playerColor } from "../../lib/conquete/feed";
-import { WORLD_VIEW, hexPath } from "../../lib/conquete/geo";
+import { WORLD_VIEW, landCellPath, warpPoint } from "../../lib/conquete/geo";
 import { BUILDINGS } from "../../lib/conquete/rules";
-import { labelFontSize, outlinesOf, ownerLabels, ownerLayers, shortName } from "../../lib/conquete/shapes";
+import { capturedLands, labelFontSize, outlinesOf, ownerLabels, ownerLayers, shortName, type Capture } from "../../lib/conquete/shapes";
 import type { GameMap, TerritoryState } from "../../lib/conquete/types";
+import { motionAllowed } from "../../lib/fx/motion";
 import { fmtDec1, fmtInt } from "../../lib/format";
 
 const MIN_ZOOM = 1;
@@ -14,8 +15,8 @@ const MAX_ZOOM = 9;
 const NAMES_ZOOM = 3.2;
 /** Au-delà, les petits repères du relief s'affichent : la vue d'ensemble reste nette. */
 const MARKS_ZOOM = 1.7;
-/** Sous cette largeur à l'écran, en pixels, la grille des hexagones ne ferait que griser le relief. */
-const GRID_MIN_HEX_PX = 11;
+/** Sous cette largeur à l'écran, en pixels, les limites des terres ne feraient que griser la carte : elles attendent qu'on zoome. */
+const GRID_MIN_HEX_PX = 54;
 /** Une étiquette plus petite que ça ne se lirait pas : elle attend qu'on zoome. */
 const LABEL_MIN_PX = 9;
 /** Et plus grande, elle cacherait la carte : elle cesse de grandir avec le zoom. */
@@ -27,6 +28,10 @@ const LIGHT_RELIEF_PX_PER_UNIT = 3.3;
 const FULL_RELIEF_WINDOW_PX = 1200;
 /** Une terre prise depuis moins longtemps que ça pulse : on voit la carte bouger. */
 const FRESH_MS = 15 * 60_000;
+/** Au-delà de ce zoom, les noms et les repères cessent de grandir : ils cacheraient la carte. */
+const MARKS_MAX_ZOOM = 4;
+/** La durée de la couleur qui se répand sur une terre, en millisecondes : la même que dans le style de la carte. */
+const CAPTURE_MS = 1100;
 /** En dessous, c'est un téléphone ou une petite tablette : les panneaux passent sous la carte. */
 const SMALL_SCREEN_PX = 960;
 const HOME_ZOOM = 2.4;
@@ -86,6 +91,10 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   const lastFocus = useRef(focus);
   const sharp = useRef(false);
   const openedOnHome = useRef(false);
+  const clipPrefix = useId();
+  const previousStates = useRef<ReadonlyMap<number, TerritoryState> | null>(null);
+  const [captures, setCaptures] = useState<readonly Capture[]>([]);
+  const captureTimer = useRef<number | undefined>(undefined);
 
   const { minX, minY, maxX, maxY } = map.bounds;
   const width = maxX - minX;
@@ -94,18 +103,26 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   const reliefFile = (small: boolean) => `${basePath()}/conquete/terrain-${map.version}${small ? "-small" : ""}.webp`;
   const firstRelief = useMemo(() => reliefFile(window.innerWidth * window.devicePixelRatio < FULL_RELIEF_WINDOW_PX), [map]);
 
-  const hexes = useMemo(() => map.territories.map((t) => ({ t, d: hexPath(t.x, t.y, map.hexSize) })), [map]);
+  /** Chaque terre : la zone à toucher, avec la mer autour de ses côtes, et son milieu tel qu'il est dessiné. */
+  const hexes = useMemo(
+    () =>
+      map.territories.map((t) => {
+        const [x, y] = warpPoint(t.x, t.y);
+        return { t, d: landCellPath(t.x, t.y, map.hexSize), x, y };
+      }),
+    [map],
+  );
   const grid = useMemo(() => map.territories.map((t) => t.shape).join(""), [map]);
   const marks = useMemo(() => {
     const mark = (x: number, y: number, s: number) => `M${x - s} ${y + s * 0.5}L${x} ${y - s * 0.6}L${x + s} ${y + s * 0.5}`;
     let hills = "";
     let peaks = "";
-    for (const t of map.territories) {
-      if (t.terrain === "highland") hills += mark(t.x, t.y - 2.6, 0.95);
-      if (t.terrain === "mountain") peaks += mark(t.x - 0.9, t.y - 2.5, 0.95) + mark(t.x + 0.9, t.y - 2.5, 0.95);
+    for (const { t, x, y } of hexes) {
+      if (t.terrain === "highland") hills += mark(x, y - 2.6, 0.95);
+      if (t.terrain === "mountain") peaks += mark(x - 0.9, y - 2.5, 0.95) + mark(x + 0.9, y - 2.5, 0.95);
     }
     return { hills, peaks };
-  }, [map]);
+  }, [hexes]);
   const routes = useMemo(() => {
     const byId = new Map(map.territories.map((t) => [t.id, t]));
     return map.routes.map((r) => {
@@ -144,14 +161,23 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     node.dataset["names"] = String(k >= NAMES_ZOOM);
     node.dataset["marks"] = String(k >= MARKS_ZOOM);
     node.dataset["grid"] = String(Math.sqrt(3) * map.hexSize * scale >= GRID_MIN_HEX_PX);
-    for (const label of labelsGroup.current?.children ?? []) {
+    node.style.setProperty("--conq-mark-scale", String(Math.min(1, MARKS_MAX_ZOOM / k)));
+    // Le joueur d'abord, puis les plus grandes étiquettes : une étiquette qui en chevaucherait une autre attend qu'on zoome.
+    const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+    const ordered = [...(labelsGroup.current?.children ?? [])].sort((a, b) => Number(b.getAttribute("data-mine")) - Number(a.getAttribute("data-mine")) || Number(b.getAttribute("data-size")) - Number(a.getAttribute("data-size")));
+    for (const label of ordered) {
       const px = Number(label.getAttribute("data-size")) * scale;
-      (label as SVGElement).style.display = px >= LABEL_MIN_PX ? "" : "none";
       const x = label.getAttribute("data-x");
       const y = label.getAttribute("data-y");
       const shrink = LABEL_MAX_PX / px;
       if (shrink < 1) label.setAttribute("transform", `translate(${x} ${y}) scale(${shrink}) translate(${-Number(x)} ${-Number(y)})`);
       else label.removeAttribute("transform");
+      const font = Math.min(px, LABEL_MAX_PX);
+      const halfWidth = Number(label.getAttribute("data-chars")) * font * 0.29;
+      const box = { left: Number(x) * scale - halfWidth, right: Number(x) * scale + halfWidth, top: Number(y) * scale - font * 0.85, bottom: Number(y) * scale + font * 1.1 };
+      const fits = px >= LABEL_MIN_PX && !placed.some((p) => box.left < p.right && box.right > p.left && box.top < p.bottom && box.bottom > p.top);
+      (label as SVGElement).style.display = fits ? "" : "none";
+      if (fits) placed.push(box);
     }
     if (zoomValue.current) zoomValue.current.textContent = `×${fmtDec1(k)}`;
     // On zoome, ou l'écran est plus grand que prévu : l'image complète arrive, chargée avant d'être montrée.
@@ -215,7 +241,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     const asked = focus !== lastFocus.current;
     lastFocus.current = focus;
     if (selected === null || (tapped.current === selected && !asked)) return;
-    const t = map.territories[selected - 1];
+    const t = hexes[selected - 1];
     if (!t) return;
     const v = view.current;
     if (v.k < 2.2) v.k = 2.2;
@@ -231,7 +257,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   /** Sur un petit écran, le monde entier ne laisse rien à toucher : la carte s'ouvre sur les terres du joueur. */
   useEffect(() => {
     if (openedOnHome.current || home === null || !arena || selected !== null || window.innerWidth >= SMALL_SCREEN_PX) return;
-    const t = map.territories[home - 1];
+    const t = hexes[home - 1];
     if (!t) return;
     openedOnHome.current = true;
     const v = view.current;
@@ -264,6 +290,20 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     };
     // Les bornes ne changent pas pour une même carte.
   }, [map, arena]);
+
+  /** Une terre change de main : sa nouvelle couleur s'y répand, depuis les terres voisines du même joueur. */
+  useEffect(() => {
+    const before = previousStates.current;
+    previousStates.current = states;
+    if (!before || !motionAllowed()) return;
+    const fresh = capturedLands(map, before, states);
+    if (fresh.length === 0) return;
+    setCaptures(fresh);
+    // Une relecture de la carte peut arriver pendant ce temps : elle ne doit pas laisser l'effet en place.
+    window.clearTimeout(captureTimer.current);
+    captureTimer.current = window.setTimeout(() => setCaptures([]), CAPTURE_MS);
+  }, [map, states]);
+  useEffect(() => () => window.clearTimeout(captureTimer.current), []);
 
   /** De nouvelles étiquettes : on leur applique le niveau de zoom en cours. */
   useEffect(() => {
@@ -392,14 +432,43 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
               ))}
             </g>
             <g class="conq-owners">
-              {layers.map((layer) => (
-                <path key={layer.owner} class="conq-owner" data-owner={layer.owner} d={layer.fill} style={{ fill: playerColor(layer.owner) }}></path>
-              ))}
+              {layers.map((layer) => {
+                const clip = `${clipPrefix}-owner-${layer.owner}`;
+                const color = playerColor(layer.owner);
+                return (
+                  <g key={layer.owner}>
+                    <clipPath id={clip}>
+                      <path d={layer.fill}></path>
+                    </clipPath>
+                    <path class="conq-owner" data-owner={layer.owner} d={layer.fill} style={{ fill: color }}></path>
+                    {/* La couleur s'intensifie vers le bord des terres : le terrain reste visible au milieu. */}
+                    <g clip-path={`url(#${clip})`}>
+                      <path class="conq-owner-glow is-wide" d={layer.border} style={{ stroke: color }}></path>
+                      <path class="conq-owner-glow" d={layer.border} style={{ stroke: color }}></path>
+                    </g>
+                  </g>
+                );
+              })}
             </g>
             <g class="conq-borders">
               {layers.map((layer) => (
                 <path key={layer.owner} class={layer.owner === me ? "is-mine" : undefined} d={layer.border} style={layer.owner === me ? undefined : { stroke: playerBorder(layer.owner) }}></path>
               ))}
+            </g>
+            <g class="conq-captures" aria-hidden="true" data-testid="map-captures">
+              {captures.map(({ id, owner, fromX, fromY }) => {
+                const clip = `${clipPrefix}-capture-${id}`;
+                return (
+                  <g key={id}>
+                    <clipPath id={clip}>
+                      <path d={map.territories[id - 1]!.shape}></path>
+                    </clipPath>
+                    <g clip-path={`url(#${clip})`}>
+                      <circle class="conq-capture" cx={fromX} cy={fromY} r={map.hexSize * 3.4} style={{ fill: playerColor(owner) }}></circle>
+                    </g>
+                  </g>
+                );
+              })}
             </g>
             <path class="conq-relief" d={marks.hills}></path>
             <path class="conq-relief" d={marks.peaks}></path>
@@ -410,26 +479,25 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
               const isFresh = state?.taken_at ? Date.now() - Date.parse(state.taken_at) < FRESH_MS : false;
               const isAlly = state !== undefined && (allies?.has(state.owner) ?? false);
               const isSuggested = suggested?.has(t.id) ?? false;
+              const flags = [!state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected", isAlly && "is-ally", isFresh && "is-fresh", isSuggested && "is-suggested"].filter(Boolean).join(" ");
               return (
-                <path
-                  key={t.id}
-                  data-t={t.id}
-                  data-owner={state?.owner}
-                  d={d}
-                  class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected", isAlly && "is-ally", isFresh && "is-fresh", isSuggested && "is-suggested"].filter(Boolean).join(" ")}
-                ></path>
+                <Fragment key={t.id}>
+                  <path data-t={t.id} data-owner={state?.owner} d={d} class={`conq-hex ${flags}`}></path>
+                  {/* Ce qui se voit suit la côte ; la zone à toucher, juste avant, déborde un peu sur la mer. */}
+                  <path d={t.shape} class={`conq-shape ${flags}`}></path>
+                </Fragment>
               );
             })}
             <g class="conq-names" aria-hidden="true">
-              {map.territories.map((t) => (
-                <text key={t.id} x={t.x} y={t.y + 3.2}>
+              {hexes.map(({ t, x, y }) => (
+                <text key={t.id} x={x} y={y + 3.2}>
                   {t.name.length > 16 ? `${t.name.slice(0, 15)}…` : t.name}
                 </text>
               ))}
             </g>
             <g ref={labelsGroup} class="conq-labels" aria-hidden="true" data-testid="owner-labels">
               {labels.map((label) => (
-                <g key={label.owner} class={traitors?.has(label.owner) ? "is-traitor" : undefined} data-size={label.size} data-x={label.x} data-y={label.y} data-owner={label.owner}>
+                <g key={label.owner} class={traitors?.has(label.owner) ? "is-traitor" : undefined} data-size={label.size} data-x={label.x} data-y={label.y} data-owner={label.owner} data-chars={label.name.length} data-mine={label.owner === me ? 1 : 0}>
                   <text x={label.x} y={label.y - label.size * 0.08} font-size={label.size}>
                     {label.name}
                   </text>
@@ -440,13 +508,13 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
               ))}
             </g>
             <g class="conq-buildings" aria-hidden="true" data-testid="map-buildings">
-              {hexes.map(({ t }) => {
+              {hexes.map(({ t, x, y }) => {
                 const kind = states.get(t.id)?.building;
                 if (!kind) return null;
                 return (
                   <g key={t.id} class={`conq-building is-${kind}`}>
-                    <rect x={t.x - 1.05} y={t.y - 1.05} width={2.1} height={2.1} rx={0.45} />
-                    <text x={t.x} y={t.y + 0.58}>
+                    <rect x={x - 1.05} y={y - 1.05} width={2.1} height={2.1} rx={0.45} />
+                    <text x={x} y={y + 0.58}>
                       {BUILDINGS[kind].mark}
                     </text>
                   </g>

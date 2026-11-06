@@ -1,6 +1,7 @@
 /**
- * La géométrie de la carte de la Conquête : une projection à aires égales, puis une grille
- * d'hexagones identiques. Deux hexagones couvrent donc la même surface réelle, où qu'ils soient.
+ * La géométrie de la carte de la Conquête : une projection à aires égales, puis une grille d'hexagones
+ * identiques, qui décide des terres et de leurs voisins. À l'écran, ces cases sont déformées : les frontières
+ * paraissent naturelles, et chaque terre garde exactement les mêmes voisins.
  */
 
 const A1 = 1.340264;
@@ -86,10 +87,76 @@ export function hexCorners(x: number, y: number, size: number): Point[] {
   });
 }
 
-export const hexPath = (x: number, y: number, size: number): string =>
-  `M${hexCorners(x, y, size)
-    .map(([px, py]) => `${Math.round(px * 100) / 100} ${Math.round(py * 100) / 100}`)
-    .join("L")}Z`;
+/* ---------- Des frontières naturelles, sur la grille des règles ---------- */
+
+/** Un bruit doux et reproductible, entre -1 et 1 : même point, même valeur, partout et à chaque génération. */
+export function smoothNoise(x: number, y: number, seed: number): number {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const value = (a: number, b: number) => {
+    let h = Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(seed, 1442968193);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return (((h ^ (h >>> 16)) >>> 0) / 4294967296) * 2 - 1;
+  };
+  const fx = x - ix;
+  const fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const top = value(ix, iy) * (1 - sx) + value(ix + 1, iy) * sx;
+  const bottom = value(ix, iy + 1) * (1 - sx) + value(ix + 1, iy + 1) * sx;
+  return top * (1 - sy) + bottom * sy;
+}
+
+/** Le bruit de calcul d'abord, l'arrondi ensuite : deux voisins écrivent exactement le même sommet. */
+export const snapToMap = (n: number): number => Math.round(Math.round(n * 1e6) / 1e4) / 100;
+
+/** Trois échelles de déformation, en unités de la carte : [longueur d'onde, amplitude]. */
+const WARP_OCTAVES: readonly (readonly [number, number])[] = [
+  [18, 2],
+  [8, 1.6],
+  [3.2, 0.32],
+];
+
+/** Déplace un point de la carte. La déformation est continue et ne dépend que de la position : les voisins restent voisins. */
+export function warpPoint(x: number, y: number): Point {
+  let dx = 0;
+  let dy = 0;
+  WARP_OCTAVES.forEach(([wave, amplitude], i) => {
+    dx += smoothNoise(x / wave, y / wave, 11 + i) * amplitude;
+    dy += smoothNoise(x / wave, y / wave, 31 + i) * amplitude;
+  });
+  return [x + dx, y + dy];
+}
+
+/** Segments par côté d'une terre : assez pour une frontière naturelle, sans alourdir le fichier de la carte. */
+export const LAND_SIDE_SEGMENTS = 6;
+/** De petits accidents sur la frontière, visibles de près. Bien plus petits qu'un segment : elle ne peut pas se replier. */
+const BORDER_JITTER = 0.3;
+const BORDER_JITTER_WAVE = 1.3;
+
+/**
+ * Le contour d'une terre : l'hexagone des règles, déformé. Le côté `i` va du sommet `i` au sommet `i + 1`,
+ * sur `LAND_SIDE_SEGMENTS` segments. Deux voisins obtiennent exactement la même frontière.
+ */
+export function landCell(x: number, y: number, size: number): Point[] {
+  const corners = hexCorners(x, y, size);
+  const ring: Point[] = [];
+  corners.forEach(([ax, ay], i) => {
+    const [bx, by] = corners[(i + 1) % 6]!;
+    for (let j = 0; j < LAND_SIDE_SEGMENTS; j++) {
+      const t = j / LAND_SIDE_SEGMENTS;
+      const px = snapToMap(ax + (bx - ax) * t);
+      const py = snapToMap(ay + (by - ay) * t);
+      const [wx, wy] = warpPoint(px, py);
+      const jitterX = smoothNoise(px / BORDER_JITTER_WAVE, py / BORDER_JITTER_WAVE, 51) * BORDER_JITTER;
+      const jitterY = smoothNoise(px / BORDER_JITTER_WAVE, py / BORDER_JITTER_WAVE, 52) * BORDER_JITTER;
+      ring.push([snapToMap(wx + jitterX), snapToMap(wy + jitterY)]);
+    }
+  });
+  return ring;
+}
+
+export const landCellPath = (x: number, y: number, size: number): string => `M${landCell(x, y, size).map(([px, py]) => `${px} ${py}`).join("L")}Z`;
 
 /** Un point dans un polygone : le premier anneau est l'extérieur, les suivants sont des trous. */
 export function pointInRings(x: number, y: number, rings: readonly (readonly Point[])[]): boolean {
