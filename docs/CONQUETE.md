@@ -33,8 +33,8 @@ GitHub Action ──────────────┘  une fois par jour :
 | `config/conquete.json` | Les réglages par défaut |
 | `src/lib/conquete/` | Formules pour l'écran, appels au serveur, messages d'erreur, tâche quotidienne |
 | `src/components/conquete/` | Les écrans |
-| `scripts/generate-conquete-map.ts` | La génération de la carte : hexagones, voisins, noms, contours aux côtes |
-| `scripts/generate-conquete-terrain.ts` | La génération de l'image du relief |
+| `scripts/generate-conquete-map.ts` | La génération de la carte : grille, voisins, noms, frontières déformées, contours aux côtes |
+| `scripts/generate-conquete-terrain.ts` | Le dessin du fond de la carte, en aplats |
 | `scripts/conquete-job.ts` | La tâche quotidienne |
 | `tests/db/` | Les règles, les droits et les attaques simultanées, sur un vrai Postgres |
 | `tests/e2e/conquete.spec.ts` | Le parcours complet dans un navigateur |
@@ -242,7 +242,7 @@ La Conquête reprend ce qui fait jouer à OpenFront, et change ce qu'il faut pou
 **Ce qui diffère volontairement :**
 
 - **Pas de temps réel.** Une partie d'OpenFront dure quelques minutes, et une saison plusieurs jours : les joueurs n'ont pas à être connectés ensemble. Un combat se résout donc d'un coup, et une terre change de main entière.
-- **Des hexagones, pas des pixels.** Le serveur (Postgres) ne pourrait pas suivre des millions de tuiles.
+- **Des terres, pas des pixels.** Le serveur (Postgres) ne pourrait pas suivre des millions de tuiles. Une terre est une case d'une grille d'hexagones, dessinée avec des frontières naturelles, et elle change de main entière.
 - **Aucun hasard, aucun bot, aucun navire.** Les bots demanderaient un serveur qui tourne en continu. Les transports par mer sont remplacés par les voisinages de mer et les routes de haute mer.
 - **Pas de chat ni d'émotes :** le clan a déjà son Discord.
 - **Des limites par jour** (conquêtes, attaques), pour que personne ne perde tout pendant son sommeil. Elles se règlent dans `/admin`.
@@ -319,18 +319,18 @@ Ces prix et ces durées sont des estimations : **aucune vraie saison n'a encore 
 
 ## La carte
 
-528 hexagones de 270 000 km², sur une projection à aires égales (Equal Earth), générés depuis Natural Earth, qui est dans le domaine public. Deux hexagones couvrent donc la même surface réelle, où qu'ils soient.
+528 terres, sur une grille d'hexagones de 270 000 km² posée sur une projection à aires égales (Equal Earth), générées à partir des données de Natural Earth, qui est dans le domaine public. Cette grille décide des terres et de leurs voisins ; elle ne se voit pas à l'écran.
 
-- **Voisins :** les six hexagones autour, plus ceux séparés par une seule case de mer, plus quelques routes de haute mer pour que toute la carte soit reliée.
-- **Relief :** déduit des zones de montagne et de plateau de Natural Earth. 56 % de plaines, 30 % de collines, 14 % de montagnes.
-- **Noms :** la plus grande ville de chaque hexagone, en français. Les lieux en guerre ou disputés sont remplacés par un nom géographique neutre, dans `scripts/conquete-map-names.ts`. **Cette liste date du 5 novembre 2026 : à relire par le clan avant la mise en ligne.**
+- **Voisins :** les six cases autour, plus celles séparées par une seule case de mer, plus quelques routes de haute mer pour que toute la carte soit reliée.
+- **Relief au sens des règles :** déduit des zones de montagne et de plateau de Natural Earth. 56 % de plaines, 30 % de collines, 14 % de montagnes. Ce sont les repères ^ et ^^, en zoomant, qui le disent : les couleurs du fond montrent le climat et la géographie, pas la force du terrain.
+- **Noms :** la plus grande ville de chaque case, en français. Les lieux en guerre ou disputés sont remplacés par un nom géographique neutre, dans `scripts/conquete-map-names.ts`. **Cette liste date du 5 novembre 2026 : à relire par le clan avant la mise en ligne.**
 
-- **Contours :** chaque hexagone s'arrête aux côtes de Natural Earth (1:50 m) et aux grands lacs. Ce n'est qu'un dessin : un territoire reste un hexagone pour les règles, et toute sa case reste cliquable.
-- **Relief :** l'image `HYP_50M_SR` de Natural Earth (domaine public), reprojetée en Equal Earth pour tomber exactement sous les hexagones, avec notre propre océan. Aucune image d'OpenFront n'est utilisée. Les couleurs de l'image sont celles du vrai climat : ce sont les repères ^ et ^^ qui disent le relief au sens des règles.
+- **Contours :** chaque case est déformée (`landCell` dans `src/lib/conquete/geo.ts`), puis s'arrête aux côtes de Natural Earth (1:50 m) et aux grands lacs. Ce n'est qu'un dessin : un territoire reste une case de la grille pour les règles, et toute sa case reste cliquable, mer comprise.
+- **Fond :** `scripts/generate-conquete-terrain.ts` lit la source de Natural Earth (`HYP_50M_SR`) pour situer les climats et les montagnes, puis repeint tout en aplats avec sa propre palette. Aucune image d'OpenFront n'est utilisée.
 
-Le navigateur charge `terrain-v1-small.webp` (63 Ko) sur un petit écran, et `terrain-v1.webp` (207 Ko) sur un grand ou dès qu'on zoome. Le fichier de la carte pèse 298 Ko, 98 Ko une fois compressé.
+Le navigateur charge `terrain-v1-small.webp` (89 Ko) sur un petit écran, et `terrain-v1.webp` (414 Ko) sur un grand ou dès qu'on zoome. Le fichier de la carte pèse 499 Ko, 156 Ko une fois compressé.
 
-Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terrain` pour le relief. Les téléchargements pèsent environ 26 et 50 Mo et restent hors de Git, dans `.cache/natural-earth/`. Tant que la carte n'est pas en ligne, on peut la régénérer librement. Ensuite, créez une nouvelle version (`VERSION` dans le script) pour ne pas toucher aux saisons passées. Changer les contours ne change pas le fichier SQL de la carte, tant que les hexagones restent les mêmes.
+Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terrain` pour le fond. Les téléchargements pèsent environ 26 et 50 Mo et restent hors de Git, dans `.cache/natural-earth/`. Pour changer de grille, de noms ou de voisins, créez une nouvelle version (`VERSION` dans le script) : celle-ci est installée. **Changer les contours ou le fond ne change pas le fichier SQL de la carte, tant que la grille reste la même : après `npm run conquete:map`, vérifiez que `20261105000700_carte_v1.sql` n'a pas bougé,** car une migration installée reste figée.
 
 ## Base de données
 

@@ -10,7 +10,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import polygonClipping, { type MultiPolygon, type Polygon as ClipPolygon, type Ring as ClipRing } from "polygon-clipping";
-import { HEX_DIRECTIONS, KM2_PER_UNIT, equalEarth, hexArea, hexAt, hexCenter, hexCorners, pointInRings, type Point } from "../src/lib/conquete/geo";
+import { HEX_DIRECTIONS, KM2_PER_UNIT, LAND_SIDE_SEGMENTS, equalEarth, hexArea, hexAt, hexCenter, landCell, pointInRings, snapToMap, warpPoint, type Point } from "../src/lib/conquete/geo";
 import { NAME_OVERRIDES } from "./conquete-map-names";
 
 const VERSION = "v1";
@@ -328,10 +328,9 @@ const named = ordered.map((cell) => {
   throw new Error(`Aucun nom pour ${key(cell.q, cell.r)}`);
 });
 
-/* ---------- Les contours : chaque hexagone s'arrête à la côte ---------- */
+/* ---------- Les contours : chaque terre a des frontières naturelles et s'arrête à la côte ---------- */
 
-/** Le bruit de calcul d'abord, l'arrondi ensuite : deux voisins écrivent exactement le même sommet. */
-const snap = (n: number) => Math.round(Math.round(n * 1e6) / 1e4) / 100;
+const snap = snapToMap;
 const toMapUnits = (ring: readonly Point[]): ClipRing => ring.map(([x, y]) => [x * 100, -y * 100]);
 const clipGeometry = (p: Polygon): ClipPolygon => p.rings.map(toMapUnits);
 const signedArea = (ring: readonly Point[]) => {
@@ -390,41 +389,92 @@ function simplifyRing(ring: readonly Point[], onBorder: (p: Point) => boolean): 
 
 const overlaps = (a: Polygon["box"], minX: number, minY: number, maxX: number, maxY: number) => a[0] <= maxX && a[2] >= minX && a[1] <= maxY && a[3] >= minY;
 
-/** Le dessin d'un territoire : son hexagone, moins la mer et les grands lacs. */
-function shapeOf(cell: Cell): string {
-  const corners = hexCorners(cell.x, cell.y, size);
-  const xs = corners.map((c) => c[0]);
-  const ys = corners.map((c) => c[1]);
+// La déformation ne doit jamais retourner la carte : sinon, deux terres pourraient se chevaucher.
+{
+  const STEP = 0.5;
+  const H = 0.05;
+  let worst = Infinity;
+  for (let y = -140; y <= 110; y += STEP) {
+    for (let x = -280; x <= 280; x += STEP) {
+      const [ax, ay] = warpPoint(x - H, y);
+      const [bx, by] = warpPoint(x + H, y);
+      const [cx, cy] = warpPoint(x, y - H);
+      const [dx, dy] = warpPoint(x, y + H);
+      worst = Math.min(worst, ((bx - ax) * (dy - cy) - (by - ay) * (dx - cx)) / (4 * H * H));
+    }
+  }
+  console.log(`Déformation : surface locale multipliée par ${worst.toFixed(2)} au minimum.`);
+  if (worst < 0.05) throw new Error("La déformation retourne la carte : réduire ses amplitudes.");
+}
+
+/** La distance d'un point à un segment. */
+const toSegment = ([px, py]: Point, [ax, ay]: Point, [bx, by]: Point) => {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const t = dx === 0 && dy === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+};
+
+/** Deux segments qui se croisent : la déformation aurait replié une frontière sur elle-même. */
+const crosses = (a: Point, b: Point, c: Point, d: Point) => {
+  const side = (p: Point, q: Point, r: Point) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  return side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
+};
+
+/**
+ * Le dessin d'un territoire : sa case déformée, moins la mer et les grands lacs.
+ * `edges` dit ce que longe chaque segment, anneau par anneau : le numéro du côté, ou `c` pour la côte.
+ */
+function shapeOf(cell: Cell): { shape: string; edges: string } {
+  const outline = landCell(cell.x * 100, -cell.y * 100, size * 100);
+  outline.forEach((a, i) => {
+    const b = outline[(i + 1) % outline.length]!;
+    for (let j = i + 2; j < outline.length; j++) {
+      if (i === 0 && j === outline.length - 1) continue;
+      if (crosses(a, b, outline[j]!, outline[(j + 1) % outline.length]!)) throw new Error(`Frontière repliée sur elle-même autour de ${key(cell.q, cell.r)} : réduire la déformation.`);
+    }
+  });
+  const xs = outline.map((c) => c[0] / 100);
+  const ys = outline.map((c) => -c[1] / 100);
   const box = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] as const;
-  const hex: ClipPolygon = [toMapUnits([...corners, corners[0]!])];
+  const closed: ClipRing = [...outline, outline[0]!].map(([x, y]) => [x, y]);
+  const area: ClipPolygon = [closed];
   let result: MultiPolygon = land
     .filter((p) => overlaps(p.box, ...box))
-    .flatMap((p) => polygonClipping.intersection(hex, clipGeometry(p)));
+    .flatMap((p) => polygonClipping.intersection(area, clipGeometry(p)));
   const nearLakes = lakes.filter((p) => overlaps(p.box, ...box)).map(clipGeometry);
   if (nearLakes.length > 0 && result.length > 0) result = polygonClipping.difference(result, ...nearLakes);
 
-  const center: Point = [cell.x * 100, -cell.y * 100];
-  const apothem = (size * 100 * Math.sqrt(3)) / 2;
-  const normals = Array.from({ length: 6 }, (_, i) => [Math.cos((i * Math.PI) / 3), Math.sin((i * Math.PI) / 3)] as const);
-  const onBorder = ([x, y]: Point) => normals.some(([nx, ny]) => Math.abs((x - center[0]) * nx + (y - center[1]) * ny - apothem) < 1e-6);
+  const segmentAt = (i: number) => [outline[i]!, outline[(i + 1) % outline.length]!] as const;
+  const onBorder = (p: Point) => outline.some((_, i) => toSegment(p, ...segmentAt(i)) < 1e-6);
+  /** Le côté de la case que longe un point, ou -1. L'arrondi au centième explique la tolérance. */
+  const sideOf = (p: Point, side: number) => Array.from({ length: LAND_SIDE_SEGMENTS }, (_, j) => toSegment(p, ...segmentAt(side * LAND_SIDE_SEGMENTS + j))).some((d) => d < 0.016);
+  const edgeCode = (a: Point, b: Point) => {
+    const middle: Point = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    for (let side = 0; side < 6; side++) {
+      if (sideOf(a, side) && sideOf(b, side) && sideOf(middle, side)) return String(side);
+    }
+    return "c";
+  };
 
-  const path = result
-    .flatMap((polygon) =>
-      polygon.flatMap((ring) => {
-        const points = ring as Point[];
-        if (Math.abs(signedArea(points.slice(0, -1))) < MIN_RING_AREA) return [];
-        const rounded = simplifyRing(points, onBorder).map(([x, y]) => [snap(x), snap(y)] as const);
-        const unique = rounded.filter(([x, y], i) => {
-          const [px, py] = rounded[(i + rounded.length - 1) % rounded.length]!;
-          return x !== px || y !== py;
-        });
-        return unique.length < 3 ? [] : [`M${unique.map(([x, y]) => `${x} ${y}`).join("L")}Z`];
-      }),
-    )
-    .join("");
-  if (path) return path;
-  // Un hexagone presque entièrement dans un lac ou un archipel : on garde l'hexagone.
-  return `M${(hex[0] as Point[]).slice(0, -1).map(([x, y]) => `${snap(x)} ${snap(y)}`).join("L")}Z`;
+  const rings = result.flatMap((polygon) =>
+    polygon.flatMap((ring) => {
+      const points = ring as Point[];
+      if (Math.abs(signedArea(points.slice(0, -1))) < MIN_RING_AREA) return [];
+      const rounded = simplifyRing(points, onBorder).map(([x, y]) => [snap(x), snap(y)] as const);
+      const unique = rounded.filter(([x, y], i) => {
+        const [px, py] = rounded[(i + rounded.length - 1) % rounded.length]!;
+        return x !== px || y !== py;
+      });
+      return unique.length < 3 ? [] : [unique];
+    }),
+  );
+  // Une case presque entièrement dans un lac ou un archipel : on garde la case entière.
+  const kept = rings.length > 0 ? rings : [outline];
+  return {
+    shape: kept.map((ring) => `M${ring.map(([x, y]) => `${x} ${y}`).join("L")}Z`).join(""),
+    edges: kept.map((ring) => ring.map((a, i) => edgeCode(a, ring[(i + 1) % ring.length]!)).join("")).join("|"),
+  };
 }
 
 /* ---------- Les fichiers ---------- */
@@ -441,7 +491,7 @@ const territories = named.map(({ cell, name }, i) => ({
   name,
   terrain: terrainOf(cell),
   neighbours: [...neighbours.get(i + 1)!].sort((a, b) => a - b),
-  shape: shapeOf(cell),
+  ...shapeOf(cell),
 }));
 const xs = territories.map((t) => t.x);
 const ys = territories.map((t) => t.y);

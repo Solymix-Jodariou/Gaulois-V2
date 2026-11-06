@@ -58,14 +58,29 @@ export function feedDetail(e: FeedRow): string | null {
   return `${fmtInt(e.sent)} troupes contre ${fmtInt(e.garrison_before)} : ${outcome}.`;
 }
 
-/** Une couleur par joueur, bien répartie sur le cercle des teintes, toujours la même pour un numéro. */
+/** La teinte d'un joueur, en degrés : bien répartie sur le cercle, toujours la même pour un numéro. */
+export const playerHue = (number: number): number => (number * 137.508) % 360;
+
+/** Une couleur OKLCH, rendue en sRGB : toutes les teintes y ont la même clarté à l'œil, sans vert criard ni bleu éteint. */
+function oklch(lightness: number, chroma: number, hue: number): string {
+  const a = chroma * Math.cos((hue * Math.PI) / 180);
+  const b = chroma * Math.sin((hue * Math.PI) / 180);
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const channel = (linear: number) => {
+    const v = Math.max(0, Math.min(1, linear));
+    return Math.round(255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+  };
+  return `rgb(${channel(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s)} ${channel(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s)} ${channel(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s)})`;
+}
+
+/** Une couleur par joueur. */
 export function playerColor(number: number): string {
-  return `hsl(${hueOf(number)} 72% 58%)`;
+  return oklch(0.72, 0.17, playerHue(number));
 }
 
 /** Le contour de ses terres : la même teinte, plus sombre. */
 export function playerBorder(number: number): string {
-  return `hsl(${hueOf(number)} 80% 28%)`;
+  return oklch(0.38, 0.12, playerHue(number));
 }
-
-const hueOf = (number: number) => ((number * 137.508) % 360).toFixed(1);

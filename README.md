@@ -28,8 +28,8 @@ Le site s'ouvre sur http://localhost:4321. Aucun secret n'est nécessaire.
 | `npm run dev` | Serveur de développement |
 | `npm run data:fetch` | Collecte les données dans `data/` |
 | `npm run data:carte` | Met à jour seulement la carte des clans, sans attendre le délai d'une journée |
-| `npm run conquete:map` | Régénère la carte du jeu depuis Natural Earth |
-| `npm run conquete:terrain` | Régénère l'image du relief de la carte, depuis Natural Earth |
+| `npm run conquete:map` | Régénère les terres du jeu, à partir des données de Natural Earth |
+| `npm run conquete:terrain` | Redessine le fond de la carte du jeu, à partir des mêmes données |
 | `npm run conquete:job` | La tâche quotidienne du jeu. Sans ses réglages, elle ne fait rien. |
 | `npm run build` | Génère le favicon, l'image de partage et les fichiers du film, puis construit `dist/` |
 | `npm run preview` | Sert le dossier `dist/` |
@@ -155,7 +155,7 @@ Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque 
 
 ## La Conquête des Gaulois
 
-Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde en hexagones, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle est branchée à un vrai projet Supabase depuis le 6 novembre 2026,** mais aucune vraie partie n'a encore été jouée : voir [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
+Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde dessinée pour le jeu, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle est branchée à un vrai projet Supabase depuis le 6 novembre 2026,** mais aucune vraie partie n'a encore été jouée : voir [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
 
 ## Animations
 

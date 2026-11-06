@@ -1,6 +1,6 @@
 ## En bref
 
-La Conquête des Gaulois est un jeu de territoires réservé aux membres de GAL. La carte du monde est découpée en hexagones de même surface. Chaque saison, vous partez d'une terre et vous vous étendez, puis la guerre commence entre membres. Plus vous avez donné de capsules au clan, plus votre armée est grande, sans que cela suffise à gagner seul.
+La Conquête des Gaulois est un jeu de territoires réservé aux membres de GAL. La carte du monde est découpée en 528 terres, et chacune compte autant qu'une autre, quelle que soit sa taille à l'écran. Chaque saison, vous partez d'une terre et vous vous étendez, puis la guerre commence entre membres. Plus vous avez donné de capsules au clan, plus votre armée est grande, sans que cela suffise à gagner seul.
 
 On y retrouve ce qui fait OpenFront : le ratio d'attaque, l'or, les bâtiments, les bombes, les alliances et leurs trahisons, la victoire à 80 % de la carte. Seul le rythme change : une saison dure des jours, pas vingt minutes.
 
@@ -60,7 +60,7 @@ Le site ne peut pas lire vos dons tout seul : OpenFront les réserve aux membres
 | Colline | 2 000 | 1 000 tiennent garnison |
 | Montagne | 2 400 | 600 tiennent garnison |
 
-Vous pouvez conquérir **10 terres libres par jour**, gros donneur ou non. Deux hexagones séparés par une seule case de mer sont voisins, et quelques routes de haute mer relient les continents.
+Vous pouvez conquérir **10 terres libres par jour**, gros donneur ou non. Deux terres séparées par un bras de mer étroit sont voisines, et quelques routes de haute mer relient les continents.
 
 **Renforcez vos terres** quand vous voulez : vos troupes passent de la réserve à la garnison, sans frais. Une garnison ne revient pas dans la réserve.
 

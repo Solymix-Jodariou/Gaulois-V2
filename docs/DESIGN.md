@@ -162,13 +162,15 @@ C'est l'esprit d'OpenFront, avec l'habillage du clan : ni ses images, ni ses cou
 
 Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle identité. Ses règles et son architecture sont dans [CONQUETE.md](CONQUETE.md).
 
-**Une carte d'hexagones, pas de pays.** Tous les territoires ont la même surface réelle, ce qui rend la carte équitable. Elle ne dessine aucune frontière contestée, et les six voisins se voient d'un coup d'œil.
+**Une carte de jeu, pas une carte réaliste.** Demande du clan, le 6 novembre 2026 : le relief réaliste ne convenait pas, il fallait une vraie carte de jeu, dans la même famille que celles d'OpenFront et de TeamStats. Le fond est donc entièrement redessiné en aplats : douze zones (glace, toundra, taïga, forêt, jungle, prairie, steppe, désert, terres rouges, haut plateau, roche, neiges), une ombre et une lumière sur trois niveaux pour faire lire les montagnes, un liseré de plage, et une mer en bandes de profondeur. Natural Earth n'y sert que de données : où sont les côtes, les déserts et les montagnes. On ne reprend ni les images, ni les cartes, ni les couleurs, ni le rendu d'un autre jeu.
 
-**La lecture d'une carte de conquête, à notre façon.** Demande du clan : une carte dans l'esprit de celle d'OpenFront. On en garde les codes de lecture : un vrai relief sous une mer bleue, des terres translucides d'un seul tenant qui s'arrêtent aux côtes, et le nom d'un joueur posé sur ses terres avec ses troupes dessous. On n'en copie ni les images, ni les couleurs exactes, ni le code : le relief vient de Natural Earth, l'océan est le nôtre, les hexagones restent visibles, et le jeu garde ses propres règles et son nom.
+**Des terres aux frontières naturelles, sur une grille invisible.** Pour les règles, une terre reste une case d'une grille d'hexagones : c'est ce qui donne ses voisins, et ni les noms, ni le relief, ni le serveur n'en changent. À l'écran, cette grille est déformée (`warpPoint`, `landCell`) : deux terres voisines partagent exactement la même frontière, et un contrôle à la génération vérifie que la déformation ne replie jamais la carte. La carte ne dessine aucune frontière réelle ni contestée. Les terres n'ont plus toutes la même taille à l'écran, de 0,5 à 1,7 fois celle de la case d'origine, mais chacune compte autant qu'une autre dans les règles. Leurs limites n'apparaissent qu'en zoomant.
 
-**Une couleur par joueur.** Elle est tirée de son numéro, sur le cercle des teintes, et ne change jamais. Ses terres sont translucides à 62 % pour laisser voir le relief, et bordées de la même teinte, plus sombre, là seulement où elles s'arrêtent. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés sur la carte, au survol, au toucher et dans le panneau latéral.
+**Une couleur par joueur.** Elle est tirée de son numéro et ne change jamais. Calculée en OKLCH, elle garde la même clarté à l'œil d'une teinte à l'autre, sans vert criard ni bleu éteint. Ses terres portent un voile léger au milieu, 38 %, pour laisser voir le terrain, et la couleur s'intensifie vers le bord, avec un contour plus sombre là seulement où elles s'arrêtent. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés sur la carte, au survol, au toucher et dans le panneau latéral.
 
-**Le nom suit la place.** Une étiquette tient dans les terres du joueur : elle n'apparaît qu'une fois lisible (9 px) et cesse de grandir à 30 px pour ne pas cacher la carte. Le nombre dessous est le total de ses garnisons.
+**Une terre qui change de main se voit.** Sa nouvelle couleur s'y répand en 1,1 seconde, depuis les terres voisines du même joueur, puis se fond dans son voile. L'effet disparaît avec le bouton pause et le réglage « réduire les animations », et il ne se joue pas après un rattrapage de plus de 12 terres : toute la carte clignoterait.
+
+**Le nom suit la place.** Une étiquette tient dans les terres du joueur : elle n'apparaît qu'une fois lisible (9 px) et cesse de grandir à 30 px pour ne pas cacher la carte. Le nombre dessous est le total de ses garnisons. Deux étiquettes ne se chevauchent jamais : celle du joueur connecté passe d'abord, puis les plus grandes, et les autres attendent qu'on zoome. Les noms des terres et les repères des bâtiments cessent eux aussi de grandir au-delà du zoom ×4.
 
 | Marque | Sens |
 |---|---|
@@ -188,7 +190,7 @@ Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle id
 
 **Un guide, pas un tunnel.** Le guide de première partie se pose sur l'écran de jeu sans bloquer ni assombrir quoi que ce soit : le joueur peut toujours cliquer ailleurs, ou le fermer. Il encadre ce dont il parle et place la terre visée au-dessus de lui, jamais dessous. Sur téléphone, il passe au-dessus de la carte. Il suit la vraie partie : aucune action fictive, aucun résultat simulé.
 
-**Toucher a toujours un effet visible.** Sur téléphone, le panneau d'une terre monte du bas de l'écran, avec son bouton à portée de pouce, et se referme d'une croix. Au retour, la carte s'ouvre sur les terres du joueur : à l'échelle du monde, un hexagone est trop petit pour être touché.
+**Toucher a toujours un effet visible.** Sur téléphone, le panneau d'une terre monte du bas de l'écran, avec son bouton à portée de pouce, et se referme d'une croix. Au retour, la carte s'ouvre sur les terres du joueur : à l'échelle du monde, une terre est trop petite pour être touchée.
 
 **Aucun hasard, aucune surprise.** L'écran annonce le résultat exact avant la confirmation, et le fil d'actualité le raconte ensuite avec les mêmes chiffres.
 

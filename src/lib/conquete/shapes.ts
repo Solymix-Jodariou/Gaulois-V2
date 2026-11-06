@@ -1,9 +1,9 @@
 /**
- * Du découpage en hexagones au dessin de la carte : les terres d'un même joueur se fondent en
+ * Du découpage des règles au dessin de la carte : les terres d'un même joueur se fondent en
  * une seule masse, bordée seulement là où elle s'arrête, et portent son nom et ses troupes.
  * Rien ici ne décide de quoi que ce soit : c'est le dessin de ce que le serveur a dit.
  */
-import { hexAt, type Point } from "./geo";
+import { hexAt, warpPoint, type Point } from "./geo";
 import type { GameMap, MapTerritory } from "./types";
 
 /** Le voisin que regarde chaque côté, dans l'ordre de `hexCorners` (y vers le bas). */
@@ -15,9 +15,6 @@ const SIDE_NEIGHBOURS = [
   [0, -1],
   [1, -1],
 ] as const;
-const SIDE_NORMALS = SIDE_NEIGHBOURS.map((_, i) => [Math.cos((i * Math.PI) / 3), Math.sin((i * Math.PI) / 3)] as const);
-/** Tolérance due à l'arrondi des coordonnées, en unités de la carte. */
-const ON_SIDE = 0.03;
 
 export interface Outline {
   id: number;
@@ -49,7 +46,6 @@ const cache = new WeakMap<object, Outline[]>();
 export function outlinesOf(map: Pick<GameMap, "hexSize" | "territories">): Outline[] {
   const known = cache.get(map);
   if (known) return known;
-  const apothem = (map.hexSize * Math.sqrt(3)) / 2;
   const cells = map.territories.map((t) => hexAt(t.x, t.y, map.hexSize));
   const at = new Map(cells.map((c, i) => [`${c.q},${c.r}`, map.territories[i]!.id]));
 
@@ -57,16 +53,17 @@ export function outlinesOf(map: Pick<GameMap, "hexSize" | "territories">): Outli
     const { q, r } = cells[i]!;
     const paths = ["", "", "", "", "", ""];
     let coast = "";
-    const isOn = ([x, y]: Point, [nx, ny]: readonly [number, number]) => Math.abs((x - t.x) * nx + (y - t.y) * ny - apothem) < ON_SIDE;
-    for (const ring of parseRings(t.shape)) {
+    // Le générateur a noté ce que longe chaque segment : le numéro du côté, ou « c » pour la côte.
+    const codes = t.edges.split("|");
+    parseRings(t.shape).forEach((ring, ringIndex) => {
       ring.forEach((a, index) => {
         const b = ring[(index + 1) % ring.length]!;
         const segment = `M${a[0]} ${a[1]}L${b[0]} ${b[1]}`;
-        const side = SIDE_NORMALS.findIndex((n) => isOn(a, n) && isOn(b, n));
-        if (side === -1) coast += segment;
-        else paths[side] += segment;
+        const code = codes[ringIndex]![index]!;
+        if (code === "c") coast += segment;
+        else paths[Number(code)] += segment;
       });
-    }
+    });
     return {
       id: t.id,
       shape: t.shape,
@@ -155,7 +152,11 @@ export function ownerLabels(map: Pick<GameMap, "hexSize" | "territories">, state
   const hexWidth = Math.sqrt(3) * map.hexSize;
   const hexHeight = 2 * map.hexSize;
   return [...biggest].map(([owner, group]) => {
-    const cells = group.map((id) => territories.get(id)!);
+    // Le milieu de chaque terre tel qu'il est dessiné : les frontières sont déformées, lui aussi.
+    const cells = group.map((id) => {
+      const [x, y] = warpPoint(territories.get(id)!.x, territories.get(id)!.y);
+      return { id, x, y };
+    });
     const xs = cells.map((t) => t.x);
     const ys = cells.map((t) => t.y);
     const cx = xs.reduce((a, b) => a + b, 0) / cells.length;
@@ -177,6 +178,32 @@ export function ownerLabels(map: Pick<GameMap, "hexSize" | "territories">, state
       garrison: total.garrison,
     };
   });
+}
+
+export interface Capture {
+  id: number;
+  owner: number;
+  /** D'où part la couleur : le milieu de la terre voisine du même joueur, ou la terre elle-même s'il n'en a pas. */
+  fromX: number;
+  fromY: number;
+}
+
+/** Au-delà, c'est un premier chargement ou un rattrapage : on ne fait pas clignoter toute la carte. */
+const MAX_CAPTURES = 12;
+
+/** Les terres qui viennent de changer de main, pour montrer la couleur qui s'y répand. Rien ici ne décide de quoi que ce soit. */
+export function capturedLands(map: Pick<GameMap, "territories">, before: ReadonlyMap<number, Owned>, after: ReadonlyMap<number, Owned>): Capture[] {
+  const byId = new Map<number, MapTerritory>(map.territories.map((t) => [t.id, t]));
+  const out: Capture[] = [];
+  for (const [id, state] of after) {
+    if (before.get(id)?.owner === state.owner) continue;
+    const land = byId.get(id);
+    if (!land) continue;
+    const from = land.neighbours.map((n) => byId.get(n)).find((n) => n && before.get(n.id)?.owner === state.owner) ?? land;
+    const [fromX, fromY] = warpPoint(from.x, from.y);
+    out.push({ id, owner: state.owner, fromX, fromY });
+  }
+  return out.length > MAX_CAPTURES ? [] : out;
 }
 
 const MAX_NAME = 16;
