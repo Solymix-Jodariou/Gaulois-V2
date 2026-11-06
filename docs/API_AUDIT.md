@@ -19,7 +19,7 @@ Toutes les réponses citées sont réelles. Elles sont raccourcies avec `…`, e
 | Historique du rang | **Impossible à reconstruire** : l'API ne donne que le classement actuel. |
 | Appels depuis le navigateur | **Bloqués par le CORS**, ce qui confirme le choix de la GitHub Action. |
 | Limites de requêtes | Aucune documentée, et aucune atteinte pendant les tests. Le seuil réel reste inconnu. |
-| Carte officielle des clans | Lisible sans compte et rejouable depuis le premier pixel, par des routes non documentées. Voir la section 8. |
+| Carte officielle des clans | Rejouable depuis le premier pixel par la route documentée `/public/clanmap/history`, en ligne depuis le 6 novembre 2026 au plus tard. Voir la section 8. |
 
 ### Points à trancher
 
@@ -303,11 +303,27 @@ Le parcours détaillé dans l'interface (où trouver le menu Clans) n'a pas ét�
 
 ## 8. Carte officielle des clans
 
-Tests du 5 novembre 2026, entre 14 h 30 et 15 h 10 UTC. La carte est visible sur `clanmap.openfront.io` sans compte. Les clans y peignent un territoire de 4 108 × 1 948 pixels. Ce n'est pas le classement des clans.
+Tests du 5 novembre 2026, entre 14 h 30 et 15 h 10 UTC, sauf mention contraire. La carte est visible sur `clanmap.openfront.io` sans compte. Les clans y peignent un territoire de 4 108 × 1 948 pixels. Ce n'est pas le classement des clans.
 
-### Routes lues par la carte
+### Route lue par la collecte
 
-Toutes répondent sans authentification, hors `/public` et sans documentation. Elles ont été trouvées dans le code de la page et peuvent changer sans préavis.
+Depuis le 6 novembre 2026, la collecte lit `GET /public/clanmap/history`, documentée dans `docs/API.md` « pour construire des timelapses ». Elle répondait 404 le 5 novembre à 14 h 38 UTC, et 200 le 6 novembre à 12 h 13 UTC.
+
+- Chaque événement vaut `[seq, x, y, clanId, previousClanId, createdAt]`.
+- La collecte suit `next` et garde la taille de page par défaut : la documentation indique que seules ces pages tombent dans le cache d'OpenFront. Après une interruption, elle reprend donc à la dernière page complète.
+- `previousClanId` sert de contrôle à chaque mise à jour : si le rejeu ne retombe pas sur l'ancien propriétaire annoncé, le film n'est pas remplacé.
+- `createdAt` n'est pas encore conservé : le film suit l'ordre des événements, sans dates. Il pourrait devenir une vraie frise temporelle.
+- La route passe depuis GitHub : premier passage le 6 novembre 2026 à 13 h 01 UTC, en un peu plus de 3 minutes, avec 1 788 073 événements et 0 écart.
+
+La route ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc plus le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le nombre de pixels de terre (2 335 403) et le fond de carte viennent du relevé du 5 novembre.
+
+### Routes de la page de la carte, plus lues par la collecte
+
+Elles répondent sans authentification, hors `/public` et sans documentation. Elles ont été trouvées dans le code de la page et peuvent changer sans préavis.
+
+**Le 6 novembre 2026 à 11 h 53 UTC, `/clanmap/ownership` a répondu 403 à la collecte sur GitHub.** Vingt minutes plus tard, la même route répondait 200 depuis une connexion personnelle, avec le même nom de client, et les routes `/public` passaient sur GitHub dans la même exécution. Le refus semble donc viser les machines de GitHub sur cette route. C'est une déduction : OpenFront n'a rien expliqué.
+
+La collecte ne cherche pas à contourner ce refus. La section 5 des [conditions d'utilisation](https://openfront.io/terms-of-service.html) interdit d'accéder au service par un moyen ou une interface automatisés qu'il ne fournit pas. C'est une lecture de ces conditions, pas un avis juridique. Le message de `docs/CONQUETE.md` demande à OpenFront une version publique de ces données.
 
 | Route | Réponse | Cache annoncé |
 |---|---|---|
@@ -321,20 +337,25 @@ Toutes répondent sans authentification, hors `/public` et sans documentation. E
 - Quatre réponses 500 passagères sur environ 330 appels. La même requête réussit au nouvel essai.
 - `/clanmap/changes` ne donne ni la date ni l'ancien propriétaire. Le rejeu retrouve l'ancien propriétaire, mais pas la date.
 
-### Route documentée, pas encore en ligne
-
-`docs/API.md` décrit depuis le 4 novembre 2026 `GET /public/clanmap/history`, avec `[seq, x, y, clanId, previousClanId, createdAt]`, « pour construire des timelapses ». **Elle répondait 404 le 5 novembre 2026 à 14 h 38 UTC.** Dès qu'elle répond, il faudra la préférer : elle est documentée et elle donne les dates, ce qui permettrait une vraie frise temporelle.
-
 ### Vérification du rejeu
 
 L'historique rejoué depuis le début a été comparé pixel par pixel à l'instantané officiel :
 
-| Instantané | Événements lus | Pixels comparés | Écart |
-|---|---:|---:|---:|
-| n° 1 649 074 | 1 641 811 | 8 002 384 | **0** |
-| n° 1 654 095 | 1 646 033 | 8 002 384 | **0** |
+| Route de l'historique | Instantané | Événements lus | Pixels comparés | Écart |
+|---|---|---:|---:|---:|
+| `/clanmap/changes` | n° 1 649 074 | 1 641 811 | 8 002 384 | **0** |
+| `/clanmap/changes` | n° 1 654 095 | 1 646 033 | 8 002 384 | **0** |
+| `/public/clanmap/history` | n° 1 785 861 (6 novembre) | 1 776 855 | 8 002 384 | **0** |
 
-La collecte refait ce contrôle à chaque mise à jour et refuse de publier un film en cas d'écart. Le décompte de GAL (90 908 pixels à l'instantané n° 1 649 074) est identique à celui affiché par la carte du jeu. L'ordre des clans de tête aussi.
+Le décompte de GAL (90 908 pixels à l'instantané n° 1 649 074) est identique à celui affiché par la carte du jeu. L'ordre des clans de tête aussi.
+
+Le 6 novembre 2026, à 12 h 38 UTC, `/public/clanmap/history` a livré 1 781 713 événements :
+
+- Les 1 656 206 événements déjà lus par `/clanmap/changes` la veille sont identiques.
+- `previousClanId` ne contredit le rejeu sur aucun événement.
+- Les 331 images complètes du film déjà publié n'ont pas changé.
+
+Ces comparaisons à l'instantané ont été faites à la main. La collecte ne lit plus l'instantané : à chaque mise à jour, elle contrôle seulement `previousClanId`. Ce contrôle repère un événement manquant ou dans le désordre dès que son pixel rechange de main. Il ne verrait pas un événement manquant sur un pixel qui n'a plus bougé depuis.
 
 ### Qui peut quoi sur la carte
 
@@ -358,6 +379,8 @@ Lu dans le code de la page de la carte (`clanmap.openfront.io`) et du jeu, le 5 
 | Top donateurs | `GET /clans/GAL/donations/leaderboard` | **Non : 401** |
 | Mêmes routes sous `/public/clan/GAL/` | | **Non : 404** |
 | Qui a peint quel pixel | Aucune route connue | **Rien ne le donne**, ni `/clanmap/changes`, ni `/clanmap/ships`, ni la route documentée |
+
+**`/clans/GAL` n'a pas répondu à la collecte sur GitHub** le 6 novembre 2026, vers 13 h 04 UTC, alors qu'elle répondait une demi-heure plus tôt depuis une connexion personnelle. Le code d'erreur n'a pas été relevé : c'est peut-être le même refus que `/clanmap/ownership`. La collecte la réessaie une fois par jour, et la page écrit « Pas de données » pour les réserves.
 
 **Conséquences pour le site :**
 

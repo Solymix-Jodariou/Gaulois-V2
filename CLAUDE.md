@@ -34,8 +34,9 @@ Vérifier : `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `n
 ## Pièges
 
 - Un push sur `main` publie le site (`site.yml`) et peut aussi partir sur Railway, dont le rôle n'est pas établi.
-- Le robot de données pousse environ toutes les heures, mais GitHub retarde souvent ce créneau, parfois de plusieurs heures : ce n'est pas une panne. Avant un push, intégrer `origin/main`, garder ses données et le bloc `clanmap` de `data/meta.json`, vérifier `data/history/` : Git peut y garder une vieille version sans signaler de conflit.
+- Le robot de données pousse toutes les heures. La tâche « Collecte GAL » de cron-job.org lance le workflow à la minute 53, avec un jeton GitHub réservé à cette tâche ; le créneau de GitHub, souvent retardé ou sauté, sert de secours. Avant un push, intégrer `origin/main`, garder ses données et le bloc `clanmap` de `data/meta.json`, vérifier `data/history/` : Git peut y garder une vieille version sans signaler de conflit.
 - D'autres sessions tournent dans `.claude/worktrees/` : ne jamais arrêter de processus par filtre sur leur nom ou leur ligne de commande. Vérifier d'abord le port et le chemin.
+- La carte ne lit que `/public/clanmap/history`, plus `/clans/GAL` pour le trésor. `/clanmap/ownership` est refusée aux machines de GitHub (403) : ne pas contourner ce refus, et ne pas relire `/clanmap/*` sans accord d'OpenFront (section 5 de ses conditions).
 - Tests e2e : Playwright réutilise ce qui écoute sur 4321, parfois une vieille version, et veut 4322 et 54399 libres, donc arrêter d'abord sa démo. `Get-NetTCPConnection -State Listen` peut les dire libres alors qu'ils répondent : tenter une vraie connexion. 4321 et 4322 sont en dur dans `playwright.config.ts` : pour en changer, adapter une copie de la config et exporter `GAL_TEST_SITE_PORT` et `GAL_TEST_SUPABASE_PORT` dans le shell, car la pile et les tests les lisent aussi. Une seconde pile dans le même dossier écrase `dist-conquete/`.
 - Sous charge, un test du jeu peut dépasser 30 s : le relancer seul avant de conclure.
 - `.btn` écrase la classe `hidden` de Tailwind : masquer via un conteneur.

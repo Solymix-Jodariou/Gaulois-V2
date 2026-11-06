@@ -65,7 +65,8 @@ test.describe("film de la carte", () => {
     await expect(page.getByTestId("film-fronts").locator("tbody tr")).toHaveCount(film.galSummary.fronts.length);
     await expect(page.getByText("pas le classement des clans").first()).toBeVisible();
     await page.getByTestId("fold-read").locator("summary").click();
-    await expect(page.getByText(`${film.check.mismatches} pixel d'écart`)).toBeVisible();
+    await expect(page.getByText(`${film.check.mismatches} écart sur`)).toBeVisible();
+    await expect(page.getByTestId("map-journal")).not.toContainText("..");
   });
 
   test("la page s'ouvre sur la carte, et les détails restent repliés", async ({ page }) => {
@@ -309,9 +310,11 @@ test.describe("film de la carte", () => {
     // 1 capsule = 100 troupes, 1 pixel neutre = 1 000 troupes.
     expect(digits(await pixels.textContent())).toBe("100");
 
+    // Sans la fiche du clan, le nombre de membres vient de la liste des membres.
+    const memberCount = film.treasury?.members ?? JSON.parse(readFileSync("data/members.json", "utf8")).total;
     await page.getByRole("button", { name: /Chaque membre/ }).click();
-    await expect.poll(async () => digits(await total.textContent())).toBe(String(1000 * film.treasury.members));
-    expect(digits(await pixels.textContent())).toBe(String(100 * film.treasury.members));
+    await expect.poll(async () => digits(await total.textContent())).toBe(String(1000 * memberCount));
+    expect(digits(await pixels.textContent())).toBe(String(100 * memberCount));
     await expect(page.getByTestId("film-gal")).toHaveText(before ?? "");
   });
 

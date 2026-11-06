@@ -13,13 +13,6 @@ export interface Standing {
   tag: string | null;
   color: number | null;
   pixels: number;
-  troops: number | null;
-}
-
-/** Prix d'un pixel pris à un clan : un socle, plus ses troupes rapportées à son territoire. */
-export function enemyPixelCost(troops: number | null, pixels: number): number {
-  const defence = troops !== null && troops > 0 && pixels > 0 ? Math.ceil(troops / pixels) : 0;
-  return ENEMY_PIXEL_BASE_TROOPS + defence;
 }
 
 export const capsToTroops = (caps: number) => Math.max(0, caps) * TROOPS_PER_CAP;

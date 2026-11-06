@@ -62,7 +62,7 @@ export const ApiMembersPage = z.object({
 
 export const ApiClanExists = z.object({ exists: z.boolean() });
 
-/* ---------- Carte officielle des clans (routes hors /public, voir docs/API_AUDIT.md) ---------- */
+/* ---------- Carte officielle des clans (voir docs/API_AUDIT.md, section 8) ---------- */
 
 const numericId = z.string().regex(/^\d+$/);
 const ApiClanMapClan = z.object({
@@ -71,22 +71,16 @@ const ApiClanMapClan = z.object({
   color: z.number().int().nullable().optional(),
 });
 
-export const ApiClanMapChanges = z.object({
-  seq: numericId,
-  // [numéro, x, y, clan] : les champs ajoutés plus tard par le jeu sont ignorés.
-  changes: z.array(z.tuple([numericId, z.number().int().nonnegative(), z.number().int().nonnegative(), numericId], z.unknown())),
+/** Une page de `GET /public/clanmap/history`, la route documentée par OpenFront. */
+export const ApiClanMapHistory = z.object({
+  // [numéro, x, y, clan, ancien clan, date] : les champs ajoutés plus tard par le jeu sont ignorés.
+  events: z.array(z.tuple([numericId, z.number().int().nonnegative(), z.number().int().nonnegative(), numericId, numericId, z.number()], z.unknown())),
   clans: z.record(z.string(), ApiClanMapClan).default({}),
+  // `null` : page courte, l'historique s'arrête là pour l'instant.
+  next: numericId.nullable(),
 });
 
-export const ApiClanMapOwnership = z.object({
-  seq: numericId,
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  clans: z.array(ApiClanMapClan.extend({ id: numericId, troops: z.number().nonnegative().optional() })),
-  rle: z.string().min(1),
-});
-
-/** Fiche publique du clan. Le code du jeu précise que son trésor n'est pas réservé aux membres. */
+/** Fiche du clan, hors /public et hors documentation. Le code du jeu précise que son trésor n'est pas réservé aux membres. */
 export const ApiClanCard = z.object({
   // Entier décimal en texte. Absent signifie « inconnu », pas zéro.
   softBalance: z.string().regex(/^\d+$/).optional(),
@@ -152,7 +146,7 @@ export type HistorySnapshot = z.infer<typeof HistorySnapshot>;
 const count = z.number().int().nonnegative();
 
 export const StoredClanMapFilm = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   fetchedAt: isoDate,
   // Numéro du dernier événement lu, et nombre d'événements rejoués.
   seq: count,
@@ -164,9 +158,11 @@ export const StoredClanMapFilm = z.object({
   rows: count,
   bucket: count,
   totalChanges: count,
+  // Pixels de terre de la carte, relevés une fois : voir OFFICIAL_MAP.
   land: count,
   claimed: count,
-  check: z.object({ seq: count, pixels: count, mismatches: count }),
+  // Événements dont l'ancien propriétaire annoncé diffère du rejeu.
+  check: z.object({ events: count, mismatches: count }),
   // L'index 0 est la terre neutre. `tag: null` : clan supprimé depuis.
   clans: z.array(z.object({ tag: z.string().nullable(), color: z.number().int().nullable() })),
   // `gal: null` : GAL n'a jamais eu de pixel sur la carte.
@@ -190,19 +186,14 @@ export const StoredClanMapFilm = z.object({
           // Pixels de ce clan au contact de GAL, et centre de cette frontière. 0 et `null` : plus de contact.
           border: count,
           at: z.tuple([count, count]).nullable(),
-          // Troupes pour lui prendre un pixel. `null` : ce clan n'est plus sur la carte.
-          pixelCost: count.nullable(),
         }),
       ),
       zones: z.array(z.object({ pixels: count, x: count, y: count, halfWidth: count, halfHeight: count })),
       zoneCount: count,
-      neutralBorder: count,
     })
     .nullable(),
   // Tous les clans présents, dans l'ordre de la carte officielle.
-  standings: z.array(
-    z.object({ tag: z.string().nullable(), color: z.number().int().nullable(), pixels: count, troops: z.number().nonnegative().nullable() }),
-  ),
+  standings: z.array(z.object({ tag: z.string().nullable(), color: z.number().int().nullable(), pixels: count })),
   // Réserves publiques de GAL à la collecte. `null` : pas de données, ce n'est pas un zéro.
   treasury: z.object({ caps: count.nullable(), troops: z.number().nonnegative().nullable(), members: count.nullable() }).nullable(),
   frames: z.array(
@@ -219,7 +210,7 @@ export const StoredClanMapFilm = z.object({
 });
 export type StoredClanMapFilm = z.infer<typeof StoredClanMapFilm>;
 
-/** Un relevé par jour, en heure de Paris : l'historique de la carte ne donne aucune date. */
+/** Un relevé par jour, en heure de Paris. */
 export const ClanMapJournal = z.array(
   z.object({
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
