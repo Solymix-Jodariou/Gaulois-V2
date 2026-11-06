@@ -1,0 +1,490 @@
+<!doctype html>
+<!--
+  Carte « World » d'OpenFront, dessinée dans un canvas à partir des données publiques du jeu.
+
+  DONNÉES (CC BY-SA 4.0, attribution « OpenFront », fichier LICENSE-ASSETS du dépôt) :
+  manifest.json et map4x.bin du dossier resources/maps/world du dépôt
+  https://github.com/openfrontio/OpenFrontIO, copiés le 6 novembre 2026 au commit
+  a0abccc9d94b8ea336e9c210a0199dcd7bba9890.
+
+  CODE REPRIS D'OPENFRONT (https://github.com/openfrontio/OpenFrontIO, AGPL-3.0, même commit),
+  MODIFIÉ LE 06/11/2026 pour ce site :
+    - couleurs du terrain : encodeTerrainTile dans src/client/render/gl/utils/ColorUtils.ts,
+      avec les couleurs par défaut de src/client/render/gl/render-settings.json (section « terrain ») ;
+    - dessin d'un territoire : remplissage de src/client/render/gl/shaders/map-overlay/territory.frag.glsl
+      (opacité « territoryAlpha » et « territorySaturation » de render-settings.json), bord de
+      src/client/render/gl/shaders/border-compute/border-compute.frag.glsl et
+      src/client/render/gl/shaders/day-night/border-stamp.frag.glsl, couleur du bord de
+      borderColor dans src/client/theme/ThemeProvider.ts (« borderDarken » de src/client/theme/default-theme.json).
+  Modifications : réécrit en JavaScript simple pour un canvas 2D, sans WebGL ni textures ; un territoire
+  par appel, sans motifs, skins, surbrillance, relations ni postes de défense ; noms traduits en français.
+  Conditions supplémentaires de la licence du jeu (section 7) : la mention « © OpenFront and Contributors »
+  reste visible en pied de page, et l'origine du code n'est pas travestie. Voir NOTICE.md.
+
+  Format d'une case (un octet, index = y × largeur + x) :
+    bit 7      terre (1) ou eau (0)
+    bit 6      littoral
+    bit 5      océan (eau seulement ; sans effet sur les couleurs)
+    bits 0 à 4 magnitude 0 à 31 : altitude pour la terre, distance à la terre pour l'eau
+    terre + magnitude 31 = case infranchissable, dessinée couleur de fond
+-->
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carte « World » — [GAL] Les Gaulois</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #3c3c3c;
+      color: #e6e6e6;
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .page, footer { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
+    .intro { margin: 0 0 1rem; color: #cfcfcf; }
+    .etat { margin: 0 0 .5rem; min-height: 1.5em; }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 2 / 1;
+      image-rendering: crisp-edges;
+      image-rendering: pixelated;
+      border: 1px solid #222;
+      background: #3c3c3c;
+    }
+    .exemple { color: #cfcfcf; font-size: .95rem; }
+    footer { padding-top: 0; padding-bottom: 24px; font-size: .9rem; color: #bdbdbd; }
+    footer p { margin: .25rem 0; }
+    a { color: #9fd0ff; }
+    a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: .95em; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>Carte « World »</h1>
+    <p class="intro">
+      Le terrain du monde d'OpenFront, dessiné case par case à partir des données publiques du jeu, avec ses couleurs.
+      Les territoires de clans se posent par-dessus avec la fonction <code>paintTerritory</code>,
+      dessinés comme dans le jeu : intérieur translucide, bord plus foncé.
+    </p>
+    <p id="etat" class="etat" role="status" aria-live="polite">Chargement du terrain…</p>
+    <canvas id="carte" role="img" aria-label="Carte du monde d'OpenFront, en cours de chargement"></canvas>
+    <p id="exemple" class="exemple" hidden></p>
+    <noscript><p>Cette page a besoin de JavaScript pour dessiner la carte.</p></noscript>
+  </main>
+  <footer>
+    <p>
+      Données de map © <a href="https://github.com/openfrontio/OpenFrontIO" rel="noopener">OpenFront</a>,
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.fr" rel="noopener">CC BY-SA 4.0</a>
+      — site non affilié à OpenFront Inc.
+    </p>
+    <p>
+      Fichiers <code>manifest.json</code> et <code>map4x.bin</code> du dossier <code>resources/maps/world</code>
+      du dépôt du jeu, copiés le 6 novembre 2026 (commit <code>a0abccc</code>).
+    </p>
+    <p>
+      © OpenFront and Contributors. Le code des couleurs du terrain et du dessin des territoires est repris du client
+      du jeu, sous <a href="https://github.com/openfrontio/OpenFrontIO/blob/main/LICENSE" rel="noopener">AGPL-3.0</a>,
+      et modifié le 6 novembre 2026 : les fichiers d'origine sont listés en tête du code de cette page.
+    </p>
+  </footer>
+
+  <script>
+    "use strict";
+    (() => {
+      // ----- Réglages de la page -----
+      // Échelle dessinée : "map" (2000 × 1000), "map4x" (1000 × 500) ou "map16x" (500 × 250).
+      // Seul map4x.bin est copié dans ce dossier : pour une autre échelle, copier aussi son fichier.
+      const ECHELLE = "map4x";
+      const FICHIERS = { map: "map.bin", map4x: "map4x.bin", map16x: "map16x.bin" };
+      const COULEUR_GAL = [220, 50, 50];
+
+      // ----- Repris d'OpenFront : réglages par défaut du rendu, modifié le 06/11/2026 -----
+      // render-settings.json, section « terrain », et « territoryAlpha », « territorySaturation » ;
+      // default-theme.json : « borderDarken » (« borderLightnessScale » vaut 1, donc sans effet).
+      const REGLAGES = {
+        terrain: {
+          fond: "#3c3c3c",
+          ocean: "#4785b5",
+          sable: "#CCCB9E",
+          plaines: "#BEDC8A",
+          hauteurs: "#DCCB9E",
+          montagnes: "#e6e6e6",
+        },
+        territoire: { alpha: 0.588, saturation: 0.85 },
+        bordure: { assombrir: 0.125 },
+      };
+
+      function hexVersRgb(hex) {
+        const n = parseInt(hex.slice(1), 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const BASE = {};
+      for (const [nom, hex] of Object.entries(REGLAGES.terrain)) BASE[nom] = hexVersRgb(hex);
+
+      // ----- Format d'une case -----
+      const TERRE = 0x80;          // bit 7
+      const LITTORAL = 0x40;       // bit 6
+      const MAGNITUDE = 0x1f;      // bits 0 à 4
+      const INFRANCHISSABLE = 31;  // terre + magnitude 31
+
+      /**
+       * Repris d'OpenFront : encodeTerrainTile (src/client/render/gl/utils/ColorUtils.ts), modifié le 06/11/2026 :
+       * renvoie [r, g, b] au lieu d'écrire dans un tableau RGBA, et prend ses couleurs de base dans REGLAGES.
+       */
+      function couleurTerrain(octet) {
+        const terre = (octet & TERRE) !== 0;
+        const littoral = (octet & LITTORAL) !== 0;
+        const magnitude = octet & MAGNITUDE;
+        let r, g, b;
+
+        if (terre && magnitude === INFRANCHISSABLE) {
+          // Infranchissable : couleur de fond, pour se fondre avec l'extérieur de la carte.
+          [r, g, b] = BASE.fond;
+        } else if (terre && littoral) {
+          [r, g, b] = BASE.sable;
+        } else if (terre) {
+          if (magnitude < 10) {
+            // Plaines
+            r = BASE.plaines[0];
+            g = BASE.plaines[1] - 2 * magnitude;
+            b = BASE.plaines[2];
+          } else if (magnitude < 20) {
+            // Hauteurs
+            const m = magnitude - 10;
+            r = Math.min(255, BASE.hauteurs[0] + 2 * m);
+            g = Math.min(255, BASE.hauteurs[1] + 2 * m);
+            b = Math.min(255, BASE.hauteurs[2] + 2 * m);
+          } else {
+            // Montagnes
+            const m = Math.floor(magnitude / 2);
+            r = Math.min(255, BASE.montagnes[0] + m);
+            g = Math.min(255, BASE.montagnes[1] + m);
+            b = Math.min(255, BASE.montagnes[2] + m);
+          }
+        } else if (littoral) {
+          // Eau de littoral : 70 % de la couleur de l'océan et 30 % de blanc
+          r = Math.round(0.7 * BASE.ocean[0] + 76.5);
+          g = Math.round(0.7 * BASE.ocean[1] + 76.5);
+          b = Math.round(0.7 * BASE.ocean[2] + 76.5);
+        } else {
+          // Eau profonde : s'assombrit avec la profondeur (magnitude), 10 au plus
+          const m = Math.min(magnitude, 10);
+          r = Math.max(0, BASE.ocean[0] - m);
+          g = Math.max(0, BASE.ocean[1] - m);
+          b = Math.max(0, BASE.ocean[2] - m);
+        }
+        return [r, g, b];
+      }
+
+      // Une couleur par valeur d'octet possible, calculée une seule fois.
+      const PALETTE = new Uint8Array(256 * 3);
+      for (let octet = 0; octet < 256; octet++) PALETTE.set(couleurTerrain(octet), octet * 3);
+
+      // ----- Couleurs d'un territoire -----
+
+      /**
+       * Repris d'OpenFront : fin de territory.frag.glsl (« uSaturation »), modifié le 06/11/2026 :
+       * la couleur de remplissage est tirée vers sa luminance selon « territorySaturation ».
+       */
+      function couleurRemplissage([r, g, b]) {
+        const s = REGLAGES.territoire.saturation;
+        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+        return [luma + (r - luma) * s, luma + (g - luma) * s, luma + (b - luma) * s];
+      }
+
+      function rgbVersHsl([r, g, b]) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const l = (max + min) / 2;
+        if (max === min) return [0, 0, l * 100];
+        const d = max - min;
+        const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        let h;
+        if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g) h = (b - r) / d + 2;
+        else h = (r - g) / d + 4;
+        return [h * 60, s * 100, l * 100];
+      }
+
+      function hslVersRgb([h, s, l]) {
+        s /= 100; l /= 100;
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const hh = (h % 360) / 60;
+        const x = c * (1 - Math.abs((hh % 2) - 1));
+        let r = 0, g = 0, b = 0;
+        if (hh < 1) [r, g, b] = [c, x, 0];
+        else if (hh < 2) [r, g, b] = [x, c, 0];
+        else if (hh < 3) [r, g, b] = [0, c, x];
+        else if (hh < 4) [r, g, b] = [0, x, c];
+        else if (hh < 5) [r, g, b] = [x, 0, c];
+        else [r, g, b] = [c, 0, x];
+        const m = l - c / 2;
+        return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+      }
+
+      /**
+       * Repris d'OpenFront : borderColor (src/client/theme/ThemeProvider.ts), modifié le 06/11/2026 :
+       * le jeu appelle colord.darken(borderDarken), qui baisse la clarté HSL de 12,5 points ; écrit ici à la main.
+       */
+      function couleurBordure(rgb) {
+        const [h, s, l] = rgbVersHsl(rgb);
+        return hslVersRgb([h, s, Math.max(0, Math.min(100, l - REGLAGES.bordure.assombrir * 100))]);
+      }
+
+      // ----- État -----
+      const canvas = document.getElementById("carte");
+      const etat = document.getElementById("etat");
+      let manifeste = null;
+      let terrain = null;        // un octet par case
+      let largeur = 0;
+      let hauteur = 0;
+      let ctx = null;
+      let image = null;          // pixels affichés : terrain + territoires
+      let fond = null;           // pixels du terrain seul
+      let proprietaires = null;  // Uint16Array : 0 = personne, sinon le numéro du territoire
+      const territoires = [null]; // par numéro : { remplissage, bordure, alpha }
+      let casesDeTerre = 0;
+
+      /** Dossier des données : celui de cette page, même si l'adresse finit sans « / ». */
+      function dossierDesDonnees() {
+        const chemin = location.pathname;
+        if (chemin.endsWith("/") || /\.[a-z0-9]+$/i.test(chemin)) return new URL("./", location.href);
+        return new URL(chemin + "/", location.href);
+      }
+
+      async function charger() {
+        const dossier = dossierDesDonnees();
+        const rep = await fetch(new URL("manifest.json", dossier));
+        if (!rep.ok) throw new Error(`manifest.json : réponse ${rep.status}`);
+        manifeste = await rep.json();
+        const dims = manifeste[ECHELLE];
+        if (!dims || !dims.width || !dims.height) throw new Error(`échelle « ${ECHELLE} » absente du manifeste`);
+        largeur = dims.width;
+        hauteur = dims.height;
+        const fichier = FICHIERS[ECHELLE];
+        const repBin = await fetch(new URL(fichier, dossier));
+        if (!repBin.ok) throw new Error(`${fichier} : réponse ${repBin.status}`);
+        terrain = new Uint8Array(await repBin.arrayBuffer());
+        if (terrain.length !== largeur * hauteur) {
+          throw new Error(`${fichier} : ${terrain.length} octets au lieu de ${largeur * hauteur}`);
+        }
+        proprietaires = new Uint16Array(terrain.length);
+      }
+
+      function dessinerTerrain() {
+        canvas.width = largeur;
+        canvas.height = hauteur;
+        ctx = canvas.getContext("2d");
+        image = ctx.createImageData(largeur, hauteur);
+        const px = image.data;
+        casesDeTerre = 0;
+        for (let i = 0, o = 0; i < terrain.length; i++, o += 4) {
+          const c = terrain[i] * 3;
+          px[o] = PALETTE[c];
+          px[o + 1] = PALETTE[c + 1];
+          px[o + 2] = PALETTE[c + 2];
+          px[o + 3] = 255;
+          if (terrain[i] & TERRE) casesDeTerre++;
+        }
+        fond = new Uint8ClampedArray(px);
+        afficher();
+      }
+
+      function afficher() { ctx.putImageData(image, 0, 0); }
+
+      /**
+       * Repris d'OpenFront : territory.frag.glsl, border-compute.frag.glsl et border-stamp.frag.glsl,
+       * modifié le 06/11/2026 : redessine tout en une passe sur le processeur.
+       * Chaque case possédée reçoit son remplissage translucide ; une case dont un des 4 voisins
+       * (gauche, droite, haut, bas) a un autre propriétaire, personne compris, ou sort de la carte,
+       * est une case de bord : couleur de bord opaque.
+       */
+      function redessiner() {
+        const px = image.data;
+        px.set(fond);
+        for (let i = 0; i < terrain.length; i++) {
+          const p = proprietaires[i];
+          if (p === 0) continue;
+          const t = territoires[p];
+          const o = i * 4;
+          const x = i % largeur;
+          const bord =
+            (x === 0 || proprietaires[i - 1] !== p) ||
+            (x === largeur - 1 || proprietaires[i + 1] !== p) ||
+            (i < largeur || proprietaires[i - largeur] !== p) ||
+            (i + largeur >= terrain.length || proprietaires[i + largeur] !== p);
+          if (bord) {
+            px[o] = t.bordure[0];
+            px[o + 1] = t.bordure[1];
+            px[o + 2] = t.bordure[2];
+          } else {
+            const a = t.alpha;
+            px[o] = Math.round(fond[o] * (1 - a) + t.remplissage[0] * a);
+            px[o + 1] = Math.round(fond[o + 1] * (1 - a) + t.remplissage[1] * a);
+            px[o + 2] = Math.round(fond[o + 2] * (1 - a) + t.remplissage[2] * a);
+          }
+        }
+        afficher();
+      }
+
+      /** Terre que l'on peut colorier : terre, mais pas infranchissable. */
+      function estPeignable(i) {
+        const t = terrain[i];
+        return (t & TERRE) !== 0 && (t & MAGNITUDE) !== INFRANCHISSABLE;
+      }
+
+      /** Case peignable la plus proche de (x, y), dans un carré de `rayon` cases ; -1 s'il n'y en a pas. */
+      function casePeignableProche(x, y, rayon) {
+        for (let r = 0; r <= rayon; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // bord du carré seulement
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || ny < 0 || nx >= largeur || ny >= hauteur) continue;
+              const i = ny * largeur + nx;
+              if (estPeignable(i)) return i;
+            }
+          }
+        }
+        return -1;
+      }
+
+      /**
+       * Colorie un territoire de `nbTuiles` cases à partir de (x, y), aux coordonnées de l'échelle dessinée.
+       * Remplissage à 4 voisins, limité aux cases de terre non infranchissables : il ne traverse jamais l'eau.
+       * Si (x, y) n'est pas peignable, le remplissage part de la case peignable la plus proche (8 cases au plus).
+       * `couleurRGB` : [r, g, b] du clan. `alpha` : opacité de l'intérieur, de 0 (terrain seul) à 1 (couleur pleine),
+       * par défaut celle du jeu (0,588) ; le bord est toujours opaque et plus foncé, comme dans le jeu.
+       * Une case déjà prise par un territoire précédent passe au nouveau.
+       * Renvoie le nombre de cases réellement coloriées : moins que demandé si la terre d'un seul tenant est plus petite.
+       */
+      function paintTerritory(x, y, nbTuiles, couleurRGB, alpha = REGLAGES.territoire.alpha) {
+        if (!terrain) throw new Error("le terrain n'est pas encore chargé");
+        x = Math.round(x);
+        y = Math.round(y);
+        const voulu = Math.max(0, Math.floor(Number(nbTuiles) || 0));
+        if (voulu === 0) return 0;
+        const dansLaCarte = x >= 0 && y >= 0 && x < largeur && y < hauteur;
+        const depart = dansLaCarte && estPeignable(y * largeur + x) ? y * largeur + x : casePeignableProche(x, y, 8);
+        if (depart < 0) return 0;
+
+        const numero = territoires.length;
+        territoires.push({
+          remplissage: couleurRemplissage(couleurRGB),
+          bordure: couleurBordure(couleurRGB),
+          alpha: Math.min(1, Math.max(0, Number(alpha))),
+        });
+
+        const vu = new Uint8Array(terrain.length);
+        // Chaque case prise ajoute au plus 4 voisines : la file ne dépasse jamais 4 × nbTuiles + 1.
+        const file = new Int32Array(Math.min(terrain.length, 4 * voulu + 1));
+        let tete = 0;
+        let fin = 0;
+        let pris = 0;
+        const ajouter = (j) => {
+          if (!vu[j] && estPeignable(j)) { vu[j] = 1; file[fin++] = j; }
+        };
+        file[fin++] = depart;
+        vu[depart] = 1;
+        while (tete < fin && pris < voulu) {
+          const i = file[tete++];
+          proprietaires[i] = numero;
+          pris++;
+          const cx = i % largeur;
+          if (cx > 0) ajouter(i - 1);                              // gauche
+          if (cx < largeur - 1) ajouter(i + 1);                    // droite
+          if (i >= largeur) ajouter(i - largeur);                  // haut
+          if (i + largeur < terrain.length) ajouter(i + largeur);  // bas
+        }
+        redessiner();
+        return pris;
+      }
+
+      /** Retire tous les territoires : le terrain nu réapparaît. */
+      function effacerTerritoires() {
+        proprietaires.fill(0);
+        territoires.length = 1;
+        redessiner();
+      }
+
+      // ----- Conversions depuis l'échelle du manifeste (2000 × 1000) vers l'échelle dessinée -----
+      function rapport() { return largeur / manifeste.map.width; }
+      /** [x, y] du manifeste → [x, y] sur la carte dessinée. */
+      function versEchelle([x, y]) {
+        const r = rapport();
+        return [Math.round(x * r), Math.round(y * r)];
+      }
+      /** Nombre de cases à l'échelle 2000 × 1000 → nombre de cases sur la carte dessinée (4 fois moins en map4x). */
+      function tuilesVersEchelle(n) {
+        const r = rapport();
+        return Math.round(n * r * r);
+      }
+      /** Nation du manifeste par code de drapeau ("fr", "us"…), ou null. */
+      function nation(drapeau) {
+        return manifeste.nations.find((n) => n.flag === drapeau) || null;
+      }
+
+      // ----- Exemple : un territoire pour GAL autour de la nation « fr » -----
+      // La taille est arbitraire, pour la démonstration. Plus tard, nbTuiles viendra de l'API publique du clan.
+      function exemple() {
+        const fr = nation("fr");
+        if (!fr) return;
+        const [x, y] = versEchelle(fr.coordinates);
+        const pris = paintTerritory(x, y, tuilesVersEchelle(4000), COULEUR_GAL);
+        const p = document.getElementById("exemple");
+        p.hidden = false;
+        p.textContent =
+          `Exemple de démonstration : un territoire « GAL » de ${pris.toLocaleString("fr-FR")} cases ` +
+          `(échelle ${largeur} × ${hauteur}) autour de la France. Cette taille est arbitraire : ce n'est pas une donnée du jeu.`;
+        canvas.setAttribute(
+          "aria-label",
+          `Carte du monde d'OpenFront, ${largeur} sur ${hauteur} cases, avec un exemple de territoire coloré autour de la France.`,
+        );
+      }
+
+      async function demarrer() {
+        try {
+          await charger();
+          dessinerTerrain();
+          etat.textContent =
+            `Terrain dessiné : ${largeur} × ${hauteur} cases, dont ${casesDeTerre.toLocaleString("fr-FR")} de terre.`;
+          canvas.setAttribute("aria-label", `Carte du monde d'OpenFront, ${largeur} sur ${hauteur} cases.`);
+          exemple();
+        } catch (err) {
+          etat.textContent = `La carte n'a pas pu être chargée : ${err.message}`;
+          canvas.setAttribute("aria-label", "Carte non chargée");
+          console.error(err);
+        }
+      }
+
+      // Accès depuis la console ou un autre script, par exemple pour brancher les vraies tailles :
+      //   await carteMonde.pret;
+      //   carteMonde.effacerTerritoires();
+      //   const [x, y] = carteMonde.versEchelle(carteMonde.nation("fr").coordinates);
+      //   carteMonde.paintTerritory(x, y, carteMonde.tuilesVersEchelle(nbTuiles), [220, 50, 50]);
+      window.carteMonde = {
+        paintTerritory,
+        effacerTerritoires,
+        versEchelle,
+        tuilesVersEchelle,
+        nation,
+        couleurTerrain,
+        couleurRemplissage,
+        couleurBordure,
+        get largeur() { return largeur; },
+        get hauteur() { return hauteur; },
+        get manifeste() { return manifeste; },
+        pret: demarrer(),
+      };
+    })();
+  </script>
+</body>
+</html>

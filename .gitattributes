@@ -2,3 +2,5 @@
 data/clanmap/film.bin binary
 data/clanmap/terrain.webp binary
 public/conquete/*.webp binary
+# Le terrain de la carte « World » aussi : un octet par case.
+public/carte-monde/*.bin binary

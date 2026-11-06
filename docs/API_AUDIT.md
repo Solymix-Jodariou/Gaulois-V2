@@ -399,6 +399,8 @@ Le dépôt du jeu place le code sous AGPL-3.0 et le dossier `/resources` sous CC
 
 La collecte lit donc ce fichier public pour compter la terre neutre au contact de GAL. Le fond du film en est une version réduite et assombrie, identifiée comme telle sur la page, avec sa source et sa licence. C'est ma lecture de ces licences : je ne peux pas trancher ce point juridiquement.
 
+La page `/carte-monde/` copie de la même façon `resources/maps/world/manifest.json` et `map4x.bin` (commit `a0abccc`, 6 novembre 2026) : 1 000 × 500 cases, dont 158 068 de terre, le compte annoncé par le manifeste. Elle les dessine avec le code des couleurs et du dessin des territoires du client du jeu, repris sous AGPL-3.0 et modifié le 6 novembre 2026 (fichiers d'origine en tête de la page, ligne dans `NOTICE.md`), et affiche la source, les licences, la mention « © OpenFront and Contributors » et la non-affiliation.
+
 Le dépôt ne contient ni les réserves des clans, ni leurs troupes : ces chiffres vivent sur les serveurs d'OpenFront. Le serveur de la carte des clans n'y est pas non plus : le code du jeu décrit sa page comme « served by infra ».
 
 ### Données personnelles

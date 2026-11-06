@@ -16,6 +16,8 @@ Code source de la version en ligne : <https://github.com/Solymix-Jodariou/Gauloi
 | Stratégies par mode, traduites et adaptées du [wiki OpenFront](https://openfront.wiki/Main_Page) | `content/guide/` | CC BY-SA 4.0, attribution « OpenFront Wiki » : cette adaptation reste sous la même licence |
 | Données collectées auprès d'OpenFront, dont le film de la carte des clans | `data/`, et leur copie publiée dans `public/generated/carte/` | © OpenFront et ses contributeurs |
 | Fond de la carte des clans : Giant World Map d'OpenFront, réduite et assombrie | `data/clanmap/terrain.webp`, et sa copie publiée | CC BY-SA 4.0, attribution « OpenFront » : voir « Licences » dans `docs/API_AUDIT.md` |
+| Terrain de la carte « World » d'OpenFront, copié tel quel (`manifest.json`, `map4x.bin`, commit `a0abccc` du 6 novembre 2026) | `public/carte-monde/` | CC BY-SA 4.0, attribution « OpenFront » : la page affiche sa source et sa licence |
+| Code des couleurs du terrain et du dessin des territoires, repris du client d'OpenFront (commit `a0abccc`) et modifié le 6 novembre 2026 : fichiers d'origine listés en tête de la page | `public/carte-monde/index.html` | AGPL-3.0, avec les conditions de la section « OpenFront » ci-dessous |
 | Relief et contours de la carte de la Conquête | `public/conquete/` | Tirés de Natural Earth, domaine public |
 | Dépendances et polices | `package-lock.json` | Leur propre licence (polices Inter et Outfit : OFL-1.1) |
 
