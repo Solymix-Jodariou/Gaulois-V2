@@ -1,12 +1,24 @@
 /**
  * La carte officielle. Sa taille vient de la documentation d'OpenFront.
  *
- * Sa surface de terre et le fond `data/clanmap/terrain.webp` viennent d'un seul relevé
- * de `/clanmap/terrain`, le 5 novembre 2026. Cette route n'est pas documentée et n'est
- * plus lue : voir docs/API_AUDIT.md, section 8.
+ * Son terrain est « Giant World Map », une carte du dépôt public du jeu sous CC BY-SA 4.0,
+ * avec l'attribution « OpenFront ». Sa surface de terre vient du manifeste de cette carte,
+ * et le fond `data/clanmap/terrain.webp` en est une version réduite et assombrie.
+ * Voir docs/API_AUDIT.md, section 8.
  */
 export const OFFICIAL_MAP = { width: 4108, height: 1948, land: 2_335_403 };
-export const LAND_CHECKED_ON = "2026-11-05";
+
+/** Le fichier du terrain, fixé à un commit. Chaque case vaut un octet : bit 7 = terre, bits 0 à 4 = relief. */
+export const TERRAIN_ORIGIN = "https://raw.githubusercontent.com";
+export const TERRAIN_PATH = "/openfrontio/OpenFrontIO/641e462b0b980b9cad8faff2e9f89d8caac44c4f/resources/maps/giantworldmap/map.bin";
+
+export const LAND = 128;
+
+export function countLand(terrain: Uint8Array): number {
+  let land = 0;
+  for (let i = 0; i < terrain.length; i++) if (terrain[i]! & LAND) land++;
+  return land;
+}
 
 /** Pose les territoires sur le fond : même mélange que le lecteur du film. */
 export function blendOwners(

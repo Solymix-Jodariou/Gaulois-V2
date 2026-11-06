@@ -5,6 +5,7 @@
  * est réduit. L'ordre des clans suit le nombre de pixels, comme la liste de la
  * carte officielle : ce n'est pas le classement des clans, qui reste celui de l'API.
  */
+import { LAND } from "./terrain";
 
 /** Taille d'une image du film en événements, doublée quand le film devient trop long. */
 export const FRAME_BASE = 5_000;
@@ -89,6 +90,8 @@ export interface TerritoryZone {
 export interface TerritoryAnalysis {
   zones: TerritoryZone[];
   zoneCount: number;
+  /** Pixels de terre neutre qui touchent déjà le territoire. `null` : terrain indisponible, ce n'est pas un zéro. */
+  neutralBorder: number | null;
   /** Pour chaque clan voisin : ses pixels au contact, et le centre de sa plus grosse portion de frontière, en cases du film. */
   borders: Map<number, { pixels: number; x: number; y: number }>;
 }
@@ -98,20 +101,24 @@ const ZONES_KEPT = 5;
 const FRONT_BIN = 128;
 
 /** Les zones d'un seul tenant d'un clan et ce qui les borde, sur la carte complète. */
-export function analyzeTerritory(grid: Uint16Array, width: number, height: number, scale: number, clan: number): TerritoryAnalysis {
+export function analyzeTerritory(grid: Uint16Array, width: number, height: number, scale: number, clan: number, terrain: Uint8Array | null): TerritoryAnalysis {
   const size = width * height;
   const visited = new Uint8Array(size);
   const counted = new Uint8Array(size);
   const stack = new Int32Array(size);
   const zones: TerritoryZone[] = [];
   let zoneCount = 0;
+  let neutralBorder = 0;
   const contacts = new Map<number, { pixels: number; bins: Map<number, { n: number; sumX: number; sumY: number }> }>();
 
   const look = (p: number) => {
     if (counted[p]) return;
     counted[p] = 1;
     const owner = grid[p]!;
-    if (owner === 0) return;
+    if (owner === 0) {
+      if (terrain && terrain[p]! & LAND) neutralBorder++;
+      return;
+    }
     let contact = contacts.get(owner);
     if (!contact) {
       contact = { pixels: 0, bins: new Map() };
@@ -176,7 +183,7 @@ export function analyzeTerritory(grid: Uint16Array, width: number, height: numbe
     for (const bin of c.bins.values()) if (bin.n > densest.n) densest = bin;
     borders.set(owner, { pixels: c.pixels, x: Math.round(densest.sumX / densest.n / scale), y: Math.round(densest.sumY / densest.n / scale) });
   }
-  return { zones: zones.slice(0, ZONES_KEPT), zoneCount, borders };
+  return { zones: zones.slice(0, ZONES_KEPT), zoneCount, neutralBorder: terrain ? neutralBorder : null, borders };
 }
 
 function rankedClans(pixels: Int32Array): number[] {

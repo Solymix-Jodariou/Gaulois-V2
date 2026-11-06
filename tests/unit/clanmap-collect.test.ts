@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseEventLog, runClanMap, type ClanMapDeps } from "../../src/lib/clanmap/collect";
+import { TERRAIN_PATH } from "../../src/lib/clanmap/terrain";
 import { Meta, StoredClanMapFilm } from "../../src/lib/schemas";
 
 const WIDTH = 8;
@@ -48,28 +49,32 @@ function longHistory(length: number): Raw[] {
   return Array.from({ length }, (_, i): Raw => [i + 1, i % WIDTH, (i >> 3) % HEIGHT, i % 7 === 0 ? 43 : 9]);
 }
 
-type Route = (url: URL) => { status?: number; body?: unknown } | undefined;
+type Route = (url: URL) => { status?: number; body?: unknown; bytes?: Uint8Array } | undefined;
 
 describe("collecte de la carte", () => {
   let dir: string;
   let cache: string;
   let calls: string[];
+  let hosts: string[];
   let now: Date;
   let history: Raw[];
 
   const healthy: Route = (url) => {
+    if (url.pathname === TERRAIN_PATH) return { bytes: Buffer.alloc(WIDTH * HEIGHT, 128) };
     if (url.pathname === "/public/clanmap/history") return { body: pageOf(toApi(history), Number(url.searchParams.get("after"))) };
     if (url.pathname === "/clans/GAL") return { body: { tag: "GAL", softBalance: "19279", hardBalance: "878", troops: 8000, memberCount: 760 } };
     return { status: 404 };
   };
   const isHistory = (url: URL) => url.pathname === "/public/clanmap/history";
+  const isTerrain = (url: URL) => url.pathname === TERRAIN_PATH;
 
   const deps = (route: Route = () => undefined, extra: Partial<ClanMapDeps> = {}): ClanMapDeps => ({
     fetch: (async (input: string) => {
       const url = new URL(input);
       calls.push(url.pathname + url.search);
+      hosts.push(url.hostname);
       const r = route(url) ?? healthy(url);
-      return new Response(JSON.stringify(r?.body ?? {}), { status: r?.status ?? 200 });
+      return new Response(r?.bytes ? Buffer.from(r.bytes) : JSON.stringify(r?.body ?? {}), { status: r?.status ?? 200 });
     }) as unknown as typeof fetch,
     sleep: async () => {},
     now: () => now,
@@ -89,6 +94,7 @@ describe("collecte de la carte", () => {
     dir = mkdtempSync(join(tmpdir(), "gal-carte-"));
     cache = join(dir, "cache");
     calls = [];
+    hosts = [];
     now = new Date("2026-11-05T10:00:00.000Z");
     history = [...HISTORY];
   });
@@ -98,12 +104,12 @@ describe("collecte de la carte", () => {
     const run = await runClanMap(deps());
     expect(run).toEqual({ errors: [], updated: true });
     const f = film();
-    expect(f).toMatchObject({ version: 2, seq: 5, events: 4, land: WIDTH * HEIGHT, claimed: 3, cols: 4, rows: 2 });
+    expect(f).toMatchObject({ version: 3, seq: 5, events: 4, land: WIDTH * HEIGHT, claimed: 3, cols: 4, rows: 2 });
     expect(f.check).toEqual({ events: 4, mismatches: 0 });
     expect(f.galSummary).toMatchObject({ pixels: 2, rank: 1, firstEvent: 2, taken: 2, lost: 0, neutralTaken: 1 });
     // ITA a un pixel en (2, 0), au contact de GAL en (1, 0).
     expect(f.galSummary?.fronts).toEqual([{ tag: "ITA", clan: 1, taken: 1, lost: 0, border: 1, at: [1, 0] }]);
-    expect(f.galSummary?.zoneCount).toBe(1);
+    expect(f.galSummary).toMatchObject({ zoneCount: 1, neutralBorder: 2 });
     expect(f.galSummary?.zones[0]).toMatchObject({ pixels: 2 });
     expect(f.standings).toEqual([
       { tag: "GAL", color: CLANS["43"].color, pixels: 2 },
@@ -114,9 +120,69 @@ describe("collecte de la carte", () => {
     expect(meta().clanmap.lastSuccessAt).toBe(now.toISOString());
   });
 
-  it("ne lit que la route documentée et la fiche du clan", async () => {
+  it("ne lit que la route documentée, le terrain du dépôt public et la fiche du clan", async () => {
     await runClanMap(deps());
-    expect(calls).toEqual(["/public/clanmap/history?after=0", "/clans/GAL"]);
+    expect(calls).toEqual(["/public/clanmap/history?after=0", TERRAIN_PATH, "/clans/GAL"]);
+    expect(hosts).toEqual(["api.openfront.io", "raw.githubusercontent.com", "api.openfront.io"]);
+  });
+
+  it("garde le terrain en cache et ne le relit pas", async () => {
+    await runClanMap(deps());
+    expect(statSync(join(cache, "terrain.bin")).size).toBe(WIDTH * HEIGHT);
+    calls = [];
+    now = new Date("2026-11-06T10:00:00.000Z");
+    await runClanMap(deps());
+    expect(calls).not.toContain(TERRAIN_PATH);
+    expect(film().galSummary?.neutralBorder).toBe(2);
+  });
+
+  it("garde le film si le terrain est indisponible, sans inventer de chiffre", async () => {
+    const run = await runClanMap(deps((url) => (isTerrain(url) ? { status: 404 } : undefined)));
+    expect(run).toEqual({ errors: [], updated: true });
+    expect(film().galSummary).toMatchObject({ pixels: 2, neutralBorder: null });
+    expect(existsSync(join(cache, "terrain.bin"))).toBe(false);
+  });
+
+  it("n'utilise ni ne garde un terrain de la mauvaise taille", async () => {
+    const run = await runClanMap(deps((url) => (isTerrain(url) ? { bytes: Buffer.alloc(3, 128) } : undefined)));
+    expect(run.updated).toBe(true);
+    expect(film().galSummary?.neutralBorder).toBeNull();
+    expect(existsSync(join(cache, "terrain.bin"))).toBe(false);
+  });
+
+  it("n'utilise ni ne garde un terrain qui n'a pas la surface de terre attendue", async () => {
+    const run = await runClanMap(deps((url) => (isTerrain(url) ? { bytes: Buffer.alloc(WIDTH * HEIGHT, 0) } : undefined)));
+    expect(run.updated).toBe(true);
+    expect(film().galSummary?.neutralBorder).toBeNull();
+    expect(existsSync(join(cache, "terrain.bin"))).toBe(false);
+  });
+
+  it("relit le terrain si celui du cache est abîmé", async () => {
+    await runClanMap(deps());
+    writeFileSync(join(cache, "terrain.bin"), Buffer.alloc(5));
+    calls = [];
+    now = new Date("2026-11-06T10:00:00.000Z");
+    await runClanMap(deps());
+    expect(calls).toContain(TERRAIN_PATH);
+    expect(statSync(join(cache, "terrain.bin")).size).toBe(WIDTH * HEIGHT);
+  });
+
+  it("refait sans attendre un film d'un format plus ancien, une seule fois", async () => {
+    await runClanMap(deps());
+    const old = JSON.parse(readFileSync(join(dir, "clanmap", "film.json"), "utf8"));
+    writeFileSync(join(dir, "clanmap", "film.json"), JSON.stringify({ ...old, version: 2 }));
+    now = new Date("2026-11-05T11:00:00.000Z");
+    expect((await runClanMap(deps())).updated).toBe(true);
+    expect(film().version).toBe(3);
+    now = new Date("2026-11-05T12:00:00.000Z");
+    expect((await runClanMap(deps())).updated).toBe(false);
+  });
+
+  it("lit un film d'avant la terre neutre sans inventer de chiffre", async () => {
+    await runClanMap(deps());
+    const old = JSON.parse(readFileSync(join(dir, "clanmap", "film.json"), "utf8"));
+    delete old.galSummary.neutralBorder;
+    expect(StoredClanMapFilm.parse({ ...old, version: 2 }).galSummary?.neutralBorder).toBeNull();
   });
 
   it("ne garde aucun identifiant de joueur, ni le plutonium, ni les noms des clans, ni les dates", async () => {
