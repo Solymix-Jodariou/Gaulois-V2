@@ -302,6 +302,8 @@ create function public.get_season_history() returns jsonb
 language sql stable security definer set search_path = public, pg_temp as $$
   select jsonb_build_object('ok', true, 'rows', coalesce(jsonb_agg(row_to_json(t) order by t.id desc), '[]')) from (
     select s.id, s.name, s.started_at, s.closed_at, s.map_version,
+      (select p.display_name from public.game_events e join public.profiles p on p.user_id = e.actor_id
+        where e.season_id = s.id and e.kind = 'victory' limit 1) as winner,
       (select e from jsonb_array_elements(s.final_standings) e where (e ->> 'rank_territories')::integer = 1 limit 1) as biggest,
       (select e from jsonb_array_elements(s.final_standings) e
         where (e ->> 'rank_conquerors')::integer = 1 and (e ->> 'captured')::integer > 0 limit 1) as conqueror
@@ -343,7 +345,7 @@ language sql stable security definer set search_path = public, pg_temp as $$
     left join public.profiles a on a.user_id = e.actor_id
     left join public.profiles d on d.user_id = e.target_id
     left join public.territories t on t.map_version = s.map_version and t.id = e.territory_id
-    where e.notified_at is null and e.kind in ('season_started', 'war_started', 'season_closed', 'attack_won', 'donation')
+    where e.notified_at is null and e.kind in ('season_started', 'war_started', 'season_closed', 'attack_won', 'donation', 'bomb', 'alliance_broken', 'victory')
     order by e.id
     limit least(greatest(coalesce(p_limit, 20), 1), 100)
   ) t

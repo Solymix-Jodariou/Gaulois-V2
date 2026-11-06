@@ -177,11 +177,17 @@ Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle id
 | ^ et ^^, en zoomant | Colline et montagne, au sens des règles |
 | Trait jaune pointillé | Une route de haute mer |
 
-**Le don se voit passer.** Un don validé s'annonce en haut de la carte pendant 12 secondes, dans une zone lue par les lecteurs d'écran, sans animation si l'utilisateur les a réduites. « Actualisé à » donne l'heure de la dernière lecture réussie : le mot « direct » n'apparaît nulle part, car les pages lisent toutes les 15 secondes.
+**Ce qui arrive se voit passer.** Un don, une attaque repoussée ou le début de la guerre s'annoncent en haut de la carte pendant 12 secondes, dans une zone lue par les lecteurs d'écran, sans animation si l'utilisateur les a réduites. Une mauvaise nouvelle reste jusqu'à ce qu'on la ferme : perdre une terre ne doit pas passer inaperçu. « Actualisé à » donne l'heure de la dernière lecture réussie : le mot « direct » n'apparaît nulle part, car les pages lisent toutes les 15 secondes.
+
+**L'écran ne promet rien d'impossible.** Une terre protégée ou le dernier territoire d'un joueur n'annoncent pas une « victoire prévue » : ils disent pourquoi l'attaque serait refusée. Le second clic ne part que si l'écran vient d'annoncer un succès.
 
 **Tout se joue sans la carte.** La liste des territoires et les cibles possibles permettent de tout faire au clavier ou avec un lecteur d'écran. La carte elle-même se déplace aux flèches et se zoome avec + et −.
 
-**La molette fait défiler la page.** Le zoom demande Ctrl + molette, pour que la carte ne piège pas le défilement. Au doigt, une carte non zoomée laisse aussi la page défiler.
+**La molette zoome, sans piéger la page.** Sur l'écran de jeu, elle zoome ; une fois la carte au plus large, elle rend la main à la page, pour descendre vers le fil et les classements. Au doigt, une carte non zoomée laisse aussi la page défiler.
+
+**Un guide, pas un tunnel.** Le guide de première partie se pose sur l'écran de jeu sans bloquer ni assombrir quoi que ce soit : le joueur peut toujours cliquer ailleurs, ou le fermer. Il encadre ce dont il parle et place la terre visée au-dessus de lui, jamais dessous. Sur téléphone, il passe au-dessus de la carte. Il suit la vraie partie : aucune action fictive, aucun résultat simulé.
+
+**Toucher a toujours un effet visible.** Sur téléphone, le panneau d'une terre monte du bas de l'écran, avec son bouton à portée de pouce, et se referme d'une croix. Au retour, la carte s'ouvre sur les terres du joueur : à l'échelle du monde, un hexagone est trop petit pour être touché.
 
 **Aucun hasard, aucune surprise.** L'écran annonce le résultat exact avant la confirmation, et le fil d'actualité le raconte ensuite avec les mêmes chiffres.
 

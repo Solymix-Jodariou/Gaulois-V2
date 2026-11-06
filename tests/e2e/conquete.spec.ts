@@ -24,8 +24,8 @@ const sql = (query: string, params: unknown[] = []) => post("/__test/sql", { sql
 const service = (fn: string, args: Record<string, unknown> = {}) => post("/__test/service", { fn, args }) as Promise<{ ok: boolean }>;
 
 /** Se connecte « avec Discord », dans un navigateur à part. */
-async function signIn(browser: Browser, name: string, baseURL: string | undefined): Promise<Page> {
-  const context = await browser.newContext({ baseURL: baseURL ?? "http://127.0.0.1:4322", viewport: { width: 1280, height: 800 } });
+async function signIn(browser: Browser, name: string, baseURL: string | undefined, options: Parameters<Browser["newContext"]>[0] = {}): Promise<Page> {
+  const context = await browser.newContext({ baseURL: baseURL ?? "http://127.0.0.1:4322", viewport: { width: 1280, height: 800 }, ...options });
   const page = await context.newPage();
   await page.goto("/compte");
   await page.getByTestId("sign-in").click();
@@ -267,6 +267,8 @@ test("un admin lance une saison, et chaque action reste au journal", async () =>
 
 test("phase 1 : le départ, puis les terres libres voisines", async () => {
   await astra.goto("/conquete");
+  // Le guide a son propre parcours, plus bas : Astra le ferme dès son arrivée.
+  await astra.getByTestId("guide-close").click();
   // 10 000 capsules : 25 % de (100 000 + 2000 × 100).
   await expect(astra.getByTestId("my-troops")).toHaveText(fr(75_000));
   await pickTerritory(astra, "Paris");
@@ -343,10 +345,10 @@ test("un don validé arrive en troupes sous les yeux du joueur, sans recharger l
 
   // Dans les 15 secondes, sans rien toucher.
   await expect(astra.getByTestId("my-troops")).toHaveText(fr(before + 25_000), { timeout: 20_000 });
-  await expect(astra.getByTestId("donation-flash")).toContainText("Astra offre 250 capsules");
+  await expect(astra.getByTestId("game-notices")).toContainText("Astra offre 250 capsules");
   await expect(astra.getByTestId("game-feed").locator("li").first()).toContainText(`+${fr(25_000)} troupes en renfort`);
   // Le visiteur le voit passer aussi.
-  await expect(visitor.getByTestId("donation-flash")).toContainText("offre 250 capsules", { timeout: 20_000 });
+  await expect(visitor.getByTestId("game-notices")).toContainText("offre 250 capsules", { timeout: 20_000 });
 
   // Le compte du joueur le dit aussi.
   await astra.goto("/compte");
@@ -457,6 +459,7 @@ test("phase 2 : le combat suit l'aperçu, et les garde-fous s'appliquent", async
   const occupied = new Set((await sql("select territory_id from public.territory_state")).map((r) => r["territory_id"] as number));
   const front = byId([...occupied].flatMap((id) => byId(id as number).neighbours).find((n) => !occupied.has(n))!);
   await brenn.goto("/conquete");
+  await brenn.getByTestId("guide-close").click();
   await pickTerritory(brenn, front.name);
   await act(brenn, 4000);
   await expect(brenn.getByText(`Vous vous installez à ${front.name}`)).toBeVisible();
@@ -776,4 +779,399 @@ test("effacer son compte supprime ses données, tout de suite", async () => {
   await brenn.waitForURL(/\/$/);
   expect(await sql("select 1 from public.profiles where display_name = 'Brenn'")).toEqual([]);
   expect(await sql("select 1 from auth.users where raw_user_meta_data ->> 'full_name' = 'BrennDiscord'")).toEqual([]);
+});
+
+
+/* ---------- Une nouvelle saison, pour des joueurs qui découvrent le jeu ---------- */
+
+const CONFIG = JSON.parse(readFileSync("config/conquete.json", "utf8")) as Record<string, unknown>;
+const PHONE = { viewport: { width: 375, height: 812 }, hasTouch: true, isMobile: true };
+let seasonId = 0;
+let cador: Page;
+let divico: Page;
+
+/** Un nouveau membre, déjà validé, qui n'a encore jamais ouvert le jeu. */
+async function newcomer(browser: Browser, name: string, baseURL: string | undefined, options: Parameters<Browser["newContext"]>[0] = {}): Promise<Page> {
+  const page = await signIn(browser, name, baseURL, options);
+  watch(page, name);
+  await sql("update public.profiles set status = 'validated', validated_at = now(), display_name = $1 where user_id = (select id from auth.users where raw_user_meta_data ->> 'full_name' = $1)", [name]);
+  return page;
+}
+const selectedHex = async (page: Page) => Number(await page.locator(".conq-hex.is-selected").getAttribute("data-t"));
+/** Sans forcer : un panneau posé sur la terre visée ferait échouer ce clic, comme il bloquerait un vrai joueur. */
+const clickHex = async (page: Page, id: number) => {
+  // Le second clic doit venir après le délai qui écarte les doubles-clics.
+  await page.waitForTimeout(450);
+  await page.locator(`.conq-hex[data-t="${id}"]`).click({ timeout: 5000 });
+};
+const landsOfPlayer = async (name: string) => (await sql("select s.territory_id id from public.territory_state s join public.profiles p on p.user_id = s.owner_id where s.season_id = $1 and p.display_name = $2 order by s.territory_id", [seasonId, name])).map((r) => r["id"] as number);
+const freeLands = async () => {
+  const taken = new Set((await sql("select territory_id id from public.territory_state where season_id = $1", [seasonId])).map((r) => r["id"] as number));
+  return MAP.territories.filter((t) => !taken.has(t.id));
+};
+const giveLands = (name: string, lands: number[], garrison = 2000) =>
+  sql("insert into public.territory_state (season_id, territory_id, owner_id, garrison, taken_at) select $1, x, (select user_id from public.profiles where display_name = $2), $4, now() - interval '1 day' from unnest($3::int[]) x", [seasonId, name, lands, garrison]);
+
+test("le guide accompagne une vraie première partie, étape par étape, et rien ne se perd en rechargeant", async ({ browser, baseURL }) => {
+  // Le jeu relit la partie toutes les 15 secondes : ce parcours attend ces relectures.
+  test.setTimeout(90_000);
+  const created = await directCall(founder, "create_season", { p_name: "Saison du guide", p_config: CONFIG });
+  expect(created.body).toMatchObject({ ok: true });
+  seasonId = created.body["id"] as number;
+  expect((await directCall(founder, "start_season", { p_season: seasonId })).body).toMatchObject({ ok: true });
+
+  cador = await newcomer(browser, "Cador", baseURL);
+  await cador.goto("/conquete");
+  const guide = cador.getByTestId("guide");
+  const title = cador.getByTestId("guide-title");
+  const next = cador.getByTestId("guide-primary");
+  const arena = cador.getByTestId("arena");
+
+  // L'accueil : le but du jeu, et une porte de sortie.
+  await expect(title).toHaveText("Bienvenue dans la Conquête");
+  await expect(cador.getByTestId("guide-progress")).toContainText("étape 1 sur");
+  await expect(guide).toContainText("tenir 80 % de la carte");
+  await expect(cador.getByTestId("guide-skip")).toBeVisible();
+  await accessible(cador);
+  await next.click();
+
+  // Choisir sa terre : le guide en conseille, et peut en proposer une.
+  await expect(title).toHaveText("Choisissez votre terre de départ");
+  await expect(cador.locator(".conq-hex.is-suggested")).toHaveCount(3);
+  await expect(guide).toContainText("1 600 troupes par plaine".replace(" ", " "));
+  await expect(cador.getByTestId("action-panel")).toContainText("Rien ne part avant que vous ayez confirmé");
+  await next.click();
+  await expect(title).toContainText("Installez-vous à");
+  await expect(arena).toHaveAttribute("data-guide-spot", "action");
+  await expect(cador.locator(".conq-hex.is-suggested")).toHaveCount(0);
+  const start = await selectedHex(cador);
+  expect(byId(start).terrain).toBe("plains");
+  await accessible(cador);
+
+  // Le second clic n'engage pas sa terre de départ : seul le bouton le fait.
+  await clickHex(cador, start);
+  await cador.waitForTimeout(300);
+  expect(await landsOfPlayer("Cador")).toEqual([]);
+  await cador.getByTestId("action-submit").click();
+  await expect(cador.getByText("Vous vous installez")).toBeVisible();
+
+  // Les ressources, avec ses vrais chiffres.
+  await expect(title).toHaveText("Vos ressources");
+  await expect(arena).toHaveAttribute("data-guide-spot", "command");
+  await next.click();
+
+  // Conquérir : le guide propose la moins chère, le panneau montre le prix, le second clic part.
+  await expect(title).toHaveText("Conquérez une terre voisine");
+  await next.click();
+  await expect(guide).toContainText("cliquez encore sur la terre");
+  const target = await selectedHex(cador);
+  expect(byId(start).neighbours).toContain(target);
+  await expect(cador.getByTestId("action-preview")).toContainText("Le terrain coûte");
+  await clickHex(cador, target);
+  await expect(cador.getByText(`${byId(target).name} est à vous`)).toBeVisible();
+
+  // Le ratio, avec ce que vaut la réserve en ce moment.
+  await expect(title).toHaveText("Le ratio d'attaque");
+  await expect(arena).toHaveAttribute("data-guide-spot", "ratio");
+  await next.click();
+
+  // Renforcer : réussir l'action fait avancer le guide.
+  await expect(title).toHaveText("Renforcez une terre");
+  await act(cador, 500);
+  await expect(cador.getByText("compte maintenant")).toBeVisible();
+
+  // Rien ne se perd en rechargeant.
+  await expect(title).toHaveText("Construisez votre premier bâtiment");
+  await cador.reload();
+  await expect(title).toHaveText("Construisez votre premier bâtiment");
+  await next.click();
+  await expect(cador.getByTestId("build-menu")).toBeVisible();
+  await expect(arena).toHaveAttribute("data-guide-spot", "build");
+  await cador.getByTestId("build-post").click();
+  await expect(cador.getByText("Poste de défense construit")).toBeVisible();
+
+  // La suite : il annonce la guerre, sans l'expliquer avant l'heure.
+  await expect(title).toHaveText("Et maintenant ?");
+  await expect(guide).toContainText("Ce guide reviendra à ce moment-là");
+  await next.click();
+  await expect(title).toHaveText("Vous êtes prêt !");
+  await expect(guide).toContainText("Rien ne vous oblige à donner");
+  await expect(guide.getByRole("link", { name: "Lire les règles" })).toHaveAttribute("href", /conquete\/regles/);
+  await accessible(cador);
+  await next.click();
+  await expect(guide).toHaveCount(0);
+  await cador.reload();
+  await expect(cador.getByTestId("guide-open")).toBeVisible();
+  await expect(guide).toHaveCount(0);
+
+  // On peut le revoir : les explications repassent, ce qui est fait reste derrière.
+  await cador.getByTestId("guide-open").click();
+  await expect(title).toHaveText("Vos ressources");
+  await cador.getByTestId("guide-close").click();
+  await expect(guide).toHaveCount(0);
+  await cador.reload();
+  await expect(cador.getByTestId("guide-open")).toBeVisible();
+  await expect(guide).toHaveCount(0);
+  await cador.getByTestId("guide-open").click();
+  for (let i = 0; i < 12 && (await guide.count()) > 0; i++) {
+    const later = cador.getByTestId("guide-later");
+    await (await later.count() ? later : next).click();
+  }
+  await expect(guide).toHaveCount(0);
+});
+
+test("le guide revient à la guerre, et ses alertes préviennent le joueur attaqué, même absent", async ({ browser, baseURL }) => {
+  // Le jeu relit la partie toutes les 15 secondes : ce parcours attend ces relectures.
+  test.setTimeout(180_000);
+  // Divico s'installe à côté de Cador, et préfère se débrouiller sans guide.
+  divico = await newcomer(browser, "Divico", baseURL);
+  await divico.goto("/conquete");
+  await divico.getByTestId("guide-skip").click();
+  await expect(divico.getByTestId("guide")).toHaveCount(0);
+  const cadorLands = await landsOfPlayer("Cador");
+  const free = new Set((await freeLands()).map((t) => t.id));
+  const next = cadorLands.flatMap((id) => byId(id).neighbours).filter((n) => free.has(n));
+  const home = next[0]!;
+  await pickTerritory(divico, byId(home).name);
+  await act(divico, 2000);
+  await expect(divico.getByText("Vous vous installez")).toBeVisible();
+  const others = [...new Set(next)].filter((n) => n !== home).slice(0, 2);
+  await giveLands("Divico", others);
+  await sql("update public.players set troops = 60000, troops_at = now()");
+
+  // La guerre est déclarée : le guide revient seul, et tout le monde est prévenu, sans recharger.
+  await divico.reload();
+  await expect(divico.getByTestId("command-bar")).toBeVisible();
+  expect((await directCall(founder, "set_war_date", { p_season: seasonId, p_at: new Date().toISOString() })).body).toMatchObject({ ok: true });
+  await expect(divico.getByTestId("game-notices")).toContainText("La guerre commence", { timeout: 20_000 });
+  const title = cador.getByTestId("guide-title");
+  await expect(title).toHaveText("La guerre : attaquez un voisin", { timeout: 20_000 });
+
+  // Une terre tout juste prise est protégée : l'écran ne promet pas une victoire impossible.
+  await pickTerritory(cador, byId(home).name);
+  await cador.getByTestId("action-amount").fill("30000");
+  await expect(cador.getByTestId("action-preview")).toContainText("une attaque serait refusée");
+  await expect(cador.getByTestId("action-preview")).not.toContainText("Victoire prévue");
+
+  await sql("update public.territory_state set protected_until = null");
+  await cador.reload();
+  await expect(title).toHaveText("La guerre : attaquez un voisin");
+  await cador.getByTestId("guide-primary").click();
+  // Le guide propose une terre de Divico à sa portée, la plus faible.
+  const target = await selectedHex(cador);
+  expect(await landsOfPlayer("Divico")).toContain(target);
+  await expect(cador.getByTestId("guide")).toContainText("Si la victoire est annoncée");
+
+  // Une attaque annoncée perdante ne part pas sur un second clic : seul le bouton la lance.
+  await cador.getByTestId("attack-ratio").fill("1");
+  await expect(cador.getByTestId("action-preview")).toContainText("Échec prévu");
+  await expect(cador.getByTestId("action-panel")).toContainText("seul ce bouton la lance");
+  await clickHex(cador, target);
+  await cador.waitForTimeout(400);
+  expect((await sql("select attacks_today a from public.players p join public.profiles u on u.user_id = p.user_id where p.season_id = $1 and u.display_name = 'Cador'", [seasonId]))[0]!["a"]).toBe(0);
+
+  // Annoncée gagnante, elle part.
+  await cador.getByRole("button", { name: /Juste assez/ }).click();
+  await expect(cador.getByTestId("action-preview")).toContainText("Victoire prévue");
+  await expect(cador.getByTestId("action-panel")).toContainText("ou cliquez encore sur la terre");
+  await clickHex(cador, target);
+  await expect(cador.getByText(`Victoire ! ${byId(target).name} est à vous`)).toBeVisible();
+  await expect(title).toHaveText("Alliés et traîtres");
+
+  // Le joueur attaqué l'apprend sur sa carte, sans recharger. La mauvaise nouvelle attend qu'il l'ait lue.
+  const notices = divico.getByTestId("game-notices");
+  await expect(notices).toContainText(`Cador vous a pris ${byId(target).name}`, { timeout: 20_000 });
+  await divico.waitForTimeout(13_000);
+  const taken = notices.locator(".conq-notice").filter({ hasText: "Cador vous a pris" });
+  await expect(taken).toBeVisible();
+  await taken.getByRole("button", { name: "Voir" }).click();
+  await expect(divico.getByTestId("territory-name")).toHaveText(byId(target).name);
+  await taken.getByRole("button", { name: "Fermer cette annonce" }).click();
+  await expect(taken).toHaveCount(0);
+  await accessible(divico);
+
+  // Une alliance proposée arrive aussi sans recharger, alors qu'elle n'écrit rien dans le fil.
+  const stillTheirs = async () => {
+    const held = new Set(await landsOfPlayer("Cador"));
+    return (await landsOfPlayer("Divico")).find((id) => byId(id).neighbours.some((n) => held.has(n)))!;
+  };
+  await pickTerritory(cador, byId(await stillTheirs()).name);
+  await cador.getByTestId("alliance-propose").click();
+  await expect(cador.getByText("Alliance proposée à Divico")).toBeVisible();
+  await expect(divico.getByTestId("alliance-requests")).toContainText("Cador", { timeout: 20_000 });
+  await expect(notices).toContainText("Cador vous propose une alliance");
+  await divico.getByTestId("alliance-requests").getByRole("button", { name: "Refuser" }).click();
+  await expect(divico.getByTestId("alliance-requests")).toHaveCount(0);
+
+  // Absent, il l'apprend à son retour : ce qui le touche, pas tout le reste.
+  await divico.goto("about:blank");
+  await sql("update public.players set last_attack_at = null, troops = 60000, troops_at = now()");
+  await sql("update public.territory_state set protected_until = null");
+  const last = await stillTheirs();
+  await giveLands("Divico", (await freeLands()).slice(0, 3).map((t) => t.id));
+  await cador.reload();
+  await pickTerritory(cador, byId(last).name);
+  await cador.getByRole("button", { name: /Juste assez/ }).click();
+  await cador.getByTestId("action-submit").click();
+  await expect(cador.getByText(`Victoire ! ${byId(last).name} est à vous`)).toBeVisible();
+  await divico.goto("/conquete");
+  await expect(divico.getByTestId("game-notices")).toContainText(`Cador vous a pris ${byId(last).name}`);
+});
+
+test("les commandes : un geste qui finit hors de la carte, la molette, et les listes sous la carte", async () => {
+  // Le jeu relit la partie toutes les 15 secondes : ce parcours attend ces relectures.
+  test.setTimeout(60_000);
+  await cador.reload();
+  await expect(cador.getByTestId("command-bar")).toBeVisible();
+  await cador.getByRole("button", { name: "Vue d'ensemble" }).click();
+  await cador.evaluate(() => scrollTo(0, 0));
+  const group = cador.locator(".conq-map-view svg > g");
+  const svg = cador.locator(".conq-map-view svg");
+  const box = (await svg.boundingBox())!;
+  const middle = { x: box.x + box.width / 2, y: box.y + box.height / 3 };
+
+  // La molette zoome tant qu'on n'est pas au plus large, sans faire défiler la page.
+  await cador.mouse.move(middle.x, middle.y);
+  await cador.mouse.wheel(0, -200);
+  await expect(svg).toHaveAttribute("data-zoomed", "true");
+  expect(await cador.evaluate(() => scrollY)).toBe(0);
+
+  // Un glisser relâché au-dessus d'un panneau se termine bel et bien.
+  const panel = (await cador.getByTestId("action-panel").boundingBox())!;
+  await cador.mouse.move(middle.x, middle.y);
+  await cador.mouse.down();
+  await cador.mouse.move(middle.x + 30, middle.y + 10, { steps: 3 });
+  await cador.mouse.move(panel.x + 20, panel.y + 20, { steps: 3 });
+  await cador.mouse.up();
+  const released = await group.getAttribute("transform");
+  await cador.mouse.move(middle.x - 80, middle.y + 40, { steps: 4 });
+  await cador.mouse.move(middle.x - 160, middle.y + 80, { steps: 4 });
+  expect(await group.getAttribute("transform"), "la carte ne suit pas la souris sans bouton").toBe(released);
+
+  // Au plus large, la molette rend la main à la page : le fil et les classements restent accessibles.
+  await cador.getByRole("button", { name: "Vue d'ensemble" }).click();
+  await cador.mouse.move(middle.x, middle.y);
+  await cador.mouse.wheel(0, 500);
+  await expect.poll(() => cador.evaluate(() => scrollY)).toBeGreaterThan(0);
+  await cador.mouse.wheel(0, -500);
+  await expect.poll(() => cador.evaluate(() => scrollY)).toBe(0);
+  await expect(svg).toHaveAttribute("data-zoomed", "false");
+
+  // Choisir dans la liste du bas ramène au panneau, et le clavier suit.
+  const select = cador.getByTestId("territory-select");
+  await select.scrollIntoViewIfNeeded();
+  await select.selectOption({ label: "Tokyo" });
+  const name = cador.getByTestId("territory-name");
+  await expect(name).toHaveText("Tokyo");
+  await expect(name).toBeFocused();
+  await expect.poll(async () => (await name.boundingBox())?.y ?? -1).toBeGreaterThanOrEqual(0);
+  expect((await name.boundingBox())!.y).toBeLessThan(800);
+
+  // Parcourir la liste au clavier n'en arrache pas le joueur, et Entrée y va.
+  await select.focus();
+  await cador.keyboard.press("ArrowDown");
+  await expect(select).toBeFocused();
+  await cador.keyboard.press("Enter");
+  await expect(name).toBeFocused();
+
+  // Fermer le panneau d'une terre, puis retrouver son classement complet sous la carte.
+  await cador.getByTestId("territory-close").click();
+  await expect(name).toHaveCount(0);
+  await expect(cador.getByTestId("rank-biggest-all")).toContainText("Cador");
+  await expect(cador.getByRole("link", { name: "Fil et classements" })).toHaveAttribute("href", "#conq-details");
+
+  // Le dernier territoire d'un joueur : l'écran ne promet pas ce que le serveur refuserait.
+  const lonely = await landsOfPlayer("Divico");
+  const keep = lonely.find((id) => (byId(id).neighbours as number[]).some((n) => n !== id)) ?? lonely[0]!;
+  await sql("delete from public.territory_state where season_id = $1 and territory_id = any($2::int[])", [seasonId, lonely.filter((id) => id !== keep)]);
+  await sql("update public.territory_state set protected_until = null");
+  const mine = await landsOfPlayer("Cador");
+  if (!byId(keep).neighbours.some((n) => mine.includes(n))) await giveLands("Cador", byId(keep).neighbours.slice(0, 1).filter((n) => !mine.includes(n)));
+  await cador.reload();
+  await pickTerritory(cador, byId(keep).name);
+  await expect(cador.getByTestId("action-preview")).toContainText("dernier territoire");
+  await expect(cador.getByTestId("action-preview")).not.toContainText("Victoire prévue");
+});
+
+test("au téléphone : le guide au-dessus de la carte, et un toucher qui ouvre le panneau sans défiler", async ({ browser, baseURL }) => {
+  // Le jeu relit la partie toutes les 15 secondes : ce parcours attend ces relectures.
+  test.setTimeout(60_000);
+  const phone = await newcomer(browser, "Eporedorix", baseURL, PHONE);
+  await phone.goto("/conquete");
+  const guide = phone.getByTestId("guide");
+  await expect(guide).toBeVisible();
+  const card = (await guide.boundingBox())!;
+  const map = (await phone.locator(".conq-map-view svg").boundingBox())!;
+  expect(card.y + card.height, "le guide se lit avant la carte").toBeLessThanOrEqual(map.y);
+  await noOverflow(phone);
+  await accessible(phone);
+
+  await phone.getByTestId("guide-primary").tap();
+  await expect(phone.getByTestId("guide-title")).toHaveText("Choisissez votre terre de départ");
+  await phone.getByTestId("guide-primary").tap();
+  await expect(phone.getByTestId("guide-title")).toContainText("Installez-vous à");
+
+  // Le panneau monte du bas de l'écran : confirmer se fait sans défiler.
+  const submit = phone.getByTestId("action-submit");
+  await expect(submit).toBeInViewport({ ratio: 1 });
+  await noOverflow(phone);
+  await accessible(phone);
+  await submit.tap();
+  await expect(phone.getByText("Vous vous installez")).toBeVisible();
+
+  // Le panneau se referme, et la carte est là.
+  await phone.getByTestId("territory-close").tap();
+  await expect(phone.getByTestId("territory-name")).toHaveCount(0);
+  await expect(phone.getByTestId("guide-title")).toHaveText("Vos ressources");
+
+  // Au retour, la carte s'ouvre sur ses terres : à l'échelle du monde, on ne pourrait rien toucher.
+  await phone.reload();
+  await expect(phone.getByTestId("command-bar")).toBeAttached();
+  await expect(phone.locator(".conq-map-view svg")).toHaveAttribute("data-zoomed", "true");
+
+  // Toucher une terre ouvre le panneau, à l'écran. On attend d'abord la fin du défilement qui amène la barre de commande.
+  await phone.waitForTimeout(900);
+  const svg = (await phone.locator(".conq-map-view svg").boundingBox())!;
+  await phone.touchscreen.tap(svg.x + svg.width / 2, svg.y + svg.height / 2);
+  await expect(phone.getByTestId("territory-name")).toBeInViewport();
+  await noOverflow(phone);
+  await phone.context().close();
+});
+
+test("un joueur qui tient déjà plusieurs terres n'est pas interrompu par le guide", async ({ browser, baseURL }) => {
+  const veteran = await newcomer(browser, "Vercassivellaunos", baseURL);
+  const [{ u } = { u: "" }] = (await sql("select user_id u from public.profiles where display_name = 'Vercassivellaunos'")) as { u: string }[];
+  await sql("insert into public.players (season_id, user_id, troops, troops_at, counters_day, gold) values ($1, $2, 50000, now(), current_date, 5000)", [seasonId, u]);
+  await giveLands("Vercassivellaunos", (await freeLands()).slice(0, 3).map((t) => t.id));
+  await veteran.goto("/conquete");
+  await expect(veteran.getByTestId("guide-open")).toBeVisible();
+  await expect(veteran.getByTestId("guide")).toHaveCount(0);
+  await veteran.context().close();
+});
+
+test("la victoire se voit : le vainqueur est nommé, pour lui et pour ceux qui regardent", async () => {
+  // Le jeu relit la partie toutes les 15 secondes : ce parcours attend ces relectures.
+  test.setTimeout(60_000);
+  await sql("update public.territory_state set protected_until = null");
+  await sql("update public.players set expansions_today = 0, troops = 200000, troops_at = now()");
+  const lands = await landsOfPlayer("Cador");
+  const free = await freeLands();
+  const final = lands.flatMap((id) => byId(id).neighbours).find((n) => free.some((t) => t.id === n))!;
+  const needed = Math.ceil(MAP.territories.length * (CONFIG["victoryShare"] as number));
+  const others = free.filter((t) => t.id !== final).slice(0, needed - lands.length - 1).map((t) => t.id);
+  await giveLands("Cador", others);
+  await divico.goto("/conquete");
+  await expect(divico.getByTestId("arena")).toBeVisible();
+  await cador.reload();
+  await pickTerritory(cador, byId(final).name);
+  await act(cador, 5000);
+
+  const last = cador.getByTestId("last-season");
+  await expect(last).toContainText("« Saison du guide » est terminée");
+  await expect(last).toContainText("Cador l'a remportée");
+  await expect(divico.getByTestId("last-season")).toContainText("Cador l'a remportée", { timeout: 20_000 });
+  await expect(divico.getByTestId("season-history")).toContainText("Vainqueur : Cador");
+  await divico.getByTestId("last-season-map").click();
+  await expect(divico.getByTestId("closed-season")).toContainText("Vainqueur : Cador");
+  await accessible(divico);
 });

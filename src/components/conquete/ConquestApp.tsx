@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { basePath, call } from "../../lib/conquete/api";
 import { feedDetail, feedText, playerColor } from "../../lib/conquete/feed";
-import { BUILDINGS, TERRAIN_LABELS, ranked, troopsForRatio, type BuildingKind } from "../../lib/conquete/rules";
+import { currentGuideStep, suggestAttack, suggestExpansion, suggestOwn, suggestStarts, type GuideProposal } from "../../lib/conquete/guide";
+import { MAX_NOTICES, newNotices, type Notice } from "../../lib/conquete/notices";
+import { BUILDINGS, TERRAIN_LABELS, neutralCost, ranked, troopsForRatio, type BuildingKind } from "../../lib/conquete/rules";
 import { ownerLabels } from "../../lib/conquete/shapes";
 import type { ClosedSeason, DonorRow, FeedRow, GameMap, GameState, HistoryRow, MyGame, TerritoryState } from "../../lib/conquete/types";
 import { fmtClock, fmtDateTime, fmtInt } from "../../lib/format";
 import ActionPanel from "./ActionPanel";
 import ConquestMap from "./ConquestMap";
+import GameGuide, { useGuide } from "./GameGuide";
 import { DiscordButton, Empty, Loading, Problem, messageOf, useMe } from "./common";
 
 /** Quelques octets toutes les 15 secondes : la carte n'est relue que si quelque chose a bougé. */
@@ -20,6 +23,28 @@ const RANKING_ROWS = 6;
 /** Le ratio d'attaque de départ : le cinquième de la réserve, comme l'attaque par défaut d'OpenFront. */
 const DEFAULT_RATIO = 20;
 const RATIO_KEY = "gal-conquete-ratio";
+/** Le dernier événement vu par ce joueur : à son retour, il apprend ce qui s'est passé sans lui. */
+const seenKey = (number: number) => `gal-conquete-vu-${number}`;
+const SUGGESTED_STARTS = 3;
+
+function readSeen(number: number): number | null {
+  try {
+    const saved = Number(localStorage.getItem(seenKey(number)));
+    return saved > 0 ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSeen(number: number, id: number) {
+  try {
+    localStorage.setItem(seenKey(number), String(id));
+  } catch {
+    // Sans stockage, le joueur retrouve tout dans le fil d'actualité.
+  }
+}
+
+const smoothScroll = (): ScrollBehavior => (window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth");
 /** Deux clics plus rapprochés que ça sont un double-clic par mégarde : il ne lance rien. */
 const FIRE_MIN_GAP_MS = 400;
 
@@ -61,7 +86,7 @@ function TerritoryRanking({ rows, total, onPick, mapSize, victoryShare, allies, 
         <p class="mt-2 text-sm text-muted">Personne pour l'instant.</p>
       ) : (
         <ol class="mt-2 grid gap-1.5">
-          {rows.slice(0, RANKING_ROWS).map((r) => (
+          {shownRows(rows, RANKING_ROWS).map((r) => (
             <li key={r.key} class={["conq-rank tnum", r.me && "is-me"].filter(Boolean).join(" ")}>
               <button type="button" class="conq-rank-button" onClick={() => r.anchor !== undefined && onPick(r.anchor)}>
                 <span class="text-muted">{r.rank}</span>
@@ -87,6 +112,13 @@ function TerritoryRanking({ rows, total, onPick, mapSize, victoryShare, allies, 
   );
 }
 
+/** Les premiers, et le joueur lui-même s'il n'en fait pas partie : chacun voit toujours où il en est. */
+function shownRows<T extends { me?: boolean }>(rows: readonly T[], count: number): T[] {
+  const top = rows.slice(0, count);
+  const mine = rows.slice(count).find((r) => r.me);
+  return mine ? [...top, mine] : top;
+}
+
 function Ranking({ title, rows, unit, testid }: { title: string; rows: { key: string | number; rank: number; name: string; value: number; me?: boolean; color?: string }[]; unit: string; testid: string }) {
   return (
     <section class="card p-5" data-testid={testid}>
@@ -95,7 +127,7 @@ function Ranking({ title, rows, unit, testid }: { title: string; rows: { key: st
         <p class="mt-3 text-sm text-muted">Personne pour l'instant.</p>
       ) : (
         <ol class="mt-3 grid gap-2">
-          {rows.slice(0, 8).map((r) => (
+          {shownRows(rows, 8).map((r) => (
             <li key={r.key} class={["conq-rank tnum", r.me && "is-me"].filter(Boolean).join(" ")}>
               <span class="text-muted">{r.rank}</span>
               {r.color && <i class="conq-dot" style={{ background: r.color }} aria-hidden="true"></i>}
@@ -152,7 +184,7 @@ export default function ConquestApp() {
   const [closed, setClosed] = useState<ClosedSeason | null>(null);
   const [closedMap, setClosedMap] = useState<GameMap | null>(null);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
-  const [flash, setFlash] = useState<FeedRow | null>(null);
+  const [notices, setNotices] = useState<Notice[]>([]);
   const [focus, setFocus] = useState(0);
   const [ratio, setRatioState] = useState(readRatio);
   const [fire, setFire] = useState(0);
@@ -171,9 +203,21 @@ export default function ConquestApp() {
   const revision = useRef<string | null>(null);
   const lastFull = useRef(0);
   const lastEvent = useRef<number | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const noticeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const knownRequests = useRef<Set<number> | null>(null);
+  const wantPanel = useRef(false);
+  const arena = useRef<HTMLDivElement>(null);
 
   const validated = me?.status === "validated";
+
+  /** Une annonce sur la carte : les bonnes nouvelles passent, les mauvaises attendent qu'on les ait lues. */
+  const showNotices = useCallback((fresh: Notice[]) => {
+    if (fresh.length === 0) return;
+    setNotices((current) => [...fresh, ...current.filter((n) => !fresh.some((f) => f.id === n.id))].slice(0, MAX_NOTICES + 1));
+    for (const n of fresh) {
+      if (!n.sticky) noticeTimers.current.push(setTimeout(() => setNotices((current) => current.filter((c) => c.id !== n.id)), FLASH_MS));
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -193,20 +237,22 @@ export default function ConquestApp() {
       setDonors(ranking.rows);
       setHistory(seasons.rows);
       setProblem(null);
-      // Un don vient d'arriver : tout le monde le voit passer, sans avoir à regarder le fil.
+      // Ce qui vient d'arriver : chacun l'apprend sans avoir à lire le fil. Au retour d'une absence, ce qui le touche.
+      const viewer = game.me ?? null;
       const seen = lastEvent.current;
-      const gift = seen === null ? undefined : events.rows.find((e) => e.id > seen && e.kind === "donation");
-      if (gift) {
-        setFlash(gift);
-        clearTimeout(flashTimer.current);
-        flashTimer.current = setTimeout(() => setFlash(null), FLASH_MS);
+      const remembered = seen === null && viewer !== null ? readSeen(viewer) : null;
+      const since = seen ?? remembered;
+      if (since !== null) {
+        const { shown, more } = newNotices(events.rows, viewer, since, seen === null);
+        showNotices(more > 0 ? [...shown, { id: -1, tone: "info", text: `Et ${plural(more, "autre événement", "autres événements")} : voir le fil d'actualité.`, sticky: true, personal: true, territoryId: null }] : shown);
       }
       lastEvent.current = Math.max(seen ?? 0, events.rows[0]?.id ?? 0);
+      if (viewer !== null && lastEvent.current > 0) writeSeen(viewer, lastEvent.current);
       if (game.season) setMap(await loadMap(game.season.map_version));
     } catch (e) {
       setProblem(messageOf(e));
     }
-  }, []);
+  }, [showNotices]);
 
   const loadMine = useCallback(async () => {
     if (!validated) {
@@ -214,11 +260,17 @@ export default function ConquestApp() {
       return;
     }
     try {
-      setMine(await call<MyGame>("get_my_game"));
+      const game = await call<MyGame>("get_my_game");
+      setMine(game);
+      // Une alliance proposée : le panneau apparaît, et on le dit, car il peut être sous la carte.
+      const requests = game.alliance_requests ?? [];
+      const known = knownRequests.current;
+      if (known) showNotices(requests.filter((r) => !known.has(r.number)).map((r) => ({ id: -2 - r.number, tone: "good" as const, text: `${r.name} vous propose une alliance.`, sticky: true, personal: true, territoryId: null })));
+      knownRequests.current = new Set(requests.map((r) => r.number));
     } catch {
       setMine(null);
     }
-  }, [validated]);
+  }, [validated, showNotices]);
 
   useEffect(() => {
     void load();
@@ -241,7 +293,7 @@ export default function ConquestApp() {
     return () => {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
-      clearTimeout(flashTimer.current);
+      noticeTimers.current.forEach(clearTimeout);
     };
   }, [load]);
 
@@ -318,6 +370,79 @@ export default function ConquestApp() {
     await Promise.all([loadMine(), refreshMe()]);
   };
 
+  /* ---------- Le guide de première partie ---------- */
+
+  const guide = useGuide(validated && season && !mine?.excluded ? (state?.me ?? null) : null, owned.size);
+  const guideSeen = useMemo(() => new Set(guide.seen), [guide.seen]);
+  const guideStep = useMemo(() => {
+    if (!guide.open || !map || !season || !mine || mine.excluded) return null;
+    const land = selected !== null ? map.territories[selected - 1] : undefined;
+    const holder = selected !== null ? states.get(selected) : undefined;
+    const reachable = owned.size > 0 ? [...targets] : [];
+    return currentGuideStep({
+      config: season.config,
+      phase: season.phase,
+      warStartsAt: season.war_starts_at,
+      owned: owned.size,
+      freeLands: map.territories.length - states.size,
+      reachableFree: reachable.filter((id) => !states.has(id)).length,
+      reachableEnemies: reachable.filter((id) => states.has(id)).length,
+      selected: land ? { name: land.name, kind: !holder ? "free" : holder.owner === myNumber ? "mine" : allies.has(holder.owner) ? "ally" : "enemy", reachable: targets.has(land.id), cost: neutralCost(land.terrain, season.config) } : null,
+      reserve: mine.in_game === false ? (mine.start_troops ?? 0) : (mine.troops ?? 0),
+      nextRegen: mine.next_regen ?? 0,
+      gold: mine.in_game === false ? season.config.gold.start : (mine.gold ?? 0),
+      goldPerHour: mine.gold_per_hour ?? 0,
+      ratio,
+      hasBuilding: Object.keys(myBuildings).length > 0,
+      attacked: (mine.attacks_today ?? 0) > 0 || (mine.captured ?? 0) > 0,
+      expansionsLeft: season.config.limits.expansionsPerDay - (mine.expansions_today ?? 0),
+      seen: guideSeen,
+    });
+  }, [guide.open, map, season, mine, selected, states, owned, targets, myNumber, allies, ratio, myBuildings, guideSeen]);
+  const guideStepId = guideStep?.id ?? null;
+  const guideSpot = guideStep?.spot ?? null;
+
+  // Le conseil du guide se voit sur la carte, tant que le joueur n'a pas choisi.
+  const suggested = useMemo(() => (guideStepId === "choose" && map ? new Set(suggestStarts(map, states, SUGGESTED_STARTS)) : NO_TARGETS), [guideStepId, map, states]);
+
+  // Sur un petit écran, ce que l'étape met en avant peut être sous la carte : on l'amène à l'écran.
+  useEffect(() => {
+    if (!guideSpot) return;
+    document.querySelector(`[data-guide="${guideSpot}"]`)?.scrollIntoView({ block: "nearest", behavior: smoothScroll() });
+  }, [guideStepId, guideSpot]);
+
+  const propose = (proposal: GuideProposal) => {
+    if (!map || !season) return;
+    const id =
+      proposal === "start"
+        ? (suggestStarts(map, states)[0] ?? null)
+        : proposal === "expand"
+          ? suggestExpansion(map, states, owned, season.config)
+          : proposal === "attack"
+            ? suggestAttack(map, states, owned, allies, (number) => playersByNumber.get(number)?.territories ?? 0, Date.now(), season.config)
+            : suggestOwn(map, owned);
+    if (id === null) return;
+    setSelected(id);
+    setFocus((n) => n + 1);
+  };
+
+  /** Choisir depuis une liste sous la carte : le résultat est au-dessus, on y va, et le clavier suit. */
+  const goToPanel = () => {
+    arena.current?.scrollIntoView({ block: "start", behavior: smoothScroll() });
+    document.getElementById("conq-territory-name")?.focus({ preventScroll: true });
+  };
+  const chooseFromList = (id: number | null) => {
+    wantPanel.current = id !== null && id !== selected;
+    setSelected(id);
+    if (id !== null && id === selected) goToPanel();
+  };
+  useEffect(() => {
+    if (!wantPanel.current || selected === null) return;
+    wantPanel.current = false;
+    goToPanel();
+  }, [selected]);
+  const lastKeyInList = useRef(0);
+
   /** Un clic choisit la terre. Un second clic sur la même lance l'action, sauf un double-clic par mégarde. */
   const pick = (id: number) => {
     const now = Date.now();
@@ -331,7 +456,8 @@ export default function ConquestApp() {
       await call(fn, { p_number: number });
       await onDone();
     } catch (e) {
-      setProblem(messageOf(e));
+      // Une réponse refusée n'a rien à voir avec une lecture impossible : on le dit à part.
+      showNotices([{ id: -1000 - number, tone: "danger", text: messageOf(e), sticky: true, personal: true, territoryId: null }]);
     }
   };
 
@@ -369,6 +495,7 @@ export default function ConquestApp() {
         <div class="conq-banner">
           <p>
             <strong>{closed.name}</strong> : carte figée le {closed.closed_at ? fmtDateTime(closed.closed_at) : "—"}, heure de Paris.
+            {history.find((h) => h.id === closed.id)?.winner ? ` Vainqueur : ${history.find((h) => h.id === closed.id)?.winner}.` : ""}
           </p>
           <button type="button" class="chip" onClick={() => setClosed(null)}>
             Retour à la saison en cours
@@ -410,6 +537,7 @@ export default function ConquestApp() {
   const options = map ? [...map.territories].sort((a, b) => a.name.localeCompare(b.name, "fr")) : [];
   const targetList = map ? [...targets].map((id) => map.territories[id - 1]!).sort((a, b) => a.name.localeCompare(b.name, "fr")) : [];
   const occupied = map && map.territories.length > 0 ? Math.round((states.size / map.territories.length) * 100) : null;
+  const lastSeason = history[0] ?? null;
   const feedSection = (
     <>
       <h2 class="section-title">Fil d'actualité</h2>
@@ -424,19 +552,50 @@ export default function ConquestApp() {
       {!season ? (
         <div class="wrap conq-wrap">
           <div class="conq-banner" data-testid="no-season">
-            <p>
-              <strong>Aucune saison en cours.</strong> La prochaine sera annoncée sur le Discord du clan.
-            </p>
+            <div>
+              {lastSeason && (
+                <p class="mb-1 text-lg" data-testid="last-season">
+                  <strong>« {lastSeason.name} » est terminée.</strong> {lastSeason.winner ? `${lastSeason.winner} l'a remportée.` : lastSeason.biggest ? `Plus grand territoire : ${lastSeason.biggest.name}.` : ""}
+                </p>
+              )}
+              <p>
+                <strong>Aucune saison en cours.</strong> La prochaine sera annoncée sur le Discord du clan.
+              </p>
+            </div>
+            {lastSeason && (
+              <button type="button" class="chip" data-testid="last-season-map" onClick={() => void openClosed(lastSeason.id)}>
+                Voir sa carte finale
+              </button>
+            )}
           </div>
         </div>
       ) : (
         <>
-          <div class="conq-arena" data-testid="arena">
+          <div class="conq-arena" data-testid="arena" ref={arena} data-guide-spot={guideSpot ?? undefined}>
             {map ? (
-              <ConquestMap arena map={map} states={states} selected={selected} targets={owned.size > 0 ? targets : NO_TARGETS} me={myNumber} nameOf={nameOf} describe={describe} onSelect={pick} focus={focus} allies={allies} traitors={traitors}>
-                <p class="conq-flash" role="status" data-testid="donation-flash">
-                  {flash ? feedText(flash) : ""}
-                </p>
+              <ConquestMap arena map={map} states={states} selected={selected} targets={owned.size > 0 ? targets : NO_TARGETS} me={myNumber} nameOf={nameOf} describe={describe} onSelect={pick} focus={focus} allies={allies} traitors={traitors} suggested={suggested} home={myNumber !== null ? (anchors.get(myNumber) ?? null) : null} guided={guideStep !== null}>
+                <div class="conq-notices" role="status" data-testid="game-notices">
+                  {notices.map((n) => (
+                    <p key={n.id} class={`conq-notice is-${n.tone}`}>
+                      <span>{n.text}</span>
+                      {n.territoryId !== null && (
+                        <button
+                          type="button"
+                          class="conq-notice-link"
+                          onClick={() => {
+                            setSelected(n.territoryId);
+                            setFocus((k) => k + 1);
+                          }}
+                        >
+                          Voir
+                        </button>
+                      )}
+                      <button type="button" class="conq-close" aria-label="Fermer cette annonce" onClick={() => setNotices((current) => current.filter((c) => c.id !== n.id))}>
+                        ×
+                      </button>
+                    </p>
+                  ))}
+                </div>
 
                 <div class="conq-hud conq-hud-left">
                   <div class="conq-panel" data-testid="season-banner">
@@ -448,6 +607,16 @@ export default function ConquestApp() {
                       {plural((state.players ?? []).length, "joueur", "joueurs")} · {occupied !== null ? `${occupied} % de la carte occupée` : "…"}
                       <br />
                       <span data-testid="checked-at">Actualisé à {fmtClock(checkedAt ?? state.read_at)}</span>
+                    </p>
+                    <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      {guide.ready && !guideStep && (
+                        <button type="button" class="conq-text-button" data-testid="guide-open" onClick={guide.reopen}>
+                          Guide
+                        </button>
+                      )}
+                      <a class="conq-text-button" href="#conq-details">
+                        Fil et classements
+                      </a>
                     </p>
                   </div>
                   <div class="conq-panel conq-panel-scroll">
@@ -466,7 +635,7 @@ export default function ConquestApp() {
                   </div>
                 </div>
 
-                <div class="conq-hud conq-hud-right">
+                <div class={["conq-hud conq-hud-right", chosen && "is-open"].filter(Boolean).join(" ")}>
                   {(mine?.alliance_requests ?? []).length > 0 && (
                     <div class="conq-panel" data-testid="alliance-requests">
                       <h3 class="text-sm font-bold">Alliances proposées</h3>
@@ -503,15 +672,21 @@ export default function ConquestApp() {
                       ratio={ratio}
                       onRatio={setRatio}
                       fire={fire}
+                      freeLands={map.territories.length - states.size}
                       onDone={onDone}
+                      onAction={(mode) => {
+                        if (mode === "reinforce") guide.ack("reinforce");
+                      }}
+                      onClose={() => setSelected(null)}
                     />
                   </div>
                 </div>
 
                 <div class="conq-hud conq-hud-bottom">
+                  {guideStep && <GameGuide step={guideStep} onAck={guide.ack} onClose={guide.close} onPropose={propose} />}
                   {validated && mine ? (
                     <div class="conq-panel conq-command" data-testid="command-bar">
-                      <dl class="conq-stats tnum" data-testid="my-reserve">
+                      <dl class="conq-stats tnum" data-testid="my-reserve" data-guide="command">
                         <div class="conq-stat-troops">
                           <dt>Troupes</dt>
                           <dd>
@@ -548,7 +723,7 @@ export default function ConquestApp() {
                           </dd>
                         </div>
                       </dl>
-                      <div class="conq-ratio">
+                      <div class="conq-ratio" data-guide="ratio">
                         <label for="conq-ratio" class="text-sm font-semibold">
                           Ratio d'attaque
                         </label>
@@ -588,7 +763,7 @@ export default function ConquestApp() {
             )}
           </div>
 
-          <div class="wrap conq-wrap">
+          <div class="wrap conq-wrap" id="conq-details">
             <div class="conq-legend mt-3 text-xs text-muted" data-testid="map-legend">
               <span>
                 <i class="conq-swatch is-mine"></i> Vos terres
@@ -622,7 +797,22 @@ export default function ConquestApp() {
                 <label for="conq-pick" class="mt-4 block text-sm font-semibold">
                   Aller à un territoire
                 </label>
-                <select id="conq-pick" class="field mt-1" value={selected ?? ""} data-testid="territory-select" onChange={(e) => setSelected(e.currentTarget.value ? Number(e.currentTarget.value) : null)}>
+                <select
+                  id="conq-pick"
+                  class="field mt-1"
+                  value={selected ?? ""}
+                  data-testid="territory-select"
+                  onKeyDown={(e) => {
+                    // Parcourir la liste au clavier ne doit pas arracher le joueur à la liste, seule la touche Entrée y va.
+                    lastKeyInList.current = Date.now();
+                    if (e.key === "Enter" && selected !== null) goToPanel();
+                  }}
+                  onChange={(e) => {
+                    const id = e.currentTarget.value ? Number(e.currentTarget.value) : null;
+                    if (Date.now() - lastKeyInList.current < 300) setSelected(id);
+                    else chooseFromList(id);
+                  }}
+                >
                   <option value="">Choisir…</option>
                   {options.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -638,7 +828,7 @@ export default function ConquestApp() {
                         const s = states.get(t.id);
                         return (
                           <li key={t.id}>
-                            <button type="button" class="chip !min-h-9" aria-pressed={selected === t.id} onClick={() => setSelected(t.id)}>
+                            <button type="button" class="chip !min-h-9" aria-pressed={selected === t.id} onClick={() => chooseFromList(t.id)}>
                               {t.name}
                               {s ? ` · ${fmtInt(s.garrison)}` : ""}
                             </button>
@@ -656,7 +846,8 @@ export default function ConquestApp() {
 
       <div class="wrap conq-wrap">
       {season && (
-        <div class="mt-8 grid gap-4 md:grid-cols-2">
+        <div class="mt-8 grid gap-4 md:grid-cols-3">
+          <Ranking title="Plus grand territoire" unit="terres" testid="rank-biggest-all" rows={biggest.map((p) => ({ key: p.number, rank: p.rank, name: p.name, value: p.territories, me: p.number === myNumber, color: playerColor(p.number) }))} />
           <Ranking title="Meilleurs conquérants" unit="prises" testid="rank-conquerors" rows={conquerors.map((p) => ({ key: p.number, rank: p.rank, name: p.name, value: p.captured, me: p.number === myNumber, color: playerColor(p.number) }))} />
           <Ranking title="Plus gros donneurs" unit="capsules" testid="rank-donors" rows={donors.map((d, i) => ({ key: i, rank: d.rank, name: d.name ?? "Anonyme", value: d.total, me: d.me }))} />
         </div>
@@ -675,6 +866,7 @@ export default function ConquestApp() {
                   <p class="font-semibold">{h.name}</p>
                   <p class="tnum text-sm text-muted">
                     Terminée le {h.closed_at ? fmtDateTime(h.closed_at) : "—"}
+                    {h.winner ? ` · Vainqueur : ${h.winner}` : ""}
                     {h.biggest ? ` · Plus grand territoire : ${h.biggest.name}` : ""}
                     {h.conqueror ? ` · Conquérant : ${h.conqueror.name}` : ""}
                   </p>

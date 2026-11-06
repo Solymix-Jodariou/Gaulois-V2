@@ -170,7 +170,10 @@ export interface FeedRow {
   /** Pour un bâtiment : son type. */
   detail?: string | null;
   actor: string | null;
+  /** Numéro public : c'est ce qui permet de prévenir le joueur concerné. Vide pour un don anonyme. */
+  actor_number?: number | null;
   target: string | null;
+  target_number?: number | null;
   territory: string | null;
   territory_id: number | null;
 }
@@ -191,6 +194,8 @@ export interface HistoryRow {
   started_at: string | null;
   closed_at: string | null;
   map_version: string;
+  /** Celui qui a tenu assez de la carte. Vide si un admin a clôturé sans vainqueur. */
+  winner?: string | null;
   biggest: Standing | null;
   conqueror: Standing | null;
 }

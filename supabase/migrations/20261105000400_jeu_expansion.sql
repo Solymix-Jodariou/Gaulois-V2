@@ -626,7 +626,8 @@ begin
     select e.id, e.at, e.kind, e.sent, e.losses, e.garrison_before, e.garrison_after, e.capsules, e.detail,
       -- Un donneur anonyme le reste aussi dans le fil.
       case when e.kind in ('donation', 'donation_cancelled') and a.anonymous_donations then null else a.display_name end as actor,
-      d.display_name as target, t.name as territory, t.id as territory_id
+      case when e.kind in ('donation', 'donation_cancelled') and a.anonymous_donations then null else a.gaul_number end as actor_number,
+      d.display_name as target, d.gaul_number as target_number, t.name as territory, t.id as territory_id
     from public.game_events e
     left join public.profiles a on a.user_id = e.actor_id
     left join public.profiles d on d.user_id = e.target_id

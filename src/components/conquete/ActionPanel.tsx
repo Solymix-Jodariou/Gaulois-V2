@@ -5,7 +5,7 @@ import { BUILDINGS, TERRAIN_LABELS, buildingCost, defenceFactor, neutralCost, re
 import type { MapTerritory, Me, MyGame, Player, Season, TerritoryState } from "../../lib/conquete/types";
 import { DiscordButton, Problem, Success, messageOf } from "./common";
 
-type Mode = "start" | "expand" | "attack" | "reinforce";
+export type Mode = "start" | "expand" | "attack" | "reinforce";
 
 interface Props {
   season: Season;
@@ -28,7 +28,13 @@ interface Props {
   onRatio: (percent: number) => void;
   /** Change à chaque second clic sur la terre choisie : l'action part alors sans repasser par le bouton. */
   fire: number;
+  /** Les terres encore libres sur la carte. */
+  freeLands: number;
   onDone: () => Promise<void>;
+  /** Une action a réussi : le guide en a besoin pour avancer. */
+  onAction?: (mode: Mode) => void;
+  /** Referme la terre choisie : sur téléphone, le panneau recouvre le bas de la carte. */
+  onClose?: () => void;
 }
 
 const troops = (n: number) => `${fmtInt(n)} ${n > 1 ? "troupes" : "troupe"}`;
@@ -86,7 +92,7 @@ function ArmedButton({ label, armedLabel, busy, onConfirm, testid }: { label: st
 }
 
 export default function ActionPanel(props: Props) {
-  const { season, territory, state, owner, me, mine, allies, fortified, myBuildings, ratio, onRatio, fire, onDone, myNumber } = props;
+  const { season, territory, state, owner, me, mine, allies, fortified, myBuildings, ratio, onRatio, fire, freeLands, onDone, onAction, onClose, myNumber } = props;
   const { mode, why } = modeFor(props);
   const config = season.config;
   const reserve = mine?.in_game === false ? (mine.start_troops ?? 0) : (mine?.troops ?? 0);
@@ -140,24 +146,39 @@ export default function ActionPanel(props: Props) {
     }
   };
 
+  const isProtected = state?.protected_until ? Date.parse(state.protected_until) > Date.now() : false;
+  const attack = mode === "attack" && amount >= 1 && territory ? resolveAttack(amount, state!.garrison, territory.terrain, config, factor) : null;
+  const expansionsLeft = config.limits.expansionsPerDay - (mine?.expansions_today ?? 0);
+  const attacksLeft = config.limits.attacksPerDay - (mine?.attacks_today ?? 0);
+  const cooldown = mine?.cooldown_until && Date.parse(mine.cooldown_until) > Date.now() ? mine.cooldown_until : null;
+  // Ce que le serveur refuserait de toute façon : l'écran ne promet donc pas une victoire.
+  const lastStand = mode === "attack" && config.limits.lastTerritoryProtected && owner?.territories === 1;
+  const refused = mode === "attack" && (isProtected || lastStand);
+
+  /** Le second clic sur la carte ne part que si l'écran vient d'annoncer un succès. */
+  const secondClickAllowed = !busy && (mode === "expand" ? amount > cost && expansionsLeft > 0 : mode === "attack" && !refused && attack?.won === true && attacksLeft > 0 && !cooldown);
+
   const send = () => {
-    if (!territory) return;
+    if (!territory || !mode) return;
+    const action = mode;
     void run(async () => {
       const args = { p_request_id: newRequestId(), p_territory: territory.id };
-      if (mode === "start") {
+      let message: string;
+      if (action === "start") {
         await call("choose_start", { ...args, p_garrison: amount });
-        return `Vous vous installez à ${territory.name}, avec ${troops(amount)}.`;
-      }
-      if (mode === "expand") {
+        message = `Vous vous installez à ${territory.name}, avec ${troops(amount)}.`;
+      } else if (action === "expand") {
         const res = await call<{ garrison: number }>("expand", { ...args, p_troops: amount });
-        return `${territory.name} est à vous : ${holds(res.garrison)}.`;
-      }
-      if (mode === "reinforce") {
+        message = `${territory.name} est à vous : ${holds(res.garrison)}.`;
+      } else if (action === "reinforce") {
         const res = await call<{ garrison: number }>("reinforce", { ...args, p_troops: amount });
-        return `${territory.name} compte maintenant ${troops(res.garrison)}.`;
+        message = `${territory.name} compte maintenant ${troops(res.garrison)}.`;
+      } else {
+        const res = await call<{ won: boolean; losses: number; garrison_after: number }>("attack", { ...args, p_troops: amount });
+        message = res.won ? `Victoire ! ${territory.name} est à vous : ${holds(res.garrison_after)}.` : `L'attaque a échoué : la garnison de ${territory.name} tombe à ${fmtInt(res.garrison_after)}.`;
       }
-      const res = await call<{ won: boolean; losses: number; garrison_after: number }>("attack", { ...args, p_troops: amount });
-      return res.won ? `Victoire ! ${territory.name} est à vous : ${holds(res.garrison_after)}.` : `L'attaque a échoué : la garnison de ${territory.name} tombe à ${fmtInt(res.garrison_after)}.`;
+      onAction?.(action);
+      return message;
     });
   };
 
@@ -166,31 +187,50 @@ export default function ActionPanel(props: Props) {
   useEffect(() => {
     if (fire === lastFire.current) return;
     lastFire.current = fire;
-    if ((mode === "expand" || mode === "attack") && !busy && amount >= 1) send();
+    if (secondClickAllowed) send();
   }, [fire]);
 
   if (!territory) {
+    const starting = validated && props.owned.size === 0;
     return (
       <div class="conq-side-empty" data-testid="action-panel">
-        <p class="font-semibold">Choisissez une terre sur la carte</p>
-        <p class="mt-1 text-sm text-muted">Un clic pour voir le résultat prévu, un second clic pour y aller.</p>
+        {starting && freeLands === 0 ? (
+          <p class="font-semibold">Toutes les terres sont occupées : vous pourrez jouer à la prochaine saison.</p>
+        ) : starting ? (
+          <>
+            <p class="font-semibold">Choisissez votre terre de départ</p>
+            <p class="mt-1 text-sm text-muted">Cliquez une terre libre sur la carte. Rien ne part avant que vous ayez confirmé.</p>
+          </>
+        ) : inGame ? (
+          <>
+            <p class="font-semibold">Choisissez une terre sur la carte</p>
+            <p class="mt-1 text-sm text-muted">Un clic pour voir le résultat prévu, un second clic pour y aller.</p>
+          </>
+        ) : (
+          <>
+            <p class="font-semibold">Choisissez une terre sur la carte</p>
+            <p class="mt-1 text-sm text-muted">Vous verrez son terrain, son propriétaire et sa garnison.</p>
+          </>
+        )}
       </div>
     );
   }
 
-  const isProtected = state?.protected_until ? Date.parse(state.protected_until) > Date.now() : false;
-  const attack = mode === "attack" && amount >= 1 ? resolveAttack(amount, state!.garrison, territory.terrain, config, factor) : null;
-  const expansionsLeft = config.limits.expansionsPerDay - (mine?.expansions_today ?? 0);
-  const attacksLeft = config.limits.attacksPerDay - (mine?.attacks_today ?? 0);
-  const cooldown = mine?.cooldown_until && Date.parse(mine.cooldown_until) > Date.now() ? mine.cooldown_until : null;
   const bombCooldown = mine?.bomb_ready_at && Date.parse(mine.bomb_ready_at) > Date.now() ? mine.bomb_ready_at : null;
   const building = state?.building ?? null;
 
   return (
     <div data-testid="action-panel">
-      <h3 class="text-xl" data-testid="territory-name">
-        {territory.name}
-      </h3>
+      <div class="flex items-start justify-between gap-2">
+        <h3 class="text-xl" id="conq-territory-name" tabIndex={-1} data-testid="territory-name">
+          {territory.name}
+        </h3>
+        {onClose && (
+          <button type="button" class="conq-close" aria-label="Fermer ce territoire" data-testid="territory-close" onClick={onClose}>
+            ×
+          </button>
+        )}
+      </div>
       <dl class="conq-facts tnum mt-3">
         <div>
           <dt>Terrain</dt>
@@ -245,6 +285,7 @@ export default function ActionPanel(props: Props) {
       {mode && (
         <form
           class="mt-4"
+          data-guide="action"
           onSubmit={(e) => {
             e.preventDefault();
             send();
@@ -288,10 +329,12 @@ export default function ActionPanel(props: Props) {
           </div>
 
           <p class="conq-preview tnum mt-3" data-testid="action-preview" aria-live="polite">
+            {refused && (isProtected ? `Cette terre est protégée jusqu'au ${fmtDateTime(state!.protected_until!)} : une attaque serait refusée.` : "C'est le dernier territoire de ce joueur : il ne peut pas être attaqué.")}
             {mode === "start" && `Le premier territoire est gratuit : ${willHold(amount)}.`}
             {mode === "expand" && (amount > cost ? `Le terrain coûte ${troops(cost)} : ${willHold(amount - cost)}.` : `Le terrain coûte ${troops(cost)} : envoyez-en plus pour pouvoir le tenir.`)}
             {mode === "reinforce" && `La garnison passera à ${fmtInt((state?.garrison ?? 0) + amount)}.`}
             {mode === "attack" &&
+              !refused &&
               attack &&
               (attack.won
                 ? `Victoire prévue : ${fmtInt(Math.round(attack.losses))} pertes, ${willHold(attack.survivors)}.`
@@ -304,13 +347,14 @@ export default function ActionPanel(props: Props) {
           <button type="submit" class="btn btn-primary mt-3 w-full" disabled={busy || amount < 1} data-testid="action-submit">
             {busy ? "Envoi…" : ACTION_LABELS[mode]}
           </button>
-          {(mode === "expand" || mode === "attack") && <p class="mt-1 text-center text-xs text-muted">ou cliquez encore sur la terre</p>}
+          {secondClickAllowed && <p class="mt-1 text-center text-xs text-muted">ou cliquez encore sur la terre</p>}
+          {mode === "attack" && !refused && attack && !attack.won && <p class="mt-1 text-center text-xs text-muted">Attaque annoncée perdante : seul ce bouton la lance.</p>}
         </form>
       )}
 
       {/* Construire sur une de ses terres. */}
       {inGame && state?.owner === myNumber && !building && (
-        <section class="mt-4 border-t border-line pt-3" data-testid="build-menu">
+        <section class="mt-4 border-t border-line pt-3" data-testid="build-menu" data-guide="build">
           <h4 class="text-sm font-bold">Construire ici</h4>
           <ul class="mt-2 grid gap-1.5">
             {BUILD_ORDER.map((kind) => {
@@ -348,7 +392,7 @@ export default function ActionPanel(props: Props) {
 
       {/* Parler au propriétaire de cette terre : s'allier, trahir, bombarder. */}
       {inGame && isEnemy && owner && (
-        <section class="mt-4 grid gap-1.5 border-t border-line pt-3" data-testid="diplomacy">
+        <section class="mt-4 grid gap-1.5 border-t border-line pt-3" data-testid="diplomacy" data-guide="diplomacy">
           {ownerIsAlly ? (
             <ArmedButton
               label="Rompre l'alliance"
@@ -385,7 +429,7 @@ export default function ActionPanel(props: Props) {
               <ArmedButton
                 label={`Lancer une bombe (${fmtInt(config.structures.bombCost)} or)`}
                 armedLabel={`Confirmer : ${Math.round(config.structures.bombDamage * 100)} % de la garnison, et le bâtiment`}
-                busy={busy || gold < config.structures.bombCost || bombCooldown !== null}
+                busy={busy || gold < config.structures.bombCost || bombCooldown !== null || isProtected}
                 testid="bomb-launch"
                 onConfirm={() =>
                   void run(async () => {

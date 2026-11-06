@@ -291,33 +291,125 @@ svg[data-names="true"] .conq-names {
     font-size: 0.75rem;
   }
 }
-/* Un don vient d'arriver : l'annonce se pose en haut de la carte, sans rien cacher d'important. */
-.conq-flash {
-  position: absolute;
+/* Ce que le joueur doit savoir tout de suite : au-dessus de la carte sur téléphone, posé dessus sur grand écran. */
+.conq-notices {
+  order: -2;
+  display: grid;
+  gap: 0.375rem;
+  padding: 0 0.5rem;
   pointer-events: none;
-  top: 0.5rem;
-  left: 0.5rem;
-  z-index: 1;
-  max-width: min(26rem, calc(100% - 1rem));
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-warn);
-  border-radius: 0.625rem;
-  background: rgb(6 11 34 / 0.92);
-  font-size: 0.875rem;
-  font-weight: 600;
-  animation: conq-flash-in 0.35s ease-out;
 }
-.conq-flash:empty {
+.conq-notices:empty {
   display: none;
 }
-@keyframes conq-flash-in {
+.conq-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.375rem;
+  padding: 0.375rem 0.5rem 0.375rem 0.75rem;
+  border: 1px solid var(--color-line);
+  border-left-width: 0.25rem;
+  border-radius: 0.625rem;
+  background: rgb(6 11 34 / 0.94);
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: auto;
+  animation: conq-notice-in 0.35s ease-out;
+}
+.conq-notice > span {
+  flex: 1;
+  min-width: 0;
+}
+.conq-notice.is-danger {
+  border-color: #ff6b7a;
+}
+.conq-notice.is-good {
+  border-color: #5fe39a;
+}
+.conq-notice.is-info {
+  border-color: var(--color-warn);
+}
+.conq-notice-link,
+.conq-text-button {
+  color: var(--color-blue-text);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.conq-close {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.conq-close:hover {
+  color: #fff;
+  background: var(--color-surface-2);
+}
+@keyframes conq-notice-in {
   from {
     opacity: 0;
     translate: 0 -0.5rem;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .conq-flash {
+  .conq-notice {
+    animation: none;
+  }
+}
+
+/* ---------- Le guide de première partie ---------- */
+.conq-guide {
+  border-color: var(--color-warn);
+}
+.conq-guide-title {
+  margin-top: 0.25rem;
+  font-size: 1.0625rem;
+  line-height: 1.25;
+}
+.conq-guide-bar {
+  height: 0.1875rem;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  border-radius: 0.125rem;
+  background: rgb(255 255 255 / 0.16);
+}
+.conq-guide-bar > i {
+  display: block;
+  height: 100%;
+  background: var(--color-warn);
+}
+/* Ce que l'étape met en avant : un cadre, sans rien masquer ni bloquer. */
+[data-guide-spot="action"] [data-guide="action"],
+[data-guide-spot="command"] [data-guide="command"],
+[data-guide-spot="ratio"] [data-guide="ratio"],
+[data-guide-spot="build"] [data-guide="build"],
+[data-guide-spot="diplomacy"] [data-guide="diplomacy"] {
+  border-radius: 0.5rem;
+  outline: 2px solid var(--color-warn);
+  outline-offset: 0.25rem;
+  animation: conq-guide-spot 1.4s ease-in-out 4;
+}
+@keyframes conq-guide-spot {
+  50% {
+    outline-offset: 0.5rem;
+  }
+}
+/* La terre que le guide conseille : un repère fixe, qui ne redessine pas la carte en boucle. */
+.conq-hex.is-suggested {
+  fill: rgb(255 200 87 / 0.3);
+  stroke: var(--color-warn);
+  stroke-width: 2.4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-guide-spot] [data-guide] {
     animation: none;
   }
 }
@@ -525,13 +617,43 @@ svg[data-names="true"] .conq-names {
 }
 /* Sur téléphone, les commandes viennent juste sous la carte, avant le reste. */
 .conq-hud-bottom {
+  /* Sur téléphone, le guide passe au-dessus de la carte, et la barre de commande en dessous. */
+  display: contents;
+}
+.conq-guide {
+  order: -1;
+  margin: 0.5rem;
+}
+.conq-hud-bottom > .conq-command,
+.conq-hud-bottom > .conq-invite {
   order: 1;
+  margin: 0.5rem;
 }
 .conq-hud-right {
   order: 2;
 }
 .conq-hud-left {
   order: 3;
+}
+/* Sur téléphone, le panneau d'une terre monte du bas de l'écran : le toucher a un effet visible, et la carte reste là. */
+@media (max-width: 59.99rem) {
+  .conq-hud-right.is-open {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 40;
+    max-height: 58dvh;
+    padding: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .conq-hud-right.is-open .conq-panel {
+    border-radius: 1rem 1rem 0 0;
+    background: var(--color-night);
+  }
+  .conq-arena:has(.conq-guide) .conq-map-view svg {
+    height: 46dvh;
+  }
 }
 .conq-stat-troops {
   grid-column: span 2;
@@ -565,8 +687,9 @@ svg[data-names="true"] .conq-names {
   stroke: #5fe39a;
   stroke-width: 1.4px;
 }
+/* Quelques battements, pas une boucle sans fin : animer une case redessine toute la carte, relief compris. */
 .conq-hex.is-fresh {
-  animation: conq-fresh 1.6s ease-in-out infinite;
+  animation: conq-fresh 1.6s ease-in-out 6;
 }
 @keyframes conq-fresh {
   50% {
@@ -724,10 +847,33 @@ svg[data-marks="true"] .conq-buildings {
     overflow-y: auto;
   }
   .conq-hud-bottom {
+    display: flex;
     left: 50%;
     translate: -50% 0;
     width: min(46rem, calc(100% - 37rem));
     bottom: 0;
+  }
+  .conq-guide {
+    order: 0;
+    margin: 0;
+    width: 100%;
+  }
+  .conq-hud-bottom > .conq-command,
+  .conq-hud-bottom > .conq-invite {
+    margin: 0;
+  }
+  /* La barre tient sur une ligne, pour laisser la carte visible. */
+  .conq-command .conq-stats {
+    grid-template-columns: minmax(8rem, 1.8fr) repeat(4, minmax(0, 1fr));
+    gap: 0.375rem;
+  }
+  .conq-command .conq-stats dt {
+    font-size: 0.6875rem;
+    overflow-wrap: normal;
+    white-space: nowrap;
+  }
+  .conq-stat-troops {
+    grid-column: auto;
   }
   .conq-arena .conq-invite {
     margin: 0;
@@ -738,23 +884,42 @@ svg[data-marks="true"] .conq-buildings {
     bottom: auto;
     top: 0.5rem;
   }
-  .conq-arena .conq-flash {
-    top: 0.5rem;
-    left: 50%;
-    translate: -50% 0;
-    max-width: 24rem;
-    width: max-content;
+  .conq-notices {
+    position: absolute;
+    z-index: 2;
+    top: 3.25rem;
+    left: 16.5rem;
+    right: 22rem;
+    justify-items: center;
+    padding: 0;
   }
+  .conq-notice {
+    width: fit-content;
+    max-width: min(30rem, 100%);
+    margin-top: 0;
+  }
+  /* Une ligne par événement : les annonces se posent juste en dessous. */
   .conq-ticker {
     display: block;
     left: 16rem;
     top: 0.5rem;
-    max-width: 20rem;
+    width: min(26rem, calc(100% - 41rem));
     padding: 0;
     font-size: 0.75rem;
     font-weight: 600;
     text-shadow: 0 0 0.25rem #000, 0 1px 0.25rem #000;
     pointer-events: none;
+  }
+  .conq-ticker li {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  /* Sur un écran moyen, il n'y a pas la place à côté du zoom : le fil reste sous la carte. */
+  @media (max-width: 79.99rem) {
+    .conq-ticker {
+      display: none;
+    }
   }
 }
 @media (prefers-reduced-motion: reduce) {

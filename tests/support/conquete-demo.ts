@@ -11,7 +11,7 @@ import { callRpc } from "./database";
 const MAP = JSON.parse(readFileSync("public/conquete/map-v1.json", "utf8")) as { territories: { id: number; name: string; neighbours: number[] }[] };
 const CONFIG = readFileSync("config/conquete.json", "utf8");
 
-export const DEMO_ACCOUNTS = ["Fondateur de démo", "Officier de démo", "Membre de démo", "Recrue de démo"];
+export const DEMO_ACCOUNTS = ["Nouveau joueur de démo", "Membre de démo", "Officier de démo", "Fondateur de démo", "Recrue de démo"];
 /** Les capsules, fictives, des dix autres joueurs. */
 const CAPSULES = [150_000, 0, 5_001, 800, 0, 25_000, 300, 0, 60_001, 2_400];
 
@@ -92,6 +92,8 @@ export async function seedDemo(pool: pg.Pool): Promise<DemoPlayers> {
   const officer = await addUser("Officier de démo", "officer", "validated", 40_001);
   const member = await addUser("Membre de démo", "member", "validated", 1_000);
   const recruit = await addUser("Recrue de démo", "member", "pending", 0);
+  // Validé, sans terre ni don : pour essayer le guide de première partie.
+  await addUser("Nouveau joueur de démo", "member", "validated", 0);
   const others = await Promise.all(CAPSULES.map((capsules, i) => addUser(`Joueur de démo ${i + 1}`, "member", "validated", capsules)));
 
   // La liste des membres, fictive elle aussi.

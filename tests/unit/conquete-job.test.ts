@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { announcement, batchMessages, decryptBackup, encryptBackup, fetchDonations, fetchRoster, hashPublicId, runConquestJob, type JobDeps, type NotifyEvent, type RpcResult } from "../../src/lib/conquete/job";
 
@@ -72,6 +73,26 @@ function donationsApi(rows: ReturnType<typeof donation>[], requests: string[] = 
     return Response.json({ results: rows.slice((page - 1) * 50, page * 50), total: rows.length, page, limit: 50 });
   }) as typeof fetch;
 }
+
+describe("les annonces et le serveur", () => {
+  const sql = readFileSync("supabase/migrations/20261105000600_saisons_et_classements.sql", "utf8");
+  const listed = /e\.notified_at is null and e\.kind in \(([^)]*)\)/.exec(sql)![1]!.match(/'([a-z_]+)'/g)!.map((s) => s.replaceAll("'", ""));
+  const kinds = ["season_started", "war_started", "season_closed", "start", "expand", "attack_won", "attack_lost", "player_excluded", "donation", "donation_cancelled", "building", "bomb", "bomb_intercepted", "alliance_made", "alliance_broken", "victory"];
+  const event = (kind: string): NotifyEvent => ({ id: 1, kind, actor: "Astra", target: "Brenn", territory: "Paris", season: "Saison 1", capsules: 2, sent: 200 });
+
+  it("tout ce que le serveur liste a un texte", () => {
+    for (const kind of listed) expect(announcement(event(kind)), kind).not.toBe("");
+  });
+
+  it("tout ce qui a un texte est bien listé par le serveur : rien n'est rédigé pour rien", () => {
+    expect(kinds.filter((kind) => announcement(event(kind)) !== "").sort()).toEqual([...listed].sort());
+  });
+
+  it("accorde les mots au nombre", () => {
+    expect(announcement({ ...event("donation"), capsules: 1, sent: 1 })).toBe("Astra offre 1 capsule au clan : +1 troupe dans la Conquête.");
+    expect(announcement({ ...event("donation"), actor: null })).toContain("Un membre anonyme offre 2 capsules");
+  });
+});
 
 describe("les dons lus chez OpenFront", () => {
   const key = "cle-donnee-par-openfront";

@@ -221,6 +221,37 @@ La Conquête reprend ce qui fait jouer à OpenFront, et change ce qu'il faut pou
 
 **Rien n'est copié.** Le code d'OpenFront est sous AGPL-3.0 et ses images sous CC BY-SA 4.0 : tout est réécrit ici, sans ses images, ses couleurs ni sa mise en page exacte. Les mécaniques et les règles d'un jeu ne sont pas protégées en elles-mêmes, mais ce point n'a pas été relu par un juriste.
 
+## Le guide de première partie
+
+Il accompagne la vraie partie du joueur, sans la simuler : `src/lib/conquete/guide.ts` déduit l'étape en cours de l'état réel du jeu, et `src/components/conquete/GameGuide.tsx` l'affiche. Recharger, changer d'appareil ou revenir trois jours plus tard ne fait donc rien perdre d'important. Seules les explications déjà lues sont retenues, dans le navigateur.
+
+| Étape | Elle se termine quand… |
+|---|---|
+| Bienvenue | Le joueur a lu, ou possède déjà une terre |
+| Choisir sa terre | Une terre libre est sélectionnée. Le guide en conseille 3 sur la carte, et peut en proposer une. |
+| S'installer | Il a confirmé |
+| Ses ressources | Il a lu |
+| Conquérir | Il a 2 terres, ou plus rien à conquérir aujourd'hui |
+| Le ratio | Il a lu |
+| Renforcer | Il l'a fait, ou l'a remis à plus tard |
+| Construire | Il a un bâtiment, ou l'a remis à plus tard. Le guide dit combien d'or il manque, et dans combien de temps. |
+| La suite (expansion) | Il a lu. Le guide reviendra à la guerre. |
+| Attaquer (guerre) | Il a attaqué, ou l'a remis à plus tard |
+| Les alliances (guerre) | Il a lu |
+| Vous êtes prêt | Il a lu |
+
+**Ses choix :** les textes prennent leurs chiffres dans les réglages de la saison, aucun n'est écrit en dur. Ses conseils ne regardent que ce qui est public, et ne décident jamais à la place du joueur. Il s'efface devant quelqu'un qui tient déjà 3 terres, et le bouton « Guide » le rouvre.
+
+## Ce que le jeu signale aux joueurs
+
+| Où | Quoi | Délai |
+|---|---|---|
+| Alertes sur la carte (`src/lib/conquete/notices.ts`) | Ce qui touche le joueur : terre prise ou bombardée, attaque repoussée, alliance proposée, conclue ou rompue, don annulé. Pour tous : la guerre, la victoire, les dons. | 15 secondes au plus. Au retour d'une absence : ce qui le touche, et le début de la guerre. |
+| Fil d'actualité | Tout | 15 secondes au plus |
+| Discord (`list_events_to_notify`) | Saison lancée et close, guerre, prises, bombes, trahisons, victoire, dons | À chaque tâche planifiée, environ une fois par heure |
+
+Une alerte n'envoie rien hors du site : pas de courriel, pas de notification de navigateur. Un onglet caché ne demande rien au serveur : le joueur est prévenu quand il y revient.
+
 ## Les réglages
 
 `config/conquete.json` donne les valeurs par défaut, copiées dans chaque saison à sa création. Les admins les modifient depuis `/admin` : un fichier seul obligerait à republier le site à chaque changement. Toute modification en cours de saison s'applique aussitôt, et l'ancienne valeur reste au journal. Le serveur refuse une valeur hors limites.
@@ -337,7 +368,7 @@ Sans aucun compte, avec une partie fictive déjà en cours :
 npx tsx tests/support/conquete-stack.ts --demo
 ```
 
-Ouvrez ensuite `http://127.0.0.1:4322/conquete`. La page de connexion propose un fondateur, un officier, un membre et une recrue de démonstration : ouvrez-en deux dans deux navigateurs pour voir les deux côtés. Tout est fictif, reste sur votre PC et disparaît à l'arrêt.
+Ouvrez ensuite `http://127.0.0.1:4322/conquete`. La page de connexion propose un nouveau joueur, un membre, un officier, un fondateur et une recrue de démonstration : ouvrez-en deux dans deux navigateurs pour voir les deux côtés. **Pour essayer le guide de première partie, choisissez « Nouveau joueur de démo ».** Tout est fictif, reste sur votre PC et disparaît à l'arrêt.
 
 Toutes les 20 secondes, un don fictif est déclaré puis validé par l'officier de démonstration : connecté comme membre de démonstration, on voit sa réserve monter sans recharger la page. Avec `--direct` en plus de `--demo`, les dons arrivent directement, comme si OpenFront avait donné un accès.
 
@@ -363,6 +394,15 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 
 **Vérifié pour de vrai, en local :** les formules et leur accord entre l'écran et le serveur sur 390 combats ; les droits de chaque rôle ; les attaques simultanées, sur de vraies connexions ; la lecture de la vraie liste des membres d'OpenFront par la tâche quotidienne (763 membres le 5 novembre 2026) ; la sauvegarde et sa relecture ; le parcours complet dans Chromium ; l'accessibilité WCAG AA (axe) et l'absence de débordement à 375 px ; la fluidité de la carte avec son relief, sur un processeur simulé 6 fois plus lent (une image toutes les 16,7 ms en médiane, 33 ms pour les 5 % les plus lentes) ; les dons convertis en troupes, sur un vrai Postgres, attaques simultanées comprises.
 
+**Audit du 6 novembre 2026 :** de vrais parcours de joueurs, à la souris, au clavier et au doigt, en plus des tests. Il a trouvé ce que les tests ne regardaient pas, tout est corrigé et couvert par un test :
+
+- Une carte qui suivait la souris sans bouton après un glisser relâché sur un panneau, et une molette qui piégeait la page sur la carte.
+- Une terre choisie dans une liste, dont le panneau restait hors de l'écran. Sur téléphone, toucher une terre semblait ne rien faire : son panneau était 200 px sous l'écran.
+- Une alliance proposée qui pouvait mettre 5 minutes à arriver, et un joueur attaqué qui n'était prévenu de rien.
+- La victoire, les bombes et les trahisons, rédigées pour Discord mais jamais envoyées.
+- Un aperçu qui annonçait « Victoire prévue » sur une terre protégée ou sur le dernier territoire d'un joueur, et un second clic qui lançait une attaque annoncée perdante.
+- Un défenseur bombardé qui perdait l'or que son port lui devait. Le classement par territoire limité à 6 joueurs. Une fin de saison qui ne nommait pas le vainqueur en haut de l'écran.
+
 **Pas vérifié :**
 
 - **Le vrai Supabase et la vraie connexion Discord.** Il faut leurs comptes. Le schéma tourne sur Postgres 18 avec une imitation des rôles de Supabase. Le comportement réel de leur API, de leur connexion et de leur stockage de fichiers reste à éprouver : c'est l'objet de l'étape 6.
@@ -370,6 +410,7 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 - **La lecture des vrais dons chez OpenFront.** Sans accès, `fetchDonations` n'a jamais tourné contre leur API : elle suit leur schéma public (`ClanApiSchemas.ts`) et n'est testée que contre une imitation.
 - **Un vrai téléphone, Firefox et Safari.** La fluidité est mesurée sur un processeur ralenti, sans vrai téléphone.
 - **Les annonces sur un vrai Discord,** testées seulement contre une imitation.
+- **Le guide avec de vrais débutants.** Son parcours est testé de bout en bout, mais personne de nouveau au jeu ne l'a encore essayé : ses textes pourront changer après les premiers retours.
 - **Le droit.** La page de confidentialité décrit honnêtement ce qui est conservé, mais elle n'a pas été relue par un juriste.
 
 ## Message à envoyer à l'équipe d'OpenFront

@@ -27,6 +27,15 @@ const LIGHT_RELIEF_PX_PER_UNIT = 3.3;
 const FULL_RELIEF_WINDOW_PX = 1200;
 /** Une terre prise depuis moins longtemps que ça pulse : on voit la carte bouger. */
 const FRESH_MS = 15 * 60_000;
+/** En dessous, c'est un téléphone ou une petite tablette : les panneaux passent sous la carte. */
+const SMALL_SCREEN_PX = 960;
+const HOME_ZOOM = 2.4;
+/** Sur l'écran de jeu, des panneaux couvrent les bords : la carte peut glisser un peu plus loin pour qu'aucune terre n'y reste coincée. */
+const ARENA_OVERSCROLL = 0.4;
+/** Où poser une terre qu'on va chercher, en part de la hauteur : au-dessus de la barre de commande. */
+const FOCUS_HEIGHT = 0.38;
+/** Et au-dessus du guide, s'il est ouvert. */
+const FOCUS_HEIGHT_GUIDED = 0.27;
 
 interface Props {
   map: GameMap;
@@ -45,6 +54,12 @@ interface Props {
   /** Mes alliés et les traîtres du moment, par numéro de joueur. */
   allies?: ReadonlySet<number>;
   traitors?: ReadonlySet<number>;
+  /** Les terres que le guide conseille en ce moment. */
+  suggested?: ReadonlySet<number>;
+  /** Ma terre principale : sur un petit écran, la carte s'ouvre dessus, sinon rien n'est assez grand pour être touché. */
+  home?: number | null;
+  /** Le guide est ouvert en bas de la carte : la terre visée se pose plus haut, pour ne pas être dessous. */
+  guided?: boolean;
   /** La carte occupe tout l'écran : la molette zoome, sans Ctrl. */
   arena?: boolean;
   /** Ce qui se pose par-dessus la carte : l'annonce d'un don, par exemple. */
@@ -56,7 +71,7 @@ interface Props {
  * depuis la liste des territoires, au clavier. Le déplacement et le zoom ne repassent pas
  * par Preact : seul le groupe bouge, et la carte reste fluide sur téléphone.
  */
-export default function ConquestMap({ map, states, selected, targets, me, nameOf, describe, onSelect, focus = 0, allies, traitors, arena = false, children }: Props) {
+export default function ConquestMap({ map, states, selected, targets, me, nameOf, describe, onSelect, focus = 0, allies, traitors, suggested, home = null, guided = false, arena = false, children }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const group = useRef<SVGGElement>(null);
   const relief = useRef<SVGImageElement>(null);
@@ -70,6 +85,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   const tapped = useRef<number | null>(null);
   const lastFocus = useRef(focus);
   const sharp = useRef(false);
+  const openedOnHome = useRef(false);
 
   const { minX, minY, maxX, maxY } = map.bounds;
   const width = maxX - minX;
@@ -157,8 +173,10 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   const clamp = () => {
     const v = view.current;
     v.k = Math.min(Math.max(v.k, MIN_ZOOM), MAX_ZOOM);
-    v.x = Math.min(Math.max(v.x, maxX - maxX * v.k), minX - minX * v.k);
-    v.y = Math.min(Math.max(v.y, maxY - maxY * v.k), minY - minY * v.k);
+    const padX = arena && v.k > 1.01 ? width * ARENA_OVERSCROLL : 0;
+    const padY = arena && v.k > 1.01 ? height * ARENA_OVERSCROLL : 0;
+    v.x = Math.min(Math.max(v.x, maxX - maxX * v.k - padX), minX - minX * v.k + padX);
+    v.y = Math.min(Math.max(v.y, maxY - maxY * v.k - padY), minY - minY * v.k + padY);
   };
 
   /** Convertit une position à l'écran en coordonnées de la carte. */
@@ -201,12 +219,28 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     if (!t) return;
     const v = view.current;
     if (v.k < 2.2) v.k = 2.2;
+    // Sur grand écran, les panneaux se posent sur la carte : la terre visée va là où on la voit.
+    const onScreen = arena && window.innerWidth >= SMALL_SCREEN_PX ? (guided ? FOCUS_HEIGHT_GUIDED : FOCUS_HEIGHT) : 0.5;
     v.x = minX + width / 2 - t.x * v.k;
-    v.y = minY + height / 2 - t.y * v.k;
+    v.y = minY + height * onScreen - t.y * v.k;
     clamp();
     apply();
     // Ne recentre que lorsque le choix change, ou sur demande : le joueur garde la main sur le déplacement.
   }, [selected, focus, map]);
+
+  /** Sur un petit écran, le monde entier ne laisse rien à toucher : la carte s'ouvre sur les terres du joueur. */
+  useEffect(() => {
+    if (openedOnHome.current || home === null || !arena || selected !== null || window.innerWidth >= SMALL_SCREEN_PX) return;
+    const t = map.territories[home - 1];
+    if (!t) return;
+    openedOnHome.current = true;
+    const v = view.current;
+    v.k = HOME_ZOOM;
+    v.x = minX + width / 2 - t.x * v.k;
+    v.y = minY + height / 2 - t.y * v.k;
+    clamp();
+    apply();
+  }, [home, map, arena]);
 
   useEffect(() => {
     apply();
@@ -215,6 +249,8 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
     // Hors de l'écran de jeu, sans Ctrl, la molette continue de faire défiler la page.
     const onWheel = (e: WheelEvent) => {
       if (!arena && !e.ctrlKey && !e.metaKey) return;
+      // La carte est déjà au plus large : la molette rend la main à la page, vers le fil et les classements.
+      if (view.current.k <= MIN_ZOOM && !e.ctrlKey && !e.metaKey && (e.deltaY > 0 || window.scrollY > 0)) return;
       e.preventDefault();
       const { x, y } = toMap(e.clientX, e.clientY);
       zoomAt(e.deltaY < 0 ? 1.25 : 0.8, x, y);
@@ -252,9 +288,17 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   const onPointerDown = (e: PointerEvent) => {
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     gesture.current = { moved: 0, pinch: 0 };
+    // Le geste nous appartient jusqu'au bout, même relâché au-dessus d'un panneau ou hors de la fenêtre.
+    try {
+      svg.current?.setPointerCapture(e.pointerId);
+    } catch {
+      // Sans capture, le contrôle du bouton ci-dessous termine le geste.
+    }
   };
 
   const onPointerMove = (e: PointerEvent) => {
+    // Une souris sans bouton enfoncé ne déplace jamais la carte, quoi qu'il se soit passé avant.
+    if (e.pointerType === "mouse" && e.buttons === 0) pointers.current.delete(e.pointerId);
     const previous = pointers.current.get(e.pointerId);
     if (!previous) {
       showTip(e);
@@ -281,7 +325,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    const wasTap = pointers.current.size === 1 && gesture.current.moved < TAP_DISTANCE && pointers.current.has(e.pointerId);
+    const wasTap = e.type === "pointerup" && pointers.current.size === 1 && gesture.current.moved < TAP_DISTANCE && pointers.current.has(e.pointerId);
     pointers.current.delete(e.pointerId);
     if (!wasTap) return;
     const id = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest<SVGElement>("[data-t]")?.dataset["t"];
@@ -313,7 +357,7 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
 
   return (
     <div class="conq-map" data-testid="conquest-map">
-      <div class="conq-map-view" tabIndex={0} role="group" aria-label="Carte des territoires. Flèches pour se déplacer, plus et moins pour zoomer. Tous les territoires sont aussi dans la liste juste à côté." onKeyDown={onKeyDown}>
+      <div class="conq-map-view" tabIndex={0} role="group" aria-label="Carte des territoires. Flèches pour se déplacer, plus et moins pour zoomer. Tous les territoires sont aussi dans la liste sous la carte." onKeyDown={onKeyDown}>
         <div class="conq-map-stage">
         <svg
           ref={svg}
@@ -365,13 +409,14 @@ export default function ConquestMap({ map, states, selected, targets, me, nameOf
               const isProtected = state?.protected_until ? Date.parse(state.protected_until) > Date.now() : false;
               const isFresh = state?.taken_at ? Date.now() - Date.parse(state.taken_at) < FRESH_MS : false;
               const isAlly = state !== undefined && (allies?.has(state.owner) ?? false);
+              const isSuggested = suggested?.has(t.id) ?? false;
               return (
                 <path
                   key={t.id}
                   data-t={t.id}
                   data-owner={state?.owner}
                   d={d}
-                  class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected", isAlly && "is-ally", isFresh && "is-fresh"].filter(Boolean).join(" ")}
+                  class={["conq-hex", !state && "is-free", mine && "is-mine", targets.has(t.id) && "is-target", selected === t.id && "is-selected", isProtected && "is-protected", isAlly && "is-ally", isFresh && "is-fresh", isSuggested && "is-suggested"].filter(Boolean).join(" ")}
                 ></path>
               );
             })}

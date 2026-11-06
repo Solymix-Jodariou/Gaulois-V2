@@ -157,6 +157,8 @@ begin
       return internal.remember(p_request_id, v_uid, jsonb_build_object('ok', true, 'intercepted', true, 'garrison_after', v_state.garrison, 'gold', v_player.gold));
     end if;
 
+    -- Le défenseur touche d'abord ce que son port ou sa ville lui devaient jusqu'à cet instant.
+    perform internal.touch_player(v_season, v_state.owner_id);
     -- Le bâtiment est détruit, et la garnison décimée sans jamais disparaître : la terre reste à attaquer.
     v_after := greatest(1, floor(v_state.garrison::float8 * (1 - (v_season.config #>> '{structures,bombDamage}')::float8) + 0.5))::bigint;
     update public.territory_state set garrison = v_after, building = null where season_id = v_season.id and territory_id = p_territory;

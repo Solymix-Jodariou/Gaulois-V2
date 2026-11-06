@@ -166,7 +166,7 @@ export function announcement(e: NotifyEvent): string {
     case "victory":
       return `${e.actor ?? "Un ancien membre"} domine la carte et remporte la saison « ${e.season} » !`;
     case "donation":
-      return `${e.actor ?? "Un membre anonyme"} offre ${count(e.capsules)} capsules au clan : +${count(e.sent)} troupes dans la Conquête.`;
+      return `${e.actor ?? "Un membre anonyme"} offre ${count(e.capsules)} ${(e.capsules ?? 0) > 1 ? "capsules" : "capsule"} au clan : +${count(e.sent)} ${(e.sent ?? 0) > 1 ? "troupes" : "troupe"} dans la Conquête.`;
     default:
       return "";
   }

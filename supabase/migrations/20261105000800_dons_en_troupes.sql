@@ -233,7 +233,9 @@ language sql stable security definer set search_path = public, pg_temp as $$
           s.id, s.status, extract(epoch from s.war_starts_at)::bigint, md5(s.config::text),
           (select max(e.id) from public.game_events e where e.season_id = s.id),
           (select count(*) from public.territory_state t where t.season_id = s.id),
-          (select sum(t.garrison) from public.territory_state t where t.season_id = s.id)
+          (select sum(t.garrison) from public.territory_state t where t.season_id = s.id),
+          -- Une alliance proposée ou refusée n'écrit aucun événement : elle doit quand même arriver.
+          (select count(*) || ':' || coalesce(extract(epoch from max(l.expires_at))::bigint, 0) from public.alliances l where l.season_id = s.id)
         )
         from public.seasons s
         where s.status in ('expansion', 'war')

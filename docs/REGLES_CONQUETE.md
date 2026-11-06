@@ -12,6 +12,12 @@ C'est un jeu du site du clan. Rien n'est envoyé à OpenFront : vos parties, vot
 2. Indiquez votre pseudo OpenFront, ou votre identifiant public si vous n'en avez pas.
 3. Attendez qu'un officier vous valide. La liste des membres est publique : c'est lui qui confirme que c'est bien vous.
 
+## Votre première partie
+
+**Un guide vous accompagne dès votre arrivée sur la carte.** Il suit votre vraie partie, étape par étape : choisir votre terre, comprendre vos ressources, conquérir, renforcer, construire, et attaquer quand la guerre commence. Il peut vous proposer une terre ou une cible, mais c'est vous qui confirmez. Vous pouvez le fermer quand vous voulez, et le rouvrir avec le bouton « Guide », en haut à gauche de la carte. Il reprend où vous en êtes, même plusieurs jours plus tard.
+
+**Le jeu vous prévient de ce qui vous touche :** une terre prise ou bombardée, une attaque repoussée, une alliance proposée, conclue ou rompue, le début de la guerre. Les alertes s'affichent sur la carte. Les mauvaises nouvelles restent jusqu'à ce que vous les fermiez, et à votre retour, vous retrouvez ce qui vous est arrivé pendant votre absence.
+
 ## Vos troupes
 
 Vous avez **une réserve de troupes**, qui remonte **toutes les heures**. Elle remonte vite quand elle est à moitié pleine, lentement quand elle est presque vide ou presque pleine, comme dans OpenFront.
@@ -88,6 +94,8 @@ Si la guerre a commencé et qu'il reste des terres libres, on peut encore s'y é
 ## Le ratio d'attaque
 
 La réglette en bas de l'écran fixe la part de votre réserve que vous envoyez. Cliquez une fois sur une terre : l'écran montre le résultat exact. Cliquez une seconde fois : vos troupes partent. Vous pouvez aussi taper le nombre exact dans le panneau.
+
+Le second clic ne part que si l'écran annonce un succès. Une attaque annoncée perdante peut servir à user une garnison : elle ne part alors que par le bouton du panneau, pour ne jamais être lancée par mégarde. Votre terre de départ se confirme aussi par ce bouton.
 
 ## L'or et les bâtiments
 
