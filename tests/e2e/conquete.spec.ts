@@ -143,6 +143,7 @@ test("un membre lie son profil, et seul un officier peut le valider", async ({ b
     { hash: hash("PUB-ASTRA"), username: "Astra", role: "member" },
     { hash: hash("PUB-BRENN"), username: "Brenn", role: "member" },
     { hash: hash("PUB-ANON"), username: null, role: "member" },
+    { hash: hash("PUB-CADRE"), username: "Cadre", role: "member" },
   ];
   expect(await service("sync_clan_roster", { p_entries: roster, p_total: roster.length })).toMatchObject({ ok: true });
 
@@ -1174,4 +1175,26 @@ test("la victoire se voit : le vainqueur est nommé, pour lui et pour ceux qui r
   await divico.getByTestId("last-season-map").click();
   await expect(divico.getByTestId("closed-season")).toContainText("Vainqueur : Cador");
   await accessible(divico);
+});
+
+// À la fin du fichier : les tests partagent la même partie, et celui-ci ajoute une validation au journal.
+test("une personne prévue par la direction est reconnue : validée avec son rôle, sans officier", async ({ browser, baseURL }) => {
+  const page = await signIn(browser, "CadreDiscord", baseURL);
+  watch(page, "cadre");
+  // L'imitation de Discord donne un identifiant fictif : on pose un identifiant de la forme réelle.
+  const discordId = "100000000000000042";
+  await sql("update public.private_links set discord_id = $1 where discord_name = 'CadreDiscord'", [discordId]);
+  await sql("insert into internal.role_presets (discord_id, role) values ($1, 'officer')", [discordId]);
+  await expect(page.getByTestId("account-status")).toContainText("En attente de validation");
+
+  await page.getByLabel("Pseudo OpenFront ou identifiant public").fill("Cadre");
+  await page.getByRole("button", { name: "Demander ma validation" }).click();
+
+  // La page suit sans être rechargée, et aucun officier n'a eu à intervenir.
+  await expect(page.getByTestId("account-status")).toContainText("Membre validé · Rôle : Officier");
+  await expect(page.getByTestId("account-name")).toHaveText("Cadre");
+  await expect(page.getByTestId("request-pending")).toHaveCount(0);
+  await page.getByRole("link", { name: "Administration" }).click();
+  await expect(page.getByRole("tab", { name: "Demandes" })).toBeVisible();
+  await page.context().close();
 });

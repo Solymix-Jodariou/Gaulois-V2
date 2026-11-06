@@ -37,6 +37,37 @@ Le reste est dans le tableau de [CONQUETE.md](CONQUETE.md). Chaque droit est vé
 
 **Le rang dans le jeu ne donne aucun droit.** Lors d'une demande, l'officier voit « Chef dans le jeu » ou « Officier dans le jeu », d'après la liste publique des membres. Cette liste étant publique, n'importe qui peut prétendre être cette personne : le rôle sur le site reste une décision humaine.
 
+## Les rôles prévus
+
+La direction peut noter à l'avance l'identifiant Discord de son encadrement et le rôle de chacun. La personne se connecte, indique son pseudo OpenFront dans `/compte`, et le serveur la valide aussitôt avec ce rôle. Personne n'a à intervenir. Cette liste reste une décision humaine : c'est la direction qui l'écrit.
+
+Dans l'éditeur SQL de Supabase, avec le mode développeur de Discord pour copier les identifiants :
+
+```sql
+insert into internal.role_presets (discord_id, role) values
+  ('IDENTIFIANT_D_UN_ADMIN', 'admin'),
+  ('IDENTIFIANT_D_UN_OFFICIER', 'officer');
+```
+
+**Ne mettez jamais ces identifiants dans le dépôt : il est public.**
+
+- **Qui décide :** seuls `admin` et `officer` sont acceptés. Le rôle de fondateur ne se prévoit pas, il se transmet.
+- **Pourquoi passer par le pseudo :** un compte déjà validé ne peut plus lier son profil OpenFront. Valider dès la connexion laisserait la personne « Gaulois n° … » dans le jeu.
+- **Une faute de frappe :** un pseudo absent de la liste des membres ne valide rien. La demande attend un officier comme les autres. S'il la refuse, la personne reste prévue et peut recommencer. S'il la valide, le rôle arrive à ce moment-là.
+- **Une seule fois :** l'entrée s'efface dès qu'elle a servi. Une rétrogradation tient donc après une nouvelle connexion, et rien ne reste de la liste une fois tout le monde passé.
+- **La sécurité :** l'identifiant comparé vient de `auth.identities`, jamais de `raw_user_meta_data`. Personne ne lit ni n'écrit cette liste depuis le site, clé de service comprise.
+- **La trace :** le journal note `membership_approved` et `role_preset_applied`, au nom de la personne elle-même.
+
+Pour relire la liste, ou retirer quelqu'un avant sa demande :
+
+```sql
+select * from internal.role_presets;
+```
+
+```sql
+delete from internal.role_presets where discord_id = 'SON_IDENTIFIANT';
+```
+
 ## L'identité Discord : les règles à garder
 
 Trois failles ont été trouvées et corrigées le 6 novembre 2026, avant toute mise en ligne. Des tests dans `tests/db/direction.test.ts` les empêchent de revenir.

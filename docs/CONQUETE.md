@@ -130,7 +130,7 @@ Dans `/admin`, **Saisons**. Avant la première saison :
 
 ## Vérifier les membres : la limite à connaître
 
-La liste des membres est publique : **taper le pseudo ou l'identifiant d'un membre ne prouve pas qu'on est ce membre.** Un contrôle automatique seul laisserait n'importe qui récupérer les capsules d'un autre. Le site compare donc la demande à la liste, puis **un officier confirme**, en reconnaissant la personne sur Discord.
+La liste des membres est publique : **taper le pseudo ou l'identifiant d'un membre ne prouve pas qu'on est ce membre.** Un contrôle automatique seul laisserait n'importe qui récupérer les capsules d'un autre. Le site compare donc la demande à la liste, puis **un officier confirme**, en reconnaissant la personne sur Discord. Seul l'encadrement noté à l'avance par la direction s'en passe : son identifiant Discord ne s'imite pas, voir « Les rôles prévus » dans [DIRECTION.md](DIRECTION.md).
 
 La preuve automatique existe : le jeton d'identité d'OpenFront (voir [API_AUDIT.md](API_AUDIT.md), section 9). Elle n'est pas branchée : OpenFront doit d'abord ajouter le site à sa liste. Le message est prêt en fin de page. Une fois le site accepté, il restera à écrire une petite fonction serveur (Edge Function) qui valide le jeton.
 
@@ -316,6 +316,7 @@ Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terr
 |---|---|---|
 | `profiles` | Nom de jeu, rôle, statut, anonymat, total de capsules | Soi-même, officiers |
 | `private_links` | Identifiant et nom Discord, **empreinte** de l'identifiant OpenFront | Soi-même, officiers |
+| `internal.role_presets` | Rôles prévus par la direction : identifiant Discord et rôle, effacés dès qu'ils ont servi. Hors du schéma `public`, donc hors de l'API. | Personne : serveur seul |
 | `clan_roster` | Liste officielle, en empreintes | Personne : serveur seul |
 | `membership_requests` | Demandes et décisions | Soi-même, officiers |
 | `admin_log` | Qui, quoi, quand. Ne se modifie ni ne s'efface. | Admins |
