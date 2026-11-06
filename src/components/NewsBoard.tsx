@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { fetchLiveNews, mergeAnnouncements, mergeEvents, type LiveNews, type NewsItem, type StaticAnnouncement, type StaticEvent } from "../lib/conquete/news";
+import { fetchLiveNews, mergeAnnouncements, mergeEvents, type LiveNews, type NewsItem, type StaticAnnouncement, type StaticEvent } from "../lib/compte/news";
 import { fmtDate, fmtDateTime } from "../lib/format";
 
 function Items({ items, empty, date, testId }: { items: NewsItem[]; empty: string; date: (iso: string) => string; testId: string }) {

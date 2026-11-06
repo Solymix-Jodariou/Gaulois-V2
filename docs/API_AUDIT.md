@@ -323,7 +323,7 @@ Elles répondent sans authentification, hors `/public` et sans documentation. El
 
 **Le 6 novembre 2026 à 11 h 53 UTC, `/clanmap/ownership` a répondu 403 à la collecte sur GitHub.** Vingt minutes plus tard, la même route répondait 200 depuis une connexion personnelle, avec le même nom de client, et les routes `/public` passaient sur GitHub dans la même exécution. Le refus semble donc viser les machines de GitHub sur cette route. C'est une déduction : OpenFront n'a rien expliqué.
 
-La collecte ne cherche pas à contourner ce refus. La section 5 des [conditions d'utilisation](https://openfront.io/terms-of-service.html) interdit d'accéder au service par un moyen ou une interface automatisés qu'il ne fournit pas. C'est une lecture de ces conditions, pas un avis juridique. Le message de `docs/CONQUETE.md` demande à OpenFront une version publique de ces données.
+La collecte ne cherche pas à contourner ce refus. La section 5 des [conditions d'utilisation](https://openfront.io/terms-of-service.html) interdit d'accéder au service par un moyen ou une interface automatisés qu'il ne fournit pas. C'est une lecture de ces conditions, pas un avis juridique. Le message de la section 10 demande à OpenFront une version publique de ces données.
 
 | Route | Réponse | Cache annoncé |
 |---|---|---|
@@ -409,18 +409,18 @@ Le film ne contient que des tags, des couleurs et des troupes de clans, aucun jo
 
 ## 9. Vérifier les joueurs et lire les dons
 
-Pour la Conquête des Gaulois uniquement : voir [CONQUETE.md](CONQUETE.md). Testé le 5 novembre 2026. Le navigateur n'appelle aucune de ces routes.
+Pour la connexion au site : voir [DIRECTION.md](DIRECTION.md). Testé le 5 novembre 2026. Le navigateur n'appelle aucune de ces routes. Les dons ne servaient qu'à la Conquête des Gaulois, retirée du site le 6 novembre 2026 : ces notes restent pour mémoire.
 
 | Besoin | Route | État |
 |---|---|---|
 | Prouver qu'on possède un compte | `POST /public/identity_token/validate`, avec `token` et `audience` | **Documentée, mais réservée aux sites de la liste d'OpenFront** : `ofstats.io` et `trackerfront.io` à la lecture de `docs/API.md`. Il faut demander à son équipe d'ajouter le site. **Pas encore utilisée.** |
-| Savoir qui est membre | `GET /public/clan/GAL/members?page=N&limit=50` | La route déjà utilisée par la collecte, non documentée. Lue sans erreur par la tâche du jeu : 763 membres. |
+| Savoir qui est membre | `GET /public/clan/GAL/members?page=N&limit=50` | La route déjà utilisée par la collecte, non documentée. Lue sans erreur par la relecture quotidienne : 763 membres. |
 | Lire les dons au clan | `GET /clans/GAL/donations`, `/donations/leaderboard` | **401 sans compte.** Aucune route de dons dans `docs/API.md`. Les mêmes routes sous `/public/clan/GAL/` répondent 404. |
 | Total du trésor | `GET /clans/GAL`, champ `softBalance` | Public, mais global : il ne dit pas qui a donné. |
 
 Le code du jeu (`packages/shared/src/ClanApiSchemas.ts`) confirme que ces listes séparent les capsules (`soft`) du Plutonium (`hard`), et qu'elles excluent la part des victoires. La somme des dons n'est donc pas le trésor.
 
-**Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Un membre déclare son don, un officier le vérifie dans l'onglet Dons du jeu. Depuis le 6 novembre 2026, un officier peut aussi recopier la liste à la main : voir « Les dons copiés à la main » dans [CONQUETE.md](CONQUETE.md).
+**Conséquence : les dons ne peuvent pas être synchronisés** sans le compte d'un membre, ce que le projet exclut. Le site n'en lit aucun. Seule la page de la carte peut citer des donateurs, depuis une liste fournie par le clan (`content/carte-heros.json`).
 
 **Vérifié de plus le 6 novembre 2026, quand la question du temps réel s'est posée :**
 
@@ -428,10 +428,28 @@ Le code du jeu (`packages/shared/src/ClanApiSchemas.ts`) confirme que ces listes
 - **Avec un compte, depuis un serveur :** la session d'un joueur repose sur un jeton court et un cookie de renouvellement (`src/client/Auth.ts`). Techniquement possible, mais [les conditions d'utilisation](https://openfront.io/terms-of-service.html) l'interdisent : la section 5 vise tout moyen automatisé que le service ne fournit pas.
 - **Avec un script chez un officier :** la section 6.5 interdit tout script ou extension qui lit le client du jeu ou son trafic, quel que soit le but, sauf accord écrit d'OpenFront.
 
-Le site ne fait donc ni l'un ni l'autre, et demande l'accord d'OpenFront : voir [CONQUETE.md](CONQUETE.md). Le trésor public (`softBalance` de `/clans/GAL`) ne permet pas d'attribuer un don : il bouge aussi avec les parts de victoire et les dépenses.
+Le site ne fait donc ni l'un ni l'autre. Le trésor public (`softBalance` de `/clans/GAL`) ne permet pas d'attribuer un don : il bouge aussi avec les parts de victoire et les dépenses.
 
 **Conséquence pour la vérification : la liste des membres ne prouve rien.** Elle est publique, donc n'importe qui peut y trouver le pseudo d'un membre. Le site s'en sert comme d'un contrôle, et un officier confirme.
 
 D'après la documentation du jeu, un jeton d'identité dure 10 minutes, n'est valable que pour le site choisi, ne contient que le `publicId` et ne permet pas de se connecter à OpenFront.
 
-**Ménager l'API :** la tâche du jeu lit la liste au plus une fois par jour, en 16 appels espacés de 300 ms. Une liste incomplète ne remplace jamais la dernière liste valide. Le `publicId` est aussitôt remplacé par son empreinte : il n'entre jamais dans la base, ce qui respecte la règle de la section 7.
+**Ménager l'API :** la relecture de `scripts/relire-membres.ts` lit la liste au plus une fois par jour, en 16 appels espacés de 300 ms. Une liste incomplète ne remplace jamais la dernière liste valide. Le `publicId` est aussitôt remplacé par son empreinte : il n'entre jamais dans la base, ce qui respecte la règle de la section 7.
+
+## 10. Message à envoyer à l'équipe d'OpenFront
+
+À envoyer par vos soins, sur le canal que vous utilisez avec elle. Il est écrit en anglais, langue de la documentation du jeu. S'il est déjà parti, le paragraphe sur la carte peut être envoyé seul.
+
+> Hello OpenFront team,
+>
+> I run the community site of the clan [GAL] Les Gaulois: https://solymix-jodariou.github.io/Gaulois-V2/ (unofficial, not affiliated with OpenFront).
+>
+> Clan members can sign in on our site with Discord. Could you add our site to the identity token list (Account settings → Link to a third-party site), so that members can prove they own their account?
+>
+> Requested audience: `solymix-jodariou.github.io`
+>
+> How we would use it: our server validates the token once with `POST /public/identity_token/validate`, checks the public ID against `/public/clan/GAL/members`, then discards the token. We store neither the token nor the public ID, only a hash, and members without a public username stay anonymous.
+>
+> A question about the clan map. Our site builds its timelapse from your documented `/public/clanmap/history` and your Giant World Map, credited under CC BY-SA 4.0, thank you for both. Two things are not in the public API: each clan's troops (`/clanmap/ownership`) and a clan's treasury (`/clans/GAL`). `/clanmap/ownership` answered 403 from GitHub Actions, so we stopped reading it, and we will not try to get around that. Our reading of `/clans/GAL` fails from GitHub Actions too, so the site shows "no data" for the treasury; we still try once a day, and we will stop if you prefer. Would you consider public versions of these, or tell us if we may read them once a day?
+>
+> Thanks a lot for the game and for the public API!

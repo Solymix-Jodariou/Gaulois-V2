@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runPreflight } from "../../src/lib/conquete/preflight";
+import { runPreflight } from "../../src/lib/compte/preflight";
 
 type Route = { status: number; body?: unknown };
 

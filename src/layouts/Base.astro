@@ -2,7 +2,7 @@
 import "../styles/global.css";
 import { clan, SITE_DISCLAIMER, SITE_LICENSE_NOTICE } from "../../config/clan";
 import { brandFile } from "../lib/brand";
-import { GAME_ENABLED } from "../lib/conquete/api";
+import { AUTH_ENABLED } from "../lib/compte/api";
 import AuthMenu from "../components/AuthMenu";
 import { loadMeta, loadLinks } from "../lib/data";
 import { fmtDateTime } from "../lib/format";
@@ -24,8 +24,6 @@ const nav = [
   { href: "/membres", label: "Membres" },
   { href: "/activite", label: "Activité" },
   { href: "/carte", label: "Carte" },
-  // Le jeu n'apparaît que si son serveur est configuré : sans lui, le site reste entièrement statique.
-  ...(GAME_ENABLED ? [{ href: "/conquete", label: "Conquête" }] : []),
   { href: "/debuter", label: "Débuter" },
   { href: "/rejoindre", label: "Rejoindre" },
 ];
@@ -80,11 +78,11 @@ const tools = loadLinks().tools;
               <span class="text-xl">[{clan.tag}]</span>
             )
           }
-          <span class:list={[GAME_ENABLED ? "hidden sm:inline xl:hidden" : "hidden sm:inline"]}>{clan.name}</span>
+          <span class:list={[AUTH_ENABLED ? "hidden sm:inline xl:hidden" : "hidden sm:inline"]}>{clan.name}</span>
         </a>
 
-        {/* Le jeu ajoute un lien et le compte : le menu complet demande alors plus de largeur. */}
-        <nav aria-label="Navigation principale" class:list={[GAME_ENABLED ? "hidden xl:block" : "hidden lg:block"]}>
+        {/* Le bouton du compte prend de la place : le menu complet demande alors plus de largeur. */}
+        <nav aria-label="Navigation principale" class:list={[AUTH_ENABLED ? "hidden xl:block" : "hidden lg:block"]}>
           <ul class="flex items-center gap-1">
             {
               nav.map((n) => (
@@ -107,12 +105,12 @@ const tools = loadLinks().tools;
 
         <div class="flex items-center gap-2">
           {/* Avec le bouton de connexion, la place manque sur téléphone : le Discord reste dans la page et le pied de page. */}
-          <span class:list={[GAME_ENABLED ? "hidden md:inline-flex" : "inline-flex"]}>
+          <span class:list={[AUTH_ENABLED ? "hidden md:inline-flex" : "inline-flex"]}>
             <a href={clan.links.discord} class="btn btn-secondary !min-h-10 !py-1.5 !text-sm" rel="noopener">
               Discord
             </a>
           </span>
-          {GAME_ENABLED && <AuthMenu client:idle />}
+          {AUTH_ENABLED && <AuthMenu client:idle />}
           <button
             type="button"
             class="btn btn-ghost fx-toggle !min-h-10 !px-2.5 !py-1.5"
@@ -130,7 +128,7 @@ const tools = loadLinks().tools;
               <path d="M4 2.500v11l9-5.500z"></path>
             </svg>
           </button>
-          <details class:list={["relative", GAME_ENABLED ? "xl:hidden" : "lg:hidden"]} data-menu>
+          <details class:list={["relative", AUTH_ENABLED ? "xl:hidden" : "lg:hidden"]} data-menu>
             <summary class="btn btn-ghost !min-h-10 !py-1.5 cursor-pointer list-none text-sm" aria-label="Ouvrir le menu">Menu</summary>
             <nav aria-label="Navigation mobile" class="card absolute right-0 mt-2 w-56 p-2 shadow-xl">
               <ul>
@@ -173,7 +171,7 @@ const tools = loadLinks().tools;
             <li><a href={clan.links.openfront} rel="noopener">Jouer à OpenFront</a></li>
             <li><a href={`${base}/debuter`}>Débuter</a></li>
             {tools.length > 0 && <li><a href={`${base}/debuter#outils`}>Outils communautaires</a></li>}
-            {GAME_ENABLED && <li><a href={`${base}/confidentialite`}>Confidentialité</a></li>}
+            {AUTH_ENABLED && <li><a href={`${base}/confidentialite`}>Confidentialité</a></li>}
             <li><a href={clan.links.source} rel="noopener">Code source</a></li>
           </ul>
         </div>

@@ -1,18 +1,16 @@
 ---
 import Base from "../layouts/Base.astro";
 import PageHeader from "../components/PageHeader.astro";
-import AccountApp from "../components/conquete/AccountApp";
-import GameNav from "../components/conquete/GameNav.astro";
-import NotOpen from "../components/conquete/NotOpen.astro";
-import { GAME_ENABLED } from "../lib/conquete/api";
+import AccountApp from "../components/compte/AccountApp";
+import NotOpen from "../components/compte/NotOpen.astro";
+import { AUTH_ENABLED } from "../lib/compte/api";
 ---
 
-<Base title="Mon compte" description="Votre compte pour la Conquête des Gaulois : statut, dons de capsules et confidentialité." noindex>
+<Base title="Mon compte" description="Votre compte sur le site du clan GAL : statut, validation et confidentialité." noindex>
   <div class="wrap">
     <PageHeader title="Mon compte" />
-    <GameNav />
     <div class="mt-6 max-w-3xl">
-      {GAME_ENABLED ? <AccountApp client:only="preact" /> : <NotOpen />}
+      {AUTH_ENABLED ? <AccountApp client:only="preact" /> : <NotOpen />}
     </div>
   </div>
 </Base>

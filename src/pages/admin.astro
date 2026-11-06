@@ -1,18 +1,16 @@
 ---
 import Base from "../layouts/Base.astro";
 import PageHeader from "../components/PageHeader.astro";
-import AdminApp from "../components/conquete/AdminApp";
-import GameNav from "../components/conquete/GameNav.astro";
-import NotOpen from "../components/conquete/NotOpen.astro";
-import { GAME_ENABLED } from "../lib/conquete/api";
+import AdminApp from "../components/compte/AdminApp";
+import NotOpen from "../components/compte/NotOpen.astro";
+import { AUTH_ENABLED } from "../lib/compte/api";
 ---
 
 <Base title="Administration" description="Espace des officiers et des admins du clan GAL." noindex>
   <div class="wrap">
     <PageHeader title="Administration" />
-    <GameNav />
     <div class="mt-6">
-      {GAME_ENABLED ? <AdminApp client:only="preact" /> : <NotOpen />}
+      {AUTH_ENABLED ? <AdminApp client:only="preact" /> : <NotOpen />}
     </div>
   </div>
 </Base>

@@ -3,7 +3,7 @@
  * Lancez : npm run verifier:ligne
  * Avec SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY et, si possible, SUPABASE_SECRET_KEY dans l'environnement.
  */
-import { runPreflight } from "../src/lib/conquete/preflight";
+import { runPreflight } from "../src/lib/compte/preflight";
 
 const url = process.env["SUPABASE_URL"] ?? "";
 const publishableKey = process.env["SUPABASE_PUBLISHABLE_KEY"] ?? "";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchLiveNews, mergeAnnouncements, mergeEvents, safeUrl, toLocalInput } from "../../src/lib/conquete/news";
+import { fetchLiveNews, mergeAnnouncements, mergeEvents, safeUrl, toLocalInput } from "../../src/lib/compte/news";
 
 const NOW = Date.parse("2026-11-06T12:00:00Z");
 

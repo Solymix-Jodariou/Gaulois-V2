@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
-import { SESSION_KEY, basePath, call, supabase } from "../lib/conquete/api";
-import type { Me } from "../lib/conquete/types";
+import { SESSION_KEY, basePath, call, supabase } from "../lib/compte/api";
+import type { Me } from "../lib/compte/types";
 
 const LINK = "btn btn-ghost !min-h-10 !py-1.5 !text-sm whitespace-nowrap";
 

@@ -1,6 +1,5 @@
 node_modules/
 dist/
-dist-conquete/
 .astro/
 .env
 public/generated/
@@ -8,4 +7,4 @@ test-results/
 playwright-report/
 .cache/
 supabase/.temp/
-Documents pour claude/
+.claude/worktrees/

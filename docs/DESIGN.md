@@ -154,52 +154,6 @@ Le code est dans `src/scripts/fx.ts`, et sa logique testable dans `src/lib/fx/te
 
 **Trois façons de couper les effets :** le bouton pause de l'en-tête (le choix est mémorisé), le réglage « réduire les animations » du système, ou l'absence de JavaScript. Dans tous les cas, le contenu reste complet et les valeurs finales sont déjà dans le HTML.
 
-## La Conquête des Gaulois
-
-**Un écran de jeu, pas une page.** Sur un écran d'au moins 960 px de large, la carte remplit la fenêtre sous l'en-tête, et tout se pose dessus : la saison et le classement à gauche, la terre choisie à droite, les troupes, l'or et le ratio d'attaque en bas. Le fil complet, la liste des terres et les saisons passées restent sous la carte. Sur téléphone, la carte passe d'abord, puis les commandes, puis le reste, sans rien poser dessus.
-
-C'est l'esprit d'OpenFront, avec l'habillage du clan : ni ses images, ni ses couleurs, ni sa mise en page exacte. Les bâtiments ont leur propre repère : une lettre dans un carré sombre.
-
-Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle identité. Ses règles et son architecture sont dans [CONQUETE.md](CONQUETE.md).
-
-**Une carte de jeu, pas une carte réaliste.** Demande du clan, le 6 novembre 2026 : le relief réaliste ne convenait pas, il fallait une vraie carte de jeu, dans la même famille que celles d'OpenFront et de TeamStats. Le fond est donc entièrement redessiné en aplats : douze zones (glace, toundra, taïga, forêt, jungle, prairie, steppe, désert, terres rouges, haut plateau, roche, neiges), une ombre et une lumière sur trois niveaux pour faire lire les montagnes, un liseré de plage, et une mer en bandes de profondeur. Natural Earth n'y sert que de données : où sont les côtes, les déserts et les montagnes. On ne reprend ni les images, ni les cartes, ni les couleurs, ni le rendu d'un autre jeu.
-
-**Des terres aux frontières naturelles, sur une grille invisible.** Pour les règles, une terre reste une case d'une grille d'hexagones : c'est ce qui donne ses voisins, et ni les noms, ni le relief, ni le serveur n'en changent. À l'écran, cette grille est déformée (`warpPoint`, `landCell`) : deux terres voisines partagent exactement la même frontière, et un contrôle à la génération vérifie que la déformation ne replie jamais la carte. La carte ne dessine aucune frontière réelle ni contestée. Les terres n'ont plus toutes la même taille à l'écran, de 0,5 à 1,7 fois celle de la case d'origine, mais chacune compte autant qu'une autre dans les règles. Leurs limites n'apparaissent qu'en zoomant.
-
-**Une couleur par joueur.** Elle est tirée de son numéro et ne change jamais. Calculée en OKLCH, elle garde la même clarté à l'œil d'une teinte à l'autre, sans vert criard ni bleu éteint. Ses terres portent un voile léger au milieu, 38 %, pour laisser voir le terrain, et la couleur s'intensifie vers le bord, avec un contour plus sombre là seulement où elles s'arrêtent. Comme deux joueurs peuvent se ressembler, l'information ne repose jamais sur la couleur seule : le nom du propriétaire et la garnison sont donnés sur la carte, au survol, au toucher et dans le panneau latéral.
-
-**Une terre qui change de main se voit.** Sa nouvelle couleur s'y répand en 1,1 seconde, depuis les terres voisines du même joueur, puis se fond dans son voile. L'effet disparaît avec le bouton pause et le réglage « réduire les animations », et il ne se joue pas après un rattrapage de plus de 12 terres : toute la carte clignoterait.
-
-**Le nom suit la place.** Une étiquette tient dans les terres du joueur : elle n'apparaît qu'une fois lisible (9 px) et cesse de grandir à 30 px pour ne pas cacher la carte. Le nombre dessous est le total de ses garnisons. Deux étiquettes ne se chevauchent jamais : celle du joueur connecté passe d'abord, puis les plus grandes, et les autres attendent qu'on zoome. Les noms des terres et les repères des bâtiments cessent eux aussi de grandir au-delà du zoom ×4.
-
-| Marque | Sens |
-|---|---|
-| Contour blanc | Vos terres |
-| Contour jaune | Les terres à votre portée |
-| Contour en pointillés | Une terre protégée |
-| ^ et ^^, en zoomant | Colline et montagne, au sens des règles |
-| Trait jaune pointillé | Une route de haute mer |
-
-**Ce qui arrive se voit passer.** Un don, une attaque repoussée ou le début de la guerre s'annoncent en haut de la carte pendant 12 secondes, dans une zone lue par les lecteurs d'écran, sans animation si l'utilisateur les a réduites. Une mauvaise nouvelle reste jusqu'à ce qu'on la ferme : perdre une terre ne doit pas passer inaperçu. « Actualisé à » donne l'heure de la dernière lecture réussie : le mot « direct » n'apparaît nulle part, car les pages lisent toutes les 15 secondes.
-
-**L'écran ne promet rien d'impossible.** Une terre protégée ou le dernier territoire d'un joueur n'annoncent pas une « victoire prévue » : ils disent pourquoi l'attaque serait refusée. Le second clic ne part que si l'écran vient d'annoncer un succès.
-
-**Tout se joue sans la carte.** La liste des territoires et les cibles possibles permettent de tout faire au clavier ou avec un lecteur d'écran. La carte elle-même se déplace aux flèches et se zoome avec + et −.
-
-**La molette zoome, sans piéger la page.** Sur l'écran de jeu, elle zoome ; une fois la carte au plus large, elle rend la main à la page, pour descendre vers le fil et les classements. Au doigt, une carte non zoomée laisse aussi la page défiler.
-
-**Un guide, pas un tunnel.** Le guide de première partie se pose sur l'écran de jeu sans bloquer ni assombrir quoi que ce soit : le joueur peut toujours cliquer ailleurs, ou le fermer. Il encadre ce dont il parle et place la terre visée au-dessus de lui, jamais dessous. Sur téléphone, il passe au-dessus de la carte. Il suit la vraie partie : aucune action fictive, aucun résultat simulé.
-
-**Toucher a toujours un effet visible.** Sur téléphone, le panneau d'une terre monte du bas de l'écran, avec son bouton à portée de pouce, et se referme d'une croix. Au retour, la carte s'ouvre sur les terres du joueur : à l'échelle du monde, une terre est trop petite pour être touchée.
-
-**Aucun hasard, aucune surprise.** L'écran annonce le résultat exact avant la confirmation, et le fil d'actualité le raconte ensuite avec les mêmes chiffres.
-
-**Rien n'est présenté comme un zéro.** Sans saison, la page dit qu'il n'y en a pas. Si le serveur ne répond pas, elle dit « Jeu indisponible ». Sans don validé, elle précise que cela ne veut pas dire que personne n'a donné.
-
-**Le jeu ne pousse pas à dépenser.** Chaque écran de don rappelle qu'un don est définitif et que rien n'y oblige. Le Plutonium, monnaie payante, ne compte jamais.
-
-**Le bouton de connexion reste un texte** : le site ne reprend pas la marque Discord.
-
 ## Accessibilité
 
 - Lien d'évitement, focus visible partout, navigation entièrement utilisable au clavier.

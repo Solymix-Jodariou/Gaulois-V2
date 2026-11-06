@@ -58,39 +58,14 @@ jobs:
             git pull --rebase origin "${GITHUB_REF_NAME}"
             git push
           fi
-      # La tâche du jeu. Sans réglages, elle ne s'exécute pas, et une panne n'empêche jamais le site de se publier.
-      - name: Tâche de la Conquête
+      # La connexion compare chaque demande à cette liste. Sans réglages, l'étape ne s'exécute pas, et une panne n'empêche jamais le site de se publier.
+      - name: Relire la liste des membres
         if: ${{ !cancelled() && vars.SUPABASE_URL != '' }}
         continue-on-error: true
-        run: npm run conquete:job
+        run: npm run membres:relire
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          OPENFRONT_DONATIONS_KEY: ${{ secrets.OPENFRONT_DONATIONS_KEY }}
-      - name: Garder la sauvegarde chiffrée
-        if: ${{ !cancelled() && hashFiles('.cache/conquete-backup/*') != '' }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: sauvegarde-conquete-${{ github.run_id }}
-          path: .cache/conquete-backup/
-          retention-days: 14
-
-  # Les règles du jeu, sur un vrai Postgres. Un échec se voit ici, sans empêcher le site de se publier.
-  test-db:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run test:db
 
   build:
     needs: update-data
@@ -106,7 +81,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run test:unit
+      - run: npm test
       - id: pages
         uses: actions/configure-pages@v6
       - name: Construire le site
@@ -114,7 +89,7 @@ jobs:
         env:
           SITE_URL: ${{ steps.pages.outputs.origin }}
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
-          # Sans ces deux valeurs, le jeu n'apparaît pas et le site reste entièrement statique.
+          # Sans ces deux valeurs, la connexion n'apparaît pas et le site reste entièrement statique.
           PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           PUBLIC_SUPABASE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/upload-pages-artifact@v5

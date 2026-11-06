@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
 import GroupPlay from "../components/GroupPlay.astro";
 import NewsBoard from "../components/NewsBoard";
-import { GAME_ENABLED } from "../lib/conquete/api";
+import { AUTH_ENABLED } from "../lib/compte/api";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
 import { loadAnnouncements, loadClanMapFilm, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
@@ -255,7 +255,7 @@ const onMap = mapFilm?.galSummary ?? null;
 
     <section class="reveal grid gap-6 pt-6 md:grid-cols-2">
       {
-        GAME_ENABLED ? (
+        AUTH_ENABLED ? (
           <NewsBoard client:visible announcements={announcements} events={events} now={Date.now()} live />
         ) : (
           <NewsBoard announcements={announcements} events={events} now={Date.now()} />

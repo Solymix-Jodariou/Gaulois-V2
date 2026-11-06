@@ -6,8 +6,7 @@ Le site est statique (Astro). Une GitHub Action récupère les données de l'API
 
 - Audit de l'API : [docs/API_AUDIT.md](docs/API_AUDIT.md)
 - Choix de design : [docs/DESIGN.md](docs/DESIGN.md)
-- Connexion Discord, rôles et espace Direction : [docs/DIRECTION.md](docs/DIRECTION.md)
-- La Conquête des Gaulois, seule partie avec un serveur : [docs/CONQUETE.md](docs/CONQUETE.md), et [ses règles](docs/REGLES_CONQUETE.md)
+- Connexion Discord, rôles et espace Direction, seule partie avec un serveur : [docs/DIRECTION.md](docs/DIRECTION.md)
 
 ## Installation
 
@@ -28,15 +27,13 @@ Le site s'ouvre sur http://localhost:4321. Aucun secret n'est nécessaire.
 | `npm run dev` | Serveur de développement |
 | `npm run data:fetch` | Collecte les données dans `data/` |
 | `npm run data:carte` | Met à jour seulement la carte des clans, sans attendre le délai d'une journée |
-| `npm run conquete:map` | Régénère les terres du jeu, à partir des données de Natural Earth |
-| `npm run conquete:terrain` | Redessine le fond de la carte du jeu, à partir des mêmes données |
-| `npm run conquete:job` | La tâche quotidienne du jeu. Sans ses réglages, elle ne fait rien. |
+| `npm run membres:relire` | Relit la liste des membres pour la connexion. Sans ses réglages, elle ne fait rien. |
+| `npm run verifier:ligne` | Contrôle le vrai projet Supabase, sans rien y écrire : voir [docs/DIRECTION.md](docs/DIRECTION.md) |
 | `npm run build` | Génère le favicon, l'image de partage et les fichiers du film, puis construit `dist/` |
 | `npm run preview` | Sert le dossier `dist/` |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `astro check` et `tsc` |
-| `npm test` | Tests unitaires et règles du jeu sur un vrai Postgres (Vitest). Docker n'est pas nécessaire. |
-| `npm run test:unit`, `npm run test:db` | L'une ou l'autre de ces deux parties |
+| `npm test` | Tests unitaires (Vitest) |
 | `npm run test:e2e` | Parcours, accessibilité et largeurs d'écran (Playwright). À lancer après `npm run build`. |
 
 Pour les tests Playwright, installez une première fois le navigateur :
@@ -77,7 +74,7 @@ Pour changer de version, remplacez le fichier sous le même nom : le prochain bu
 
 `SITE_URL` et `BASE_PATH` ne servent qu'à construire les liens. Sur GitHub Pages, l'Action les renseigne seule.
 
-Les autres valeurs ne concernent que la Conquête des Gaulois : voir [docs/CONQUETE.md](docs/CONQUETE.md). Sans elles, le jeu n'apparaît pas et le site reste entièrement statique.
+Les autres valeurs ne concernent que la connexion Discord : voir [docs/DIRECTION.md](docs/DIRECTION.md). Sans elles, la connexion n'apparaît pas et le site reste entièrement statique.
 
 ## Mettre à jour les contenus
 
@@ -155,9 +152,11 @@ Rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite d
 
 Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque push sur `main` et à la demande. GitHub peut retarder les exécutions planifiées, en sauter, et désactiver celles d'un dépôt qu'il juge inactif. Depuis le 6 novembre 2026, une tâche de [cron-job.org](https://cron-job.org) nommée « Collecte GAL » lance donc le workflow à la minute 53 de chaque heure, avec un jeton GitHub qui ne doit donner que le droit **Actions** sur ce dépôt. S'il expire ou s'il est supprimé, la collecte retombe sur le seul planning de GitHub. Si les données se figent, regardez l'onglet **Actions**, puis cette tâche et la date de son jeton dans les réglages du compte GitHub.
 
-## La Conquête des Gaulois
+## La connexion Discord
 
-Un jeu de territoires par saisons, réservé aux membres de GAL : connexion Discord, rôles, dons de capsules validés par les officiers, carte du monde dessinée pour le jeu, formules adaptées d'OpenFront. C'est la seule partie du site qui a un serveur et une base de données (Supabase). **Elle est branchée à un vrai projet Supabase depuis le 6 novembre 2026,** mais aucune vraie partie n'a encore été jouée : voir [docs/CONQUETE.md](docs/CONQUETE.md). Le reste du site n'en dépend pas et continue de marcher si le jeu tombe.
+Les membres se connectent avec Discord, un officier valide leur compte, et l'encadrement publie annonces et événements depuis `/direction`. C'est la seule partie du site qui a un serveur et une base de données (Supabase), **branchée à un vrai projet depuis le 6 novembre 2026** : voir [docs/DIRECTION.md](docs/DIRECTION.md). Le reste du site n'en dépend pas et continue de marcher si elle tombe.
+
+**La Conquête des Gaulois, un jeu de territoires, a été retirée du site le 6 novembre 2026. Ses tables restent dans le projet Supabase en ligne, inutilisées, et ses fichiers déjà appliqués restent dans `supabase/migrations/`, jusqu'à ce que le clan s'en occupe.** Le fichier `config/conquete.json` reste lui aussi, sans plus servir.
 
 ## Animations
 
@@ -168,11 +167,11 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - La route de la liste des membres n'est pas documentée par OpenFront et peut changer. En cas de panne, le site garde la dernière liste valide.
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
-- La route documentée de la carte ne donne pas les troupes des clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi. Le message prévu pour OpenFront, dans [docs/CONQUETE.md](docs/CONQUETE.md), demande cette donnée.
+- La route documentée de la carte ne donne pas les troupes des clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi. Le message prévu pour OpenFront, à la section 10 de [docs/API_AUDIT.md](docs/API_AUDIT.md), demande cette donnée.
 - Le trésor vient de `/clans/GAL`, une route non documentée. Elle n'a pas répondu à la collecte sur GitHub le 6 novembre 2026 : la page écrit donc « Pas de données » pour les réserves du clan.
 - Le film ne filtre pas les dessins peints par les joueurs sur la carte.
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.
-- De la Conquête des Gaulois, seules la connexion Discord et la désignation du fondateur ont été essayées en vrai. Ses parties n'ont tourné qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).
+- De la connexion, seules la connexion Discord d'un compte et la désignation du fondateur ont été essayées en vrai. Il n'y a plus de test automatique des droits côté serveur : voir [docs/DIRECTION.md](docs/DIRECTION.md).
 - Les parcours décrits dans « Comment participer » viennent du code du jeu et n'ont pas été essayés avec un compte. Le texte devra être relu par un membre du clan.
 
 ## Licence

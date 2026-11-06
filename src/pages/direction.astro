@@ -1,17 +1,16 @@
 ---
-import "../styles/conquete.css";
 import Base from "../layouts/Base.astro";
 import PageHeader from "../components/PageHeader.astro";
-import DirectionApp from "../components/conquete/DirectionApp";
-import NotOpen from "../components/conquete/NotOpen.astro";
-import { GAME_ENABLED } from "../lib/conquete/api";
+import DirectionApp from "../components/compte/DirectionApp";
+import NotOpen from "../components/compte/NotOpen.astro";
+import { AUTH_ENABLED } from "../lib/compte/api";
 ---
 
 <Base title="Direction" description="L'espace des officiers et des chefs du clan GAL." noindex>
   <div class="wrap">
     <PageHeader title="Direction" intro="Ce qui attend une décision, et les annonces et événements du clan, publiés sans passer par GitHub." />
     <div class="mt-6">
-      {GAME_ENABLED ? <DirectionApp client:only="preact" /> : <NotOpen />}
+      {AUTH_ENABLED ? <DirectionApp client:only="preact" /> : <NotOpen />}
     </div>
   </div>
 </Base>

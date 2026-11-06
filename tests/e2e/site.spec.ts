@@ -11,20 +11,17 @@ const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
 /** Attend que les composants interactifs de la page aient démarré. */
 const hydrated = (page: Page) => page.waitForFunction(() => !document.querySelector("astro-island[ssr]"));
 
-test("sans serveur configuré, le jeu n'apparaît pas et le site reste statique", async ({ page }) => {
+test("sans serveur configuré, la connexion n'apparaît pas et le site reste statique", async ({ page }) => {
   const calls: string[] = [];
   page.on("request", (r) => {
     if (r.url().includes("supabase") || r.url().includes("/rest/v1/")) calls.push(r.url());
   });
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Conquête", exact: true })).toHaveCount(0);
-  for (const path of ["/conquete", "/dons", "/compte", "/admin"]) {
+  await expect(page.getByTestId("auth-sign-in")).toHaveCount(0);
+  for (const path of ["/compte", "/admin", "/direction"]) {
     await page.goto(path);
-    await expect(page.getByTestId("game-not-open")).toBeVisible();
+    await expect(page.getByTestId("auth-not-open")).toBeVisible();
   }
-  // Les règles restent lisibles, sans rien demander au serveur.
-  await page.goto("/conquete/regles");
-  await expect(page.getByTestId("rules")).toContainText("Phase 1");
   expect(calls).toEqual([]);
 });
 
@@ -166,7 +163,7 @@ for (const width of [360, 375, 768, 1024, 1280, 1920]) {
   test(`aucun défilement horizontal à ${width} px`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "Largeurs testées une seule fois.");
     await page.setViewportSize({ width, height: 900 });
-    for (const path of [...PAGES, "/confidentialite", "/conquete/regles"]) {
+    for (const path of [...PAGES, "/confidentialite"]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -178,7 +175,7 @@ for (const width of [360, 375, 768, 1024, 1280, 1920]) {
 // L'AGPL et les conditions d'OpenFront, voir NOTICE.md : le code et la mention restent accessibles sur toutes les pages.
 test("chaque page donne le code source et la mention d'OpenFront", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Même pied de page sur mobile.");
-  for (const path of [...PAGES, "/confidentialite", "/conquete", "/conquete/regles", "/dons", "/compte", "/admin"]) {
+  for (const path of [...PAGES, "/confidentialite", "/compte", "/admin", "/direction"]) {
     await page.goto(path);
     const footer = page.locator("footer");
     await expect(footer.getByRole("link", { name: "Code source", exact: true }), path).toHaveAttribute("href", "https://github.com/Solymix-Jodariou/Gaulois-V2");
