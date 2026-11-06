@@ -1,8 +1,14 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 
-/** Sur tous les formats, la carte commence dans le haut de l'écran, juste sous l'en-tête et le titre. */
-const testViewportTitleLimit = 170;
+/**
+ * Sur tous les formats, la carte commence dans le haut de l'écran, juste sous l'en-tête et le titre.
+ * Sur téléphone (375 px), sa position dépend de `data/meta.json`, que le robot réécrit à chaque collecte :
+ * 133 px d'ordinaire, 171 px si la dernière collecte a échoué, 193 px si les données sont en plus périmées.
+ * Ces avertissements sont voulus : une panne doit se signaler. La carte et son bouton de lecture restent alors sur le
+ * premier écran. La limite couvre donc ce pire cas, pour que le test ne dépende pas du résultat de la dernière collecte.
+ */
+const testViewportTitleLimit = 200;
 const film = JSON.parse(readFileSync("data/clanmap/film.json", "utf8"));
 const lastFrame = film.frames.at(-1);
 const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
