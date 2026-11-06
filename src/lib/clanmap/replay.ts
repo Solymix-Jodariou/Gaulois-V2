@@ -28,13 +28,8 @@ export interface EventLog {
   x: Uint16Array;
   y: Uint16Array;
   clan: Uint32Array;
-}
-
-export interface OwnershipSnapshot {
-  seq: number;
-  /** Pour chaque pixel : 0 si neutre, sinon position du clan dans `clanIds`, plus 1. */
-  grid: Uint16Array;
-  clanIds: readonly number[];
+  /** L'ancien propriétaire annoncé par OpenFront. Il permet de contrôler le rejeu. */
+  previous: Uint32Array;
 }
 
 export interface ReplayOptions {
@@ -42,7 +37,6 @@ export interface ReplayOptions {
   height: number;
   scale: number;
   galId: number | null;
-  snapshot: OwnershipSnapshot | null;
 }
 
 export interface FilmFrameData {
@@ -75,7 +69,8 @@ export interface ReplayResult {
   bucket: number;
   cols: number;
   rows: number;
-  check: { seq: number; pixels: number; mismatches: number } | null;
+  /** Événements dont l'ancien propriétaire annoncé diffère du rejeu. */
+  check: { events: number; mismatches: number };
   pixels: Int32Array;
   galSummary: GalReplay | null;
   /** La carte complète à la fin de l'historique. */
@@ -94,8 +89,6 @@ export interface TerritoryZone {
 export interface TerritoryAnalysis {
   zones: TerritoryZone[];
   zoneCount: number;
-  /** Pixels de terre neutre qui touchent déjà le territoire. */
-  neutralBorder: number;
   /** Pour chaque clan voisin : ses pixels au contact, et le centre de sa plus grosse portion de frontière, en cases du film. */
   borders: Map<number, { pixels: number; x: number; y: number }>;
 }
@@ -105,24 +98,20 @@ const ZONES_KEPT = 5;
 const FRONT_BIN = 128;
 
 /** Les zones d'un seul tenant d'un clan et ce qui les borde, sur la carte complète. */
-export function analyzeTerritory(grid: Uint16Array, width: number, height: number, scale: number, clan: number, terrain: Uint8Array): TerritoryAnalysis {
+export function analyzeTerritory(grid: Uint16Array, width: number, height: number, scale: number, clan: number): TerritoryAnalysis {
   const size = width * height;
   const visited = new Uint8Array(size);
   const counted = new Uint8Array(size);
   const stack = new Int32Array(size);
   const zones: TerritoryZone[] = [];
   let zoneCount = 0;
-  let neutralBorder = 0;
   const contacts = new Map<number, { pixels: number; bins: Map<number, { n: number; sumX: number; sumY: number }> }>();
 
   const look = (p: number) => {
     if (counted[p]) return;
     counted[p] = 1;
     const owner = grid[p]!;
-    if (owner === 0) {
-      if (terrain[p]! & 128) neutralBorder++;
-      return;
-    }
+    if (owner === 0) return;
     let contact = contacts.get(owner);
     if (!contact) {
       contact = { pixels: 0, bins: new Map() };
@@ -187,7 +176,7 @@ export function analyzeTerritory(grid: Uint16Array, width: number, height: numbe
     for (const bin of c.bins.values()) if (bin.n > densest.n) densest = bin;
     borders.set(owner, { pixels: c.pixels, x: Math.round(densest.sumX / densest.n / scale), y: Math.round(densest.sumY / densest.n / scale) });
   }
-  return { zones: zones.slice(0, ZONES_KEPT), zoneCount, neutralBorder, borders };
+  return { zones: zones.slice(0, ZONES_KEPT), zoneCount, borders };
 }
 
 function rankedClans(pixels: Int32Array): number[] {
@@ -196,25 +185,8 @@ function rankedClans(pixels: Int32Array): number[] {
   return order.sort((a, b) => pixels[b]! - pixels[a]! || a - b);
 }
 
-/** Décode l'instantané officiel : suite de paires (clan, longueur) en 16 bits. */
-export function decodeOwnership(rle: Uint8Array, size: number): Uint16Array {
-  if (rle.length % 4 !== 0) throw new Error("instantané mal formé");
-  const view = new DataView(rle.buffer, rle.byteOffset, rle.byteLength);
-  const grid = new Uint16Array(size);
-  let at = 0;
-  for (let i = 0; i < rle.length; i += 4) {
-    const clan = view.getUint16(i, true);
-    const run = view.getUint16(i + 2, true);
-    if (at + run > size) throw new Error("instantané trop long");
-    if (clan) grid.fill(clan, at, at + run);
-    at += run;
-  }
-  if (at !== size) throw new Error("instantané trop court");
-  return grid;
-}
-
 export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResult {
-  const { width, height, scale, galId, snapshot } = options;
+  const { width, height, scale, galId } = options;
   const size = width * height;
   const cols = Math.floor(width / scale);
   const rows = Math.floor(height / scale);
@@ -318,26 +290,15 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     });
   };
 
-  let check: ReplayResult["check"] = null;
-  const compareToSnapshot = (snap: OwnershipSnapshot) => {
-    const expected = snap.clanIds.map((id) => index.get(id) ?? -1);
-    let mismatches = 0;
-    for (let i = 0; i < size; i++) {
-      const wanted = snap.grid[i]!;
-      const value = wanted === 0 ? 0 : (expected[wanted - 1] ?? -1);
-      if (grid[i] !== value) mismatches++;
-    }
-    check = { seq: snap.seq, pixels: size, mismatches };
-  };
+  let mismatches = 0;
 
   for (let i = 0; i < log.length; i++) {
-    const seq = log.seq[i]!;
-    if (snapshot && check === null && seq > snapshot.seq) compareToSnapshot(snapshot);
     const x = log.x[i]!;
     const y = log.y[i]!;
     const v = owners[i]!;
     const p = y * width + x;
     const prev = grid[p]!;
+    if (clanIds[prev] !== log.previous[i]) mismatches++;
     if (prev !== v) {
       if (prev) pixels[prev]!--;
       if (v) pixels[v]!++;
@@ -358,8 +319,6 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     }
     if ((i + 1) % bucket === 0 || i === log.length - 1) closeFrame(i + 1);
   }
-  const lastSeq = log.length > 0 ? log.seq[log.length - 1]! : 0;
-  if (snapshot && check === null && lastSeq >= snapshot.seq) compareToSnapshot(snapshot);
 
   let galSummary: GalReplay | null = null;
   if (gal !== null && firstEvent > 0) {
@@ -381,5 +340,5 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     };
   }
 
-  return { clanIds, gal, frames, deltas, bucket, cols, rows, check, pixels, galSummary, grid };
+  return { clanIds, gal, frames, deltas, bucket, cols, rows, check: { events: log.length, mismatches }, pixels, galSummary, grid };
 }

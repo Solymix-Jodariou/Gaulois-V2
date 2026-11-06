@@ -1,21 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { clanRgb, decodeFrames, encodeFrames } from "../../src/lib/clanmap/codec";
-import { FRAME_BASE, FRAME_MAX, analyzeTerritory, bucketSize, decodeOwnership, replayHistory, type EventLog } from "../../src/lib/clanmap/replay";
-import { blendOwners, countLand, terrainToRgb } from "../../src/lib/clanmap/terrain";
+import { FRAME_BASE, FRAME_MAX, analyzeTerritory, bucketSize, replayHistory, type EventLog } from "../../src/lib/clanmap/replay";
+import { OFFICIAL_MAP, blendOwners } from "../../src/lib/clanmap/terrain";
 
 const WIDTH = 8;
 const HEIGHT = 4;
-const SIZE = WIDTH * HEIGHT;
-const options = { width: WIDTH, height: HEIGHT, scale: 2, galId: 43, snapshot: null };
+const options = { width: WIDTH, height: HEIGHT, scale: 2, galId: 43 };
 
-/** Événements écrits [x, y, clan], numérotés à partir de 1. */
+/** Événements écrits [x, y, clan], numérotés à partir de 1, avec leur vrai ancien propriétaire. */
 function logOf(events: [number, number, number][], firstSeq = 1): EventLog {
+  const owners = new Map<number, number>();
+  const previous = events.map(([x, y, clan]) => {
+    const pixel = y * WIDTH + x;
+    const before = owners.get(pixel) ?? 0;
+    owners.set(pixel, clan);
+    return before;
+  });
   return {
     length: events.length,
     seq: Uint32Array.from(events.map((_, i) => firstSeq + i)),
     x: Uint16Array.from(events.map((e) => e[0])),
     y: Uint16Array.from(events.map((e) => e[1])),
     clan: Uint32Array.from(events.map((e) => e[2])),
+    previous: Uint32Array.from(previous),
   };
 }
 
@@ -168,59 +175,52 @@ describe("rejeu de l'historique", () => {
   });
 });
 
-describe("contrôle avec l'instantané officiel", () => {
+describe("contrôle avec l'ancien propriétaire annoncé", () => {
   const events: [number, number, number][] = [
     [0, 0, 43],
     [1, 0, 9],
     [2, 0, 43],
     [2, 0, 9],
+    [2, 0, 0], // Le clan 9 rend ce pixel : le propriétaire annoncé est bien le clan 9.
   ];
-  const snapshotGrid = () => {
-    const grid = new Uint16Array(SIZE);
-    grid[0] = 1; // Le clan 43.
-    grid[1] = 2; // Le clan 9.
-    grid[2] = 2;
-    return grid;
-  };
 
   it("ne trouve aucun écart quand l'historique est complet", () => {
-    const result = replayHistory(logOf(events), { ...options, snapshot: { seq: 4, grid: snapshotGrid(), clanIds: [43, 9] } });
-    expect(result.check).toEqual({ seq: 4, pixels: SIZE, mismatches: 0 });
+    expect(replayHistory(logOf(events), options).check).toEqual({ events: 5, mismatches: 0 });
   });
 
-  it("compare à l'instant de l'instantané, même si l'historique va plus loin", () => {
-    const grid = snapshotGrid();
-    grid[2] = 1; // À l'événement 3, ce pixel appartenait encore à GAL.
-    const result = replayHistory(logOf(events), { ...options, snapshot: { seq: 3, grid, clanIds: [43, 9] } });
-    expect(result.check?.mismatches).toBe(0);
+  it("compte chaque événement qui contredit le rejeu", () => {
+    const log = logOf(events);
+    log.previous[3] = 9; // Ce pixel appartenait à GAL.
+    log.previous[4] = 43; // Celui-ci au clan 9.
+    expect(replayHistory(log, options).check.mismatches).toBe(2);
   });
 
-  it("compte chaque pixel différent", () => {
-    const grid = snapshotGrid();
-    grid[5] = 1;
-    const result = replayHistory(logOf(events), { ...options, snapshot: { seq: 4, grid, clanIds: [43, 9] } });
-    expect(result.check?.mismatches).toBe(1);
+  it("repère un événement manquant dès que son pixel rechange de main", () => {
+    const log = logOf(events);
+    const without = (values: Uint16Array | Uint32Array, i: number) => values.filter((_, k) => k !== i);
+    const holed: EventLog = {
+      length: log.length - 1,
+      seq: without(log.seq, 2) as Uint32Array,
+      x: without(log.x, 2) as Uint16Array,
+      y: without(log.y, 2) as Uint16Array,
+      clan: without(log.clan, 2) as Uint32Array,
+      previous: without(log.previous, 2) as Uint32Array,
+    };
+    expect(replayHistory(holed, options).check.mismatches).toBe(1);
   });
 
-  it("ne valide rien si l'historique s'arrête avant l'instantané", () => {
-    const result = replayHistory(logOf(events), { ...options, snapshot: { seq: 99, grid: snapshotGrid(), clanIds: [43, 9] } });
-    expect(result.check).toBeNull();
-  });
-
-  it("repère un clan de l'instantané absent de l'historique", () => {
-    const grid = snapshotGrid();
-    grid[6] = 3;
-    const result = replayHistory(logOf(events), { ...options, snapshot: { seq: 4, grid, clanIds: [43, 9, 1234] } });
-    expect(result.check?.mismatches).toBe(1);
+  it("accepte qu'un clan repeigne son propre pixel", () => {
+    const repainted = replayHistory(logOf([[0, 0, 43], [0, 0, 43]]), options);
+    expect(repainted.check.mismatches).toBe(0);
+    expect(repainted.galSummary?.pixels).toBe(1);
   });
 });
 
 describe("analyse du territoire", () => {
-  // Carte 300 × 300, sans mer : le clan 1 possède deux zones, le clan 2 touche la plus grande.
+  // Carte 300 × 300 : le clan 1 possède deux zones, le clan 2 touche la plus grande.
   const W = 300;
   const makeGrid = () => new Uint16Array(W * W);
-  const land = new Uint8Array(W * W).fill(128);
-  const put = (grid: Uint16Array, x0: number, y0: number, x1: number, y1: number, clan: number) => {
+  const put =(grid: Uint16Array, x0: number, y0: number, x1: number, y1: number, clan: number) => {
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) grid[y * W + x] = clan;
   };
 
@@ -228,7 +228,7 @@ describe("analyse du territoire", () => {
     const grid = makeGrid();
     put(grid, 10, 10, 19, 19, 1);
     put(grid, 100, 100, 101, 101, 1);
-    const result = analyzeTerritory(grid, W, W, 2, 1, land);
+    const result = analyzeTerritory(grid, W, W, 2, 1);
     expect(result.zoneCount).toBe(2);
     expect(result.zones.map((z) => z.pixels)).toEqual([100, 4]);
     expect(result.zones[0]).toMatchObject({ x: 7, y: 7, halfWidth: 3, halfHeight: 3 });
@@ -237,23 +237,17 @@ describe("analyse du territoire", () => {
   it("ne garde que les plus grandes zones, mais les compte toutes", () => {
     const grid = makeGrid();
     for (let i = 0; i < 8; i++) put(grid, i * 10, 0, i * 10, 0, 1);
-    const result = analyzeTerritory(grid, W, W, 2, 1, land);
+    const result = analyzeTerritory(grid, W, W, 2, 1);
     expect(result.zoneCount).toBe(8);
     expect(result.zones).toHaveLength(5);
   });
 
-  it("compte une seule fois un pixel neutre touché des deux côtés", () => {
+  it("compte une seule fois un pixel voisin touché des deux côtés", () => {
     const grid = makeGrid();
     put(grid, 10, 10, 10, 10, 1);
     put(grid, 12, 10, 12, 10, 1);
-    // Le pixel (11, 10) touche les deux. Chaque pixel a 4 voisins, soit 7 pixels neutres distincts.
-    expect(analyzeTerritory(grid, W, W, 2, 1, land).neutralBorder).toBe(7);
-  });
-
-  it("ne compte pas la mer comme une terre à prendre", () => {
-    const grid = makeGrid();
-    put(grid, 10, 10, 10, 10, 1);
-    expect(analyzeTerritory(grid, W, W, 2, 1, new Uint8Array(W * W)).neutralBorder).toBe(0);
+    put(grid, 11, 10, 11, 10, 2);
+    expect(analyzeTerritory(grid, W, W, 2, 1).borders.get(2)?.pixels).toBe(1);
   });
 
   it("vise la plus grosse portion d'une frontière, pas la moyenne de ses morceaux", () => {
@@ -263,7 +257,7 @@ describe("analyse du territoire", () => {
     put(grid, 10, 11, 29, 11, 2);
     put(grid, 280, 200, 281, 200, 1);
     put(grid, 280, 201, 281, 201, 2);
-    const border = analyzeTerritory(grid, W, W, 2, 1, land).borders.get(2);
+    const border = analyzeTerritory(grid, W, W, 2, 1).borders.get(2);
     expect(border?.pixels).toBe(22);
     // Le centre reste sur le grand morceau, en cases réduites de moitié.
     expect(border?.x).toBeLessThan(20);
@@ -271,50 +265,9 @@ describe("analyse du territoire", () => {
   });
 });
 
-describe("instantané officiel", () => {
-  const rle = (pairs: [number, number][]) => {
-    const bytes = new Uint8Array(pairs.length * 4);
-    const view = new DataView(bytes.buffer);
-    pairs.forEach(([clan, run], i) => {
-      view.setUint16(i * 4, clan, true);
-      view.setUint16(i * 4 + 2, run, true);
-    });
-    return bytes;
-  };
-
-  it("décode les suites de pixels", () => {
-    expect([...decodeOwnership(rle([[0, 2], [5, 1], [0, 1]]), 4)]).toEqual([0, 0, 5, 0]);
-  });
-
-  it("refuse un instantané qui ne couvre pas exactement la carte", () => {
-    expect(() => decodeOwnership(rle([[0, 3]]), 4)).toThrow("trop court");
-    expect(() => decodeOwnership(rle([[0, 5]]), 4)).toThrow("trop long");
-    expect(() => decodeOwnership(new Uint8Array(3), 4)).toThrow("mal formé");
-  });
-});
-
-describe("terrain", () => {
-  // Terre (128) avec relief, ou mer (0).
-  const terrain = Uint8Array.from([128, 128 + 31, 0, 0, 128, 128, 0, 128]);
-
-  it("compte les terres", () => {
-    expect(countLand(terrain)).toBe(5);
-  });
-
-  it("réduit le fond et distingue terre, côte et mer", () => {
-    const land = terrainToRgb(Uint8Array.from([128, 128, 128, 128]), 2, 2, 2);
-    const coast = terrainToRgb(Uint8Array.from([128, 0, 0, 0]), 2, 2, 2);
-    const sea = terrainToRgb(Uint8Array.from([0, 0, 0, 0]), 2, 2, 2);
-    expect([land.width, land.height]).toEqual([1, 1]);
-    expect([...land.data]).toEqual([34, 38, 36]);
-    expect([...coast.data]).toEqual([28, 44, 66]);
-    expect([...sea.data]).toEqual([9, 20, 38]);
-  });
-
-  it("montre le relief", () => {
-    const flat = terrainToRgb(Uint8Array.from([128, 128, 128, 128]), 2, 2, 2).data[0]!;
-    const high = terrainToRgb(Uint8Array.from([128 + 20, 128 + 20, 128 + 20, 128 + 20]), 2, 2, 2).data[0]!;
-    expect(high).toBeGreaterThan(flat);
+describe("carte officielle", () => {
+  it("garde la taille documentée par OpenFront", () => {
+    expect(OFFICIAL_MAP).toMatchObject({ width: 4108, height: 1948 });
   });
 
   it("ne teinte que les cases occupées", () => {

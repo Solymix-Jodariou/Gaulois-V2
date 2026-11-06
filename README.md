@@ -106,7 +106,7 @@ Tout est écrit dans `data/` :
 | `members.json` | Membres et leurs stats d'équipe | Une fois par jour |
 | `history/AAAA-MM-JJ.json` | Instantané quotidien : rang, score, totaux | Chaque heure, dernière valeur du jour conservée |
 | `clanmap/film.bin`, `clanmap/film.json` | Film de la carte des clans : changements de cases et chiffres de chaque image | Une fois par jour |
-| `clanmap/terrain.webp` | Fond de carte | Une seule fois |
+| `clanmap/terrain.webp` | Fond de carte, relevé le 5 novembre 2026 | Plus relu |
 | `clanmap/journal.json` | Un relevé par jour : pixels, rang, capsules et troupes de GAL | Une fois par jour |
 | `meta.json` | Date du dernier succès et dernière erreur de chaque jeu de données | Chaque heure |
 
@@ -114,9 +114,11 @@ Si l'API échoue ou si une réponse ne passe pas la validation Zod, les derniers
 
 ### La carte des clans
 
-L'historique brut de la carte ne va pas dans Git : il pèse déjà environ 20 Mo. Il reste dans `.cache/clanmap/`, conservé entre deux exécutions par le cache de l'Action. S'il est perdu, la collecte suivante le retélécharge entièrement, soit plus de 330 appels à ce jour. Chaque page lue est gardée, donc une panne en cours de route ne fait pas tout recommencer.
+La carte vient de `/public/clanmap/history`, la route documentée par OpenFront pour construire ce genre de film. L'historique brut ne va pas dans Git : il pèse déjà environ 30 Mo. Il reste dans `.cache/clanmap/`, conservé entre deux exécutions par le cache de l'Action. S'il est perdu, la collecte suivante le retélécharge entièrement, soit plus de 350 appels à ce jour, et sur GitHub elle le fait sans attendre le délai d'une journée. Chaque page lue est gardée, donc une panne en cours de route ne fait pas tout recommencer.
 
-À chaque mise à jour, tout l'historique est rejoué et comparé pixel par pixel à l'instantané officiel. Au moindre écart, le film n'est pas remplacé et l'erreur s'affiche sur la page. Si OpenFront remet un jour sa carte à zéro, il faudra supprimer le cache `clanmap-…` dans l'onglet **Actions → Caches** pour repartir de son nouvel historique.
+À chaque mise à jour, tout l'historique est rejoué. Chaque événement annonce l'ancien propriétaire du pixel, et le rejeu doit retomber dessus. Au moindre écart, le film n'est pas remplacé et l'erreur s'affiche sur la page. Si OpenFront remet un jour sa carte à zéro, il faudra supprimer le cache `clanmap-…` dans l'onglet **Actions → Caches** pour repartir de son nouvel historique.
+
+La surface de terre et le fond de carte viennent d'un seul relevé de `/clanmap/terrain`, le 5 novembre 2026. Cette route n'est pas documentée et n'est plus lue : si OpenFront change son terrain, il faudra les refaire à la main (`OFFICIAL_MAP` dans `src/lib/clanmap/terrain.ts`).
 
 Le film compte 480 images au plus, 5 000 événements par image pour l'instant. Cette taille ne double que si le film devient trop long. Les images déjà écrites ne changent donc pas d'un jour à l'autre, et `film.bin` reste non compressé pour que Git ne stocke presque que les nouvelles. Le fichier est déclaré binaire dans `.gitattributes`, sans quoi Git pourrait le corrompre sous Windows.
 
@@ -133,7 +135,7 @@ Tous les calculs sont dans `src/lib/` et testés :
 - **Territoire sur la carte :** pixels rejoués depuis l'historique. L'ordre des clans suit le nombre de pixels, comme la liste de la carte officielle. Ce n'est pas le classement des clans.
 - **Pixels pris et perdus :** comptés à chaque changement de main d'un pixel. Les terres neutres sont comptées à part.
 - **Objectif :** pixels du clan juste devant, moins ceux de GAL, plus 1.
-- **Coûts de la carte :** 1 capsule = 100 troupes, 1 pixel neutre = 1 000 troupes, 1 pixel ennemi = 2 000 troupes + `troupes du clan ÷ pixels du clan`, arrondi au-dessus. Règles lues dans le code de la carte, dans `src/lib/clanmap/economy.ts`. **Si le jeu les change, il faut les mettre à jour à la main.**
+- **Coûts de la carte :** 1 capsule = 100 troupes, 1 pixel neutre = 1 000 troupes, 1 pixel ennemi = 2 000 troupes et plus selon les troupes du clan visé. Règles lues dans le code de la carte, dans `src/lib/clanmap/economy.ts`. **Si le jeu les change, il faut les mettre à jour à la main.**
 - **Grands moments du film :** déduits des chiffres de chaque image dans `src/lib/clanmap/moments.ts`, sans texte écrit à la main.
 
 Le calculateur de troupes est documenté dans `src/lib/calculator.ts`. Il reprend les constantes du jeu au commit `5b75bd3`. **Si le jeu change ses règles d'attaque, il faut les mettre à jour à la main.**
@@ -146,7 +148,7 @@ Rien n'est déployé tant que vous ne faites pas ces étapes. L'offre gratuite d
 2. Dans **Settings → Pages**, choisissez **GitHub Actions** comme source.
 3. Dans **Actions**, lancez **Données et site** une première fois.
 
-Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque push sur `main` et à la demande. GitHub peut retarder les exécutions planifiées, et il peut désactiver celles d'un dépôt qu'il juge inactif : si les données se figent, regardez l'onglet **Actions**.
+Le workflow `.github/workflows/site.yml` tourne ensuite chaque heure, à chaque push sur `main` et à la demande. GitHub peut retarder les exécutions planifiées, en sauter, et désactiver celles d'un dépôt qu'il juge inactif. Depuis le 6 novembre 2026, une tâche de [cron-job.org](https://cron-job.org) nommée « Collecte GAL » lance donc le workflow à la minute 53 de chaque heure, avec un jeton GitHub qui ne doit donner que le droit **Actions** sur ce dépôt. S'il expire ou s'il est supprimé, la collecte retombe sur le seul planning de GitHub. Si les données se figent, regardez l'onglet **Actions**, puis cette tâche et la date de son jeton dans les réglages du compte GitHub.
 
 ## La Conquête des Gaulois
 
@@ -161,7 +163,8 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - La route de la liste des membres n'est pas documentée par OpenFront et peut changer. En cas de panne, le site garde la dernière liste valide.
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
-- Les routes de la carte (`/clanmap/…`) ne sont pas documentées non plus et ne donnent pas de dates. La route documentée `/public/clanmap/history`, qui les donnera, répondait 404 le 5 novembre 2026 : à retester.
+- La route documentée de la carte ne donne ni les troupes des clans, ni le terrain. Le site n'affiche donc ni le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. Le message prévu pour OpenFront, dans [docs/CONQUETE.md](docs/CONQUETE.md), demande ces données.
+- Le trésor vient de `/clans/GAL`, une route non documentée : la page écrit « Pas de données » si elle ne répond pas.
 - La licence du fond de carte reste à confirmer avant publication (voir [docs/API_AUDIT.md](docs/API_AUDIT.md), section 8).
 - Le film ne filtre pas les dessins peints par les joueurs sur la carte.
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.

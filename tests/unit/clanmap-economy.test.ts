@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   capsForNeutralPixels,
   capsToTroops,
-  enemyPixelCost,
   expansionOrder,
   neutralPixelsFor,
   objectiveFor,
@@ -13,7 +12,7 @@ import { findMoments, type MomentFrame } from "../../src/lib/clanmap/moments";
 import { MapHeroes, Meta } from "../../src/lib/schemas";
 
 const n = (value: number) => new Intl.NumberFormat("fr-FR").format(value);
-const clan = (tag: string, pixels: number, troops: number | null = 1000): Standing => ({ tag, color: null, pixels, troops });
+const clan = (tag: string, pixels: number): Standing => ({ tag, color: null, pixels });
 const standings = [clan("LUX", 380000), clan("UN", 330000), clan("AST", 98000), clan("GAL", 91000), clan("ITA", 67000)];
 
 describe("fichiers du clan et de la collecte", () => {
@@ -45,13 +44,6 @@ describe("coûts de la carte", () => {
     expect(neutralPixelsFor(1000)).toBe(1);
     expect(neutralPixelsFor(1999)).toBe(1);
     expect(capsForNeutralPixels(6661)).toBe(66610);
-  });
-
-  it("calcule le prix d'un pixel ennemi comme le jeu", () => {
-    expect(enemyPixelCost(1000, 3)).toBe(2334);
-    expect(enemyPixelCost(0, 100)).toBe(2000);
-    expect(enemyPixelCost(null, 100)).toBe(2000);
-    expect(enemyPixelCost(5000, 0)).toBe(2000);
   });
 
   it("ne donne jamais un résultat négatif", () => {

@@ -422,7 +422,7 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 
 ## Message à envoyer à l'équipe d'OpenFront
 
-À envoyer par vos soins, sur le canal que vous utilisez avec elle. Il est écrit en anglais, langue de la documentation du jeu.
+À envoyer par vos soins, sur le canal que vous utilisez avec elle. Il est écrit en anglais, langue de la documentation du jeu. S'il est déjà parti, le paragraphe sur la carte peut être envoyé seul.
 
 > Hello OpenFront team,
 >
@@ -437,5 +437,7 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 > One more question, and the most important one for us. In this game, a member's capsule donations to the clan turn into troops, ideally right away. Donations (`/clans/:tag/donations`) are only visible to signed-in members, and your terms (sections 5 and 6.5) rule out reading them with a player's session or a script, so we do not do that: today our officers enter each donation by hand.
 >
 > Would you consider giving a clan a read-only way to read its own donation ledger, for example an API key limited to `/clans/GAL/donations`? We would only keep the amount, the date and a hash of the donor's public ID, and we would poll at whatever rate suits you. If you prefer another way, such as a webhook, we can adapt.
+>
+> A last question, about the clan map. Our site now builds its timelapse from your documented `/public/clanmap/history`, thank you for it. Three things are not in the public API: the ownership snapshot with each clan's troops (`/clanmap/ownership`), the terrain (`/clanmap/terrain`) and a clan's treasury (`/clans/GAL`). `/clanmap/ownership` answered 403 from GitHub Actions, so we stopped reading it and the terrain, and we will not try to get around that. We still read `/clans/GAL` once a day, and we will stop if you prefer. Would you consider public versions of these, or tell us if we may read them once a day? And which license applies to the terrain? We publish a reduced, darkened copy as the timelapse background, credited to OpenFront.
 >
 > Thanks a lot for the game and for the public API!

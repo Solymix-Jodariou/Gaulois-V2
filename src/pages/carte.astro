@@ -7,6 +7,7 @@ import { clan } from "../../config/clan";
 import { clanRgb } from "../lib/clanmap/codec";
 import { RULES_CHECKED_ON, TROOPS_PER_CAP, NEUTRAL_PIXEL_TROOPS, ENEMY_PIXEL_BASE_TROOPS, capsToTroops, neutralPixelsFor, objectiveFor } from "../lib/clanmap/economy";
 import { findMoments } from "../lib/clanmap/moments";
+import { LAND_CHECKED_ON } from "../lib/clanmap/terrain";
 import { loadClanMapFilm, loadClanMapJournal, loadMapHeroes, loadMembers, loadMeta } from "../lib/data";
 import { fmtDate, fmtDay, fmtDec1, fmtInt } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
@@ -39,7 +40,6 @@ const goalProgress = objective?.above ? Math.min(100, (objective.me.pixels / obj
 const startCaps = 100;
 const startTroops = capsToTroops(startCaps);
 const startPixels = neutralPixelsFor(startTroops);
-const rivalAhead = gal && objective?.above ? gal.fronts.find((f) => f.tag === objective.above?.tag) : null;
 
 // Les joueurs : les rôles et les victoires sont publics, les dons sont recopiés par le clan.
 const members = loadMembers();
@@ -223,7 +223,6 @@ const previousDay = journal.at(-2);
                       </p>
                     </>
                   )}
-                  {gal && <p class="tnum mt-2 text-sm text-muted">{fmtInt(gal.neutralBorder)} pixels de terre neutre touchent déjà notre territoire.</p>}
                   <p class="mt-2 text-xs text-muted">Repère indicatif, selon les règles lues dans le code de la carte le {fmtDate(`${RULES_CHECKED_ON}T12:00:00Z`)}.</p>
                 </div>
               </section>
@@ -267,9 +266,6 @@ const previousDay = journal.at(-2);
                     </div>
                   </dl>
                   <p class="mt-3 font-semibold" aria-live="polite" data-conquest-verdict data-testid="conquest-verdict">GAL passerait de {fmtInt(gal.pixels)} à {fmtInt(gal.pixels + startPixels)} pixels.</p>
-                  {rivalAhead?.pixelCost && (
-                    <p class="tnum mt-1 text-sm text-muted">Prendre un pixel à {rivalAhead.tag} coûte {fmtInt(rivalAhead.pixelCost)} troupes, contre {fmtInt(NEUTRAL_PIXEL_TROOPS)} sur une terre neutre.</p>
-                  )}
                   <p class="mt-3 text-sm">Pour donner pour de vrai : fiche de [{clan.tag}] dans le jeu, bouton « Faire un don ». <strong class="text-warn">Un don est permanent et non remboursable. Rien ne vous oblige à donner.</strong></p>
                 </div>
                 <div class="grid content-start gap-2">
@@ -413,7 +409,7 @@ const previousDay = journal.at(-2);
                       </p>
                       {
                         today && previousDay ? (
-                          <p class="tnum mt-1 text-sm font-semibold" data-testid="map-journal">{signed(today.pixels - previousDay.pixels)} pixels depuis le {fmtDay(previousDay.date)}.</p>
+                          <p class="tnum mt-1 text-sm font-semibold" data-testid="map-journal">{signed(today.pixels - previousDay.pixels)} pixels depuis le {fmtDay(previousDay.date).replace(/\.$/, "")}.</p>
                         ) : (
                           <p class="mt-1 text-sm text-muted" data-testid="map-journal">L'évolution jour par jour s'affichera ici à partir du prochain relevé.</p>
                         )
@@ -435,7 +431,7 @@ const previousDay = journal.at(-2);
                   <summary><h2 class="text-xl">Les fronts de GAL</h2></summary>
                   <div class="card mt-4 overflow-x-auto">
                     <table class="data-table film-fronts tnum w-full" data-testid="film-fronts">
-                      <caption class="p-3 text-left text-sm text-muted">Les {gal.fronts.length} clans avec lesquels GAL a échangé le plus de pixels, hors terres neutres. Le coût est celui d'un pixel pris à ce clan, en troupes.</caption>
+                      <caption class="p-3 text-left text-sm text-muted">Les {gal.fronts.length} clans avec lesquels GAL a échangé le plus de pixels, hors terres neutres.</caption>
                       <thead>
                         <tr>
                           <th scope="col">Clan</th>
@@ -443,7 +439,6 @@ const previousDay = journal.at(-2);
                           <th scope="col" class="num">Perdus</th>
                           <th scope="col" class="num">Solde</th>
                           <th scope="col" class="num">Frontière</th>
-                          <th scope="col" class="num">Coût</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -472,7 +467,6 @@ const previousDay = journal.at(-2);
                             <td class="num">{fmtInt(f.lost)}</td>
                             <td class="num font-semibold">{signed(f.taken - f.lost)}</td>
                             <td class="num">{f.border > 0 ? fmtInt(f.border) : "—"}</td>
-                            <td class="num">{f.pixelCost === null ? "—" : fmtInt(f.pixelCost)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -487,9 +481,10 @@ const previousDay = journal.at(-2);
               <summary><h2 class="text-xl">Comment lire cette carte</h2></summary>
               <ul class="mt-4 max-w-prose list-disc space-y-3 pl-5 text-muted">
                 <li><strong class="text-white">Ce n'est pas le classement des clans.</strong> La carte compte des pixels peints, pas des victoires. L'ordre des clans suit celui de la carte officielle. Le classement du clan reste sur la page <a href={`${base}/classement`}>Classement</a>.</li>
-                <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps : la source utilisée ne les date pas.</li>
-                <li><strong class="text-white">Une mise à jour par jour.</strong> Ce ne sont pas des données en temps réel. La carte vient de routes du jeu non documentées, lues par la collecte du site et jamais par votre navigateur. Elles peuvent changer sans préavis.</li>
-                <li><strong class="text-white">Vérifié à chaque mise à jour.</strong> Rejoué jusqu'à l'instantané officiel n° {fmtInt(film.check.seq)}, l'historique retombe sur la carte du jeu, avec {fmtInt(film.check.mismatches)} pixel d'écart sur {fmtInt(film.check.pixels)}. En cas d'écart, le film n'est pas mis à jour.</li>
+                <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps.</li>
+                <li><strong class="text-white">Une mise à jour par jour.</strong> Ce ne sont pas des données en temps réel. La carte vient de l'historique public documenté par OpenFront, lu par la collecte du site et jamais par votre navigateur. Les réserves du clan viennent de sa fiche, une route non documentée qui peut changer sans préavis.</li>
+                <li><strong class="text-white">Vérifié à chaque mise à jour.</strong> Chaque événement officiel annonce l'ancien propriétaire du pixel. Rejoué depuis le premier pixel, l'historique retombe dessus, avec {fmtInt(film.check.mismatches)} écart sur {fmtInt(film.check.events)} événements. En cas d'écart, le film n'est pas mis à jour.</li>
+                <li><strong class="text-white">Ce que l'historique ne donne pas.</strong> Il ne dit ni les troupes des autres clans, ni où se trouve la terre. Le site n'affiche donc ni le coût exact d'un pixel ennemi, ni la terre neutre au contact de GAL. La part des terres se calcule sur une surface relevée le {fmtDate(`${LAND_CHECKED_ON}T12:00:00Z`)}.</li>
                 <li><strong class="text-white">Des coûts indicatifs.</strong> Ils viennent du code de la carte et ne tiennent pas compte de la forme du territoire ni des pixels verrouillés. Le jeu peut les changer.</li>
                 <li><strong class="text-white">Image allégée.</strong> Les chiffres sont calculés sur la carte complète, {fmtInt(film.width)} × {fmtInt(film.height)} pixels. Seul le film est affiché en résolution réduite.</li>
                 <li><strong class="text-white">Dessins des joueurs.</strong> Les motifs visibles sont peints par les joueurs, et le site ne les filtre pas.</li>
