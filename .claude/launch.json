@@ -1,0 +1,40 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site-gal",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "preview",
+        "--",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4321"
+      ],
+      "port": 4321
+    },
+    {
+      "name": "conquete-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "tests/support/conquete-stack.ts",
+        "--demo"
+      ],
+      "port": 4322
+    },
+    {
+      "name": "conquete-demo-direct",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "tsx",
+        "tests/support/conquete-stack.ts",
+        "--demo",
+        "--direct"
+      ],
+      "port": 4322
+    }
+  ]
+}
