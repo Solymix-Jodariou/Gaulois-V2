@@ -44,8 +44,8 @@ Jeu de territoires par saisons, réservé aux membres validés. Architecture, mi
 
 ## Carte du jeu
 
-- 528 hexagones d'aires égales depuis Natural Earth (domaine public), générés par `scripts/generate-conquete-map.ts` et `generate-conquete-terrain.ts` ; noms dans `scripts/conquete-map-names.ts`, à relire par le clan. Une fois une saison jouée, toute refonte crée une nouvelle `VERSION` pour ne pas toucher aux saisons passées.
-- Esprit de la carte d'OpenFront, sans ses images, ses couleurs exactes, ses cartes (`map.bin`) ni son code : la demande de les reprendre a été refusée le 06/11/2026, ne pas rouvrir. Le relief réaliste de Natural Earth a été jugé « trop réaliste » le même jour : viser une carte de jeu en aplats avec nos couleurs (deux variantes montrées, choix à venir), sans reproposer ce relief.
+- 528 terres sur une grille d'hexagones d'aires égales, invisible à l'écran, générée depuis les données de Natural Earth (domaine public) par `scripts/generate-conquete-map.ts` ; fond repeint en aplats par `generate-conquete-terrain.ts` ; noms dans `scripts/conquete-map-names.ts`, à relire par le clan. La grille `v1` est installée en base (`20261105000700_carte_v1.sql`) : changer les contours ou le fond ne doit pas la modifier, et changer la grille, les noms ou les voisins demande une nouvelle `VERSION`.
+- Carte de jeu, pas carte réaliste (demande du clan du 06/11/2026, faite le même jour) : terres aux frontières naturelles, fond en aplats avec notre propre palette, une couleur par joueur, nom et garnison lisibles. Ne pas reproposer le relief réaliste. Même famille que les cartes d'OpenFront et de TeamStats, sans leurs images, couleurs, cartes (`map.bin`) ni code : la demande de les reprendre a été refusée le 06/11/2026, ne pas rouvrir.
 - Pas de temps réel ni de pixels, sans bots ni navires. Un vrai front case par case (carte `v2`, nouvelles règles) a été mesuré et proposé le 06/11/2026 : rien n'est décidé, à trancher après une vraie saison.
 
 ## Connu, non vérifié
