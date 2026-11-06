@@ -186,19 +186,41 @@ Le jeu montre les dons à un membre connecté. Le site, lui, ne peut pas les lir
 2. Cette route n'accepte les appels de navigateur que depuis `https://openfront.io` : notre site ne peut pas l'appeler, même avec un compte.
 3. **Les conditions d'utilisation d'OpenFront ferment les deux raccourcis.** La section 5 interdit d'accéder au service par un moyen automatisé qu'il ne fournit pas : c'est le cas d'un robot connecté avec le compte d'un membre. La section 6.5 interdit tout script ou extension qui lit le client du jeu, « quel que soit son but », sauf accord écrit d'OpenFront : c'est le cas d'un script dans le navigateur d'un officier.
 
-**Le risque serait pour le compte utilisé, et peut-être pour le clan.** Le site ne fait donc ni l'un ni l'autre. La bonne voie est l'accord d'OpenFront : le message est prêt en fin de page.
+**Le risque serait pour le compte utilisé, et peut-être pour le clan.** Le site ne fait donc ni l'un ni l'autre : aucun robot, aucun script. La bonne voie reste l'accord d'OpenFront : le message est prêt en fin de page.
 
-**Aujourd'hui,** le délai est donc celui de l'officier : le membre déclare, l'officier vérifie dans l'onglet Dons du jeu et valide, et les troupes arrivent à cet instant. Tous les joueurs le voient dans les 15 secondes.
+**Avant la première lecture de la liste,** le délai est celui de l'officier : le membre déclare, l'officier vérifie dans l'onglet Dons du jeu et valide, et les troupes arrivent à cet instant. Tous les joueurs le voient dans les 15 secondes.
+
+### Les dons copiés à la main
+
+**Décision du 6 novembre 2026 :** sans attendre la réponse d'OpenFront, un officier peut recopier à la main la liste des dons depuis son propre navigateur, puis la coller dans `/admin`, onglet Dons.
+
+**Ce que disent les conditions** (version du 24 octobre 2026) : les sections 5 et 6.5 visent les moyens automatisés, les scripts et les extensions. Une copie à la main n'y est ni clairement interdite, ni clairement permise, et le jeu présente ces dons comme visibles des seuls membres. Le risque éventuel reste pour le compte utilisé, et peut-être pour le clan. Si OpenFront s'y oppose, la copie s'arrête.
+
+**Rien n'automatise cette copie :** ni robot, ni script, ni extension, ni session de joueur dans `OPENFRONT_DONATIONS_KEY`.
+
+1. L'officier colle une ou plusieurs réponses à la suite, dans n'importe quel ordre.
+2. Le navigateur (`src/lib/conquete/donation-import.ts`) les découpe et valide chacune à part. Il écarte celles qui ne vont pas en disant lesquelles, fusionne le reste par `id` et liste les pages à recoller d'après le total annoncé.
+3. Il n'envoie que l'`id`, le montant, la date et une empreinte du donneur. Le texte collé ne part pas, et disparaît de l'écran après l'envoi. Le Plutonium est ignoré.
+4. `import_openfront_donations` revérifie le rôle et chaque ligne, écrit au journal, puis passe par `ingest_openfront_donations`, le même circuit qu'avec une clé. Recoller un don n'ajoute rien.
+
+**La première lecture est celle décrite ci-dessous, et elle est irréversible.** Elle exige un admin ou le fondateur, une confirmation et la liste complète. Un don fait entre la copie et l'envoi n'est pas perdu : il donne ses troupes à la lecture suivante. Ensuite, un officier peut coller une copie partielle : le site lui dit jusqu'où recopier, et si le total annoncé n'est pas atteint.
+
+**Limites :**
+
+- **Le serveur ne peut pas vérifier que la copie est fidèle.** Un officier qui modifie le texte peut inventer un don, y compris à son nom : « personne ne valide ses propres dons » ne s'applique plus. C'est une question de confiance, et le journal garde qui a importé, quand et combien.
+- **Après la première lecture, un don importé par erreur ne s'annule plus depuis l'écran :** il faut intervenir à la main dans la base.
+- **Le délai est celui de la copie.** Ce n'est pas du temps réel, et le site affiche la date de la dernière lecture.
+- **Une personne sans compte peut demander le retrait de son empreinte,** à faire dans l'éditeur SQL de Supabase : `update public.openfront_donations set donor_hash = null where donor_hash = encode(sha256(convert_to('SON_IDENTIFIANT', 'UTF8')), 'hex');`
 
 ### Le jour où OpenFront donne un accès
 
 Toute la chaîne est prête et testée, avec des dons fictifs :
 
 1. Placez la clé donnée par OpenFront dans le secret GitHub `OPENFRONT_DONATIONS_KEY`, **et rien d'autre : jamais la session d'un joueur.** Si l'accès prend une autre forme, seule `fetchDonations` dans `src/lib/conquete/job.ts` est à adapter.
-2. La tâche planifiée lit l'histoire des dons, puis seulement les nouveaux. Du donneur, elle ne garde qu'une empreinte : ni identifiant, ni pseudo. Le Plutonium est ignoré.
+2. La tâche planifiée lit l'histoire des dons, puis seulement les nouveaux. Du donneur, elle ne garde qu'une empreinte : ni identifiant, ni pseudo. Le Plutonium est ignoré. Les dons déjà copiés à la main sont reconnus par leur `id` et ne comptent pas deux fois.
 3. **La première lecture remplace les déclarations,** qu'elle contient déjà : les dons validés à la main passent à « remplacé », les totaux sont recalculés, et ces dons d'avant ne redonnent pas de troupes. Les déclarations et la saisie se ferment ensuite. **Revenir en arrière demande une intervention à la main dans la base.**
 4. Un don dont l'auteur n'a pas de compte validé attend dans le grand livre, et lui revient à sa validation.
-5. **Mettez à jour la page de confidentialité :** elle décrit aujourd'hui des dons déclarés.
+5. **Mettez à jour la page de confidentialité :** elle décrit aujourd'hui une liste recopiée par les officiers. Retirez aussi la zone de copie de `/admin` si elle ne sert plus.
 
 **Limite restante :** la tâche planifiée de GitHub tourne environ une fois par heure, avec du retard. Pour lire chaque minute, il faudra une fonction planifiée chez Supabase (`pg_cron` et Edge Function). Elle n'est pas écrite : elle dépend de la réponse d'OpenFront et de son accord sur la fréquence, et elle ne peut pas être essayée sans le vrai Supabase.
 
@@ -321,7 +343,7 @@ Pour régénérer : `npm run conquete:map` pour la carte, `npm run conquete:terr
 | `membership_requests` | Demandes et décisions | Soi-même, officiers |
 | `admin_log` | Qui, quoi, quand. Ne se modifie ni ne s'efface. | Admins |
 | `donations` | Dons, capture, statut, validateur, troupes données | Soi-même, officiers |
-| `openfront_donations` | Grand livre des dons lus chez OpenFront, vide tant qu'il n'y a pas d'accès. Montant, date, empreinte du donneur. | Personne : serveur seul |
+| `openfront_donations` | Grand livre des dons lus chez OpenFront, vide avant la première lecture. Montant, date, empreinte du donneur. | Personne : serveur seul |
 | `file_cleanup` | Captures à effacer | Personne : serveur seul |
 | `seasons` | Phase, dates, réglages, classement et carte figés | Par fonction |
 | `territories` | Noms, relief, voisins | Membres connectés |
@@ -342,6 +364,8 @@ Personne n'écrit directement dans aucune table : ni visiteur, ni membre, ni off
 | Demander sa validation | | ✓ | | | | |
 | Jouer, déclarer un don | | | ✓ | ✓ | ✓ | ✓ |
 | Valider les membres et les dons, saisir un don | | | | ✓ | ✓ | ✓ |
+| Coller la liste des dons copiée depuis le jeu | | | | ✓ | ✓ | ✓ |
+| Faire la première lecture de cette liste | | | | | ✓ | ✓ |
 | Retirer un joueur d'une saison | | | | ✓ | ✓ | ✓ |
 | Lire le journal, gérer les saisons et les réglages | | | | | ✓ | ✓ |
 | Suspendre un membre, gérer les officiers | | | | | ✓ | ✓ |
@@ -415,6 +439,7 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 - **Le reste du vrai Supabase.** Essayés sur le vrai projet le 6 novembre 2026 : la connexion Discord d'un compte, le nom et l'identifiant Discord, la désignation du fondateur, la validation de sa demande et la tâche planifiée (liste relue, sauvegarde créée). Restent à éprouver un second compte, une saison et le stockage des captures : c'est l'objet de l'étape 6.
 - **Une vraie partie entre joueurs.** L'équilibre vient de calculs, pas de parties jouées. Les réglages pourront changer après la première saison.
 - **La lecture des vrais dons chez OpenFront.** Sans accès, `fetchDonations` n'a jamais tourné contre leur API : elle suit leur schéma public (`ClanApiSchemas.ts`) et n'est testée que contre une imitation.
+- **La zone de copie avec de vraies données.** Ses tests utilisent des dons fictifs de la même forme que les vraies réponses, qui n'entrent pas dans ce dépôt public.
 - **Un vrai téléphone, Firefox et Safari.** La fluidité est mesurée sur un processeur ralenti, sans vrai téléphone.
 - **Les annonces sur un vrai Discord,** testées seulement contre une imitation.
 - **Le guide avec de vrais débutants.** Son parcours est testé de bout en bout, mais personne de nouveau au jeu ne l'a encore essayé : ses textes pourront changer après les premiers retours.
@@ -434,10 +459,10 @@ Le parcours complet tourne sur le même Postgres, avec un petit serveur qui imit
 >
 > How we would use it: our server validates the token once with `POST /public/identity_token/validate`, checks the public ID against `/public/clan/GAL/members`, then discards the token. We store neither the token nor the public ID, only a hash, and members without a public username stay anonymous.
 >
-> One more question, and the most important one for us. In this game, a member's capsule donations to the clan turn into troops, ideally right away. Donations (`/clans/:tag/donations`) are only visible to signed-in members, and your terms (sections 5 and 6.5) rule out reading them with a player's session or a script, so we do not do that: today our officers enter each donation by hand.
+> One more question, and the most important one for us. In this game, a member's capsule donations to the clan turn into troops, ideally right away. Donations (`/clans/:tag/donations`) are only visible to signed-in members, and your terms (sections 5 and 6.5) rule out a bot using a player's session or a script, so we do neither. For now, an officer copies the list by hand from their own signed-in browser and pastes it on our site, which only keeps the amount, the date and a hash of the donor's public ID. Please tell us if you would rather we stopped.
 >
 > Would you consider giving a clan a read-only way to read its own donation ledger, for example an API key limited to `/clans/GAL/donations`? We would only keep the amount, the date and a hash of the donor's public ID, and we would poll at whatever rate suits you. If you prefer another way, such as a webhook, we can adapt.
 >
-> A last question, about the clan map. Our site now builds its timelapse from your documented `/public/clanmap/history`, thank you for it. Three things are not in the public API: the ownership snapshot with each clan's troops (`/clanmap/ownership`), the terrain (`/clanmap/terrain`) and a clan's treasury (`/clans/GAL`). `/clanmap/ownership` answered 403 from GitHub Actions, so we stopped reading it and the terrain, and we will not try to get around that. We still read `/clans/GAL` once a day, and we will stop if you prefer. Would you consider public versions of these, or tell us if we may read them once a day? And which license applies to the terrain? We publish a reduced, darkened copy as the timelapse background, credited to OpenFront.
+> A last question, about the clan map. Our site now builds its timelapse from your documented `/public/clanmap/history`, thank you for it. Three things are not in the public API: the ownership snapshot with each clan's troops (`/clanmap/ownership`), the terrain (`/clanmap/terrain`) and a clan's treasury (`/clans/GAL`). `/clanmap/ownership` answered 403 from GitHub Actions, so we stopped reading it and the terrain, and we will not try to get around that. Our reading of `/clans/GAL` fails from GitHub Actions too, so the site shows "no data" for the treasury; we still try once a day, and we will stop if you prefer. Would you consider public versions of these, or tell us if we may read them once a day? And which license applies to the terrain? We publish a reduced, darkened copy as the timelapse background, credited to OpenFront.
 >
 > Thanks a lot for the game and for the public API!

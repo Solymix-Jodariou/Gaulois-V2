@@ -12,7 +12,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
     <PageHeader title="Confidentialité" intro="Ce que le site conserve pour la Conquête des Gaulois, pourquoi, et comment l'effacer." />
     <div class="conq-rules max-w-3xl" data-testid="privacy">
       <h2>Sans compte</h2>
-      <p>Le reste du site ne vous demande rien. Il ne conserve aucune donnée sur vous et ne pose pas de traceur publicitaire.</p>
+      <p>Le reste du site ne vous demande rien et ne pose pas de traceur publicitaire. Il ne conserve aucune donnée sur vous, à une exception près : si vous avez donné des capsules à [GAL] dans le jeu, le montant, la date et une empreinte de votre identifiant OpenFront peuvent figurer dans la liste des dons que recopient les officiers. Ni votre identifiant, ni votre pseudo. Ce don n'apparaît nulle part tant que vous n'avez pas de compte validé. Pour le faire retirer, adressez-vous aux officiers.</p>
 
       <h2>Avec un compte</h2>
       <ul>
@@ -20,7 +20,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
         <li><strong>Si vous faites partie de l'encadrement du clan :</strong> la direction peut noter à l'avance votre identifiant Discord et votre rôle, avant même votre première connexion, pour vous donner ce rôle à votre validation. Cette note est effacée dès qu'elle a servi.</li>
         <li><strong>Une empreinte de votre identifiant OpenFront,</strong> jamais l'identifiant lui-même, pour vérifier votre présence dans la liste des membres et éviter qu'un même joueur ait deux comptes.</li>
         <li><strong>Votre nom de jeu :</strong> votre pseudo public OpenFront si vous en avez un, sinon « Gaulois n° … ». Il apparaît sur la carte, dans le fil d'actualité et dans les classements du jeu.</li>
-        <li><strong>Vos dons déclarés :</strong> montant, date, décision de l'officier. Dans le classement public, vous êtes anonyme tant que vous n'avez pas choisi d'afficher votre nom.</li>
+        <li><strong>Vos dons :</strong> montant et date, avec la décision de l'officier pour un don déclaré. Un officier peut aussi recopier à la main la liste des dons du jeu : le site n'en garde que le montant, la date et une empreinte du donneur. Dans le classement public, vous êtes anonyme tant que vous n'avez pas choisi d'afficher votre nom.</li>
         <li><strong>Votre capture facultative :</strong> visible par vous et par les officiers, effacée après leur décision.</li>
         <li><strong>Vos actions dans le jeu</strong> et, pour les officiers et les admins, leurs actions d'administration dans un journal : qui, quoi, quand.</li>
       </ul>
@@ -29,7 +29,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, "");
       <p>Les données sont hébergées chez Supabase, en Europe. La connexion passe par Discord. Une copie de sauvegarde chiffrée est produite chaque jour. Chaque membre ne lit que ses propres données ; les officiers et les admins voient ce qu'il leur faut pour valider les comptes et les dons.</p>
 
       <h2>Effacer ses données</h2>
-      <p>Depuis <a href={`${base}/compte`}>Mon compte</a>, le bouton « Effacer mon compte » supprime tout de suite votre profil, vos dons déclarés et votre place dans la saison. Vos territoires redeviennent libres. Le journal d'administration garde la trace de l'effacement, sans votre nom. Les sauvegardes s'effacent d'elles-mêmes au bout de 14 jours.</p>
+      <p>Depuis <a href={`${base}/compte`}>Mon compte</a>, le bouton « Effacer mon compte » supprime tout de suite votre profil, vos dons et votre place dans la saison. Dans la liste recopiée, le don reste sans empreinte : plus rien ne le relie à vous. Vos territoires redeviennent libres. Le journal d'administration garde la trace de l'effacement, sans votre nom. Les sauvegardes s'effacent d'elles-mêmes au bout de 14 jours.</p>
       <p>Pour toute question, adressez-vous aux officiers sur le <a href={clan.links.discord} rel="noopener">Discord du clan</a>.</p>
     </div>
   </div>

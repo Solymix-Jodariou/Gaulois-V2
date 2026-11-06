@@ -35,7 +35,7 @@ Dix fois plus de capsules ne donnent pas dix fois plus de troupes : un gros donn
 
 ### Vos dons arrivent en renfort
 
-Pendant une saison, **1 capsule = 100 troupes**, comme sur la carte du clan : elles arrivent dans votre réserve dès qu'un officier a validé votre don, dans la limite de votre capacité. Le don augmente aussi cette capacité, pour toute la saison.
+Pendant une saison, **1 capsule = 100 troupes**, comme sur la carte du clan : elles arrivent dans votre réserve dès qu'un officier a validé votre don ou recopié la liste du jeu, dans la limite de votre capacité. Le don augmente aussi cette capacité, pour toute la saison.
 
 | Votre situation : 60 000 troupes en réserve, 5 terres | Nouvelle capacité | Ce que vous recevez | Votre réserve |
 |---|---:|---:|---:|
@@ -44,7 +44,7 @@ Pendant une saison, **1 capsule = 100 troupes**, comme sur la carte du clan : el
 
 Les dons faits avant le lancement de la saison ne comptent que pour la capacité. Si vous n'avez pas encore choisi votre territoire de départ, vos dons de la saison vous attendent : ils s'ajoutent à vos troupes de départ. Un don annulé par un officier reprend ses troupes.
 
-Le site ne peut pas lire vos dons tout seul : OpenFront les réserve aux membres connectés. Vous les déclarez sur votre page de compte, et un officier les vérifie dans le jeu. Dans le fil d'actualité, un don anonyme le reste.
+Le site ne peut pas lire vos dons tout seul : OpenFront les réserve aux membres connectés. Tant qu'aucun officier n'a recopié la liste des dons du jeu sur le site, vous les déclarez sur votre page de compte, et un officier les vérifie dans le jeu. Ensuite, vous n'avez plus rien à déclarer : votre don compte quand un officier recopie la liste, et ce délai dépend de lui. Dans le fil d'actualité, un don anonyme le reste.
 
 **Un don est permanent et non remboursable. Rien ne vous oblige à donner.** Seules les capsules comptent, jamais le Plutonium.
 

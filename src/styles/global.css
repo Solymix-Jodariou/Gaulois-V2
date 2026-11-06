@@ -285,6 +285,16 @@ main .card:hover::before {
 .btn:hover::after {
   translate: 120% 0;
 }
+/* Un bouton inactif doit se voir : sinon, il a seulement l'air de ne pas répondre. */
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  scale: 1;
+}
+.btn:disabled::after {
+  display: none;
+}
 .btn-lg {
   min-height: 3.5rem;
   padding-inline: 1.75rem;

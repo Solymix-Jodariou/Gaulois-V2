@@ -24,5 +24,15 @@ export const fmtDec1 = (n: number) => dec1.format(n);
 export const fmtDateTime = (iso: string) => dateTime.format(new Date(iso));
 export const fmtClock = (iso: string) => clock.format(new Date(iso));
 export const fmtDate = (iso: string) => dateOnly.format(new Date(iso));
+/** Une liste croissante en suites : 2, 3, 4 et 7 donnent « 2 à 4, 7 ». */
+export function fmtRanges(numbers: number[]): string {
+  const ranges: [number, number][] = [];
+  for (const n of numbers) {
+    const last = ranges.at(-1);
+    if (last && last[1] === n - 1) last[1] = n;
+    else ranges.push([n, n]);
+  }
+  return ranges.map(([from, to]) => (from === to ? int.format(from) : `${int.format(from)} à ${int.format(to)}`)).join(", ");
+}
 /** `day` au format AAAA-MM-JJ, sans conversion de fuseau. */
 export const fmtDay = (day: string) => dayShort.format(new Date(`${day}T00:00:00.000Z`));

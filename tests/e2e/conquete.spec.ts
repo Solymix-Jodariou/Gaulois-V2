@@ -769,8 +769,113 @@ test("le jour où OpenFront donne un accès, les dons se lisent tout seuls et re
   await expect(visitor.getByTestId("donor-row").first()).toContainText(fr(12_345));
 
   await openAdmin(founder, "Dons");
-  await expect(founder.getByTestId("admin-donations")).toContainText("lus directement chez OpenFront");
+  await expect(founder.getByTestId("admin-donations")).toContainText("viennent de la liste d'OpenFront");
   await expect(founder.getByTestId("enter-donation")).toHaveCount(0);
+});
+
+/** Une réponse de la liste des dons, telle qu'un officier la copie à la main. Tout est fictif. */
+const copiedPage = (page: number, total: number, rows: [id: number, publicId: string, capsules: number, hoursAgo: number][]) =>
+  JSON.stringify(
+    {
+      results: rows.map(([id, publicId, capsules, hoursAgo]) => ({
+        id: String(id),
+        currencyType: "soft",
+        amount: String(capsules),
+        reason: "clan_donation",
+        note: null,
+        createdBy: publicId,
+        createdByUsername: "Pseudo fictif",
+        createdAt: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+      })),
+      total,
+      page,
+      limit: 2,
+    },
+    null,
+    4,
+  );
+
+test("un fondateur colle la liste copiée à la main : la première lecture, puis les suivantes", async () => {
+  // On repart d'un site qui n'a encore rien lu.
+  await sql("delete from public.openfront_donations where true");
+  await sql("delete from public.app_state where key = 'donations_sync'");
+  const pageOne = copiedPage(1, 3, [[9103, "PUB-ASTRA", 300, 1], [9102, "PUB-INCONNU", 7, 2]]);
+  const pageTwo = copiedPage(2, 3, [[9101, "PUB-ASTRA", 40, 3]]);
+
+  await openAdmin(founder, "Dons");
+  const zone = founder.getByTestId("import-donations");
+  const field = zone.getByLabel("Réponses copiées, collées à la suite");
+  const readIt = zone.getByRole("button", { name: "Lire ce texte" });
+  const send = zone.getByTestId("import-send");
+  await zone.locator("summary").click();
+  await expect(zone.getByTestId("import-state")).toContainText("Aucune lecture pour l'instant");
+  await expect(readIt).toBeDisabled();
+
+  // Une page coupée : l'autre est lue, la coupée est signalée, et la première lecture attend.
+  await field.fill(`${pageOne}\n${pageTwo.slice(0, 120)}`);
+  await readIt.click();
+  await expect(zone.getByTestId("import-report")).toContainText("1 réponse lue : 2 dons différents. La liste en annonce 3.");
+  await expect(zone.getByTestId("import-problems")).toContainText("Réponse n° 2 : Réponse coupée");
+  await expect(zone.getByTestId("import-missing")).toHaveText("Pages à recoller : 2.");
+  await expect(zone.getByTestId("first-read")).toContainText("Il faut d'abord toute la liste");
+  await expect(zone.getByTestId("first-read-confirm")).toHaveCount(0);
+  await expect(send).toBeDisabled();
+  await accessible(founder);
+
+  // Modifier le texte efface ce qui a été lu : on n'envoie jamais autre chose que ce qui est à l'écran.
+  await field.fill(`${pageTwo}\n${pageOne}\n${pageOne}`);
+  await expect(zone.getByTestId("import-report")).toBeEmpty();
+  await readIt.click();
+  await expect(zone.getByTestId("import-report")).toContainText("3 réponses lues : 3 dons différents, 2 doublons retirés. La liste en annonce 3.");
+  await expect(send).toBeDisabled();
+  await zone.getByTestId("first-read-confirm").check();
+  await send.click();
+
+  await expect(zone.getByRole("status")).toContainText("3 nouveaux dons, 0 déjà connu. Première lecture faite");
+  await expect(field).toHaveValue("");
+  await expect(zone.getByTestId("import-state")).toContainText("Le site connaît 3 dons");
+  // La saisie à la main se ferme, sans faire disparaître le message.
+  await expect(founder.getByTestId("enter-donation")).toHaveCount(0);
+  await expect(founder.getByTestId("admin-donations")).toContainText("viennent de la liste d'OpenFront");
+
+  await astra.goto("/compte");
+  await expect(astra.getByTestId("my-capsules")).toHaveText(fr(340));
+  await expect(astra.getByTestId("my-donations")).toContainText("à la prochaine lecture de la liste du jeu");
+  await visitor.goto("/dons");
+  await expect(visitor.getByTestId("donor-row").first()).toContainText(fr(340));
+
+  // Du donneur, rien d'autre qu'une empreinte n'arrive jusqu'au serveur.
+  const stored = JSON.stringify(await sql("select * from public.openfront_donations"));
+  expect(stored).toContain(hash("PUB-ASTRA"));
+  expect(stored).not.toMatch(/PUB-|Pseudo fictif/);
+
+  // Un simple membre est refusé par le serveur, même en contournant l'écran.
+  const row = { id: "9199", hash: hash("PUB-ASTRA"), capsules: 1_000_000, at: new Date().toISOString() };
+  expect((await directCall(astra, "import_openfront_donations", { p_rows: [row] })).body).toMatchObject({ ok: false, error: "forbidden" });
+  expect((await directCall(visitor, "import_openfront_donations", { p_rows: [row] })).status).not.toBe(200);
+
+  // Ensuite, une copie partielle suffit, et recoller ce qui est connu n'ajoute rien.
+  await field.fill(copiedPage(1, 4, [[9104, "PUB-ASTRA", 5, 0.5], [9103, "PUB-ASTRA", 300, 1]]));
+  await readIt.click();
+  await expect(zone.getByTestId("import-missing")).toContainText("Pages absentes de ce texte : 2.");
+  await expect(zone.getByTestId("first-read")).toHaveCount(0);
+  await send.click();
+  await expect(zone.getByRole("status")).toContainText("1 nouveau don, 1 déjà connu.");
+  await expect(zone.getByRole("alert")).toHaveCount(0);
+
+  // Une copie qui laisse un trou se voit au total annoncé.
+  await field.fill(copiedPage(1, 9, [[9106, "PUB-ASTRA", 5, 0.1]]));
+  await readIt.click();
+  await send.click();
+  await expect(zone.getByRole("alert")).toContainText("Le site connaît 5 dons sur 9 annoncés");
+
+  await founder.setViewportSize({ width: 375, height: 812 });
+  await noOverflow(founder);
+  await founder.setViewportSize({ width: 1280, height: 800 });
+  await accessible(founder);
+
+  await openAdmin(founder, "Journal");
+  await expect(founder.getByTestId("log-row").first()).toContainText("donations_imported");
 });
 
 test("effacer son compte supprime ses données, tout de suite", async () => {
