@@ -156,11 +156,12 @@ for (const path of PAGES) {
   });
 }
 
-for (const width of [375, 768, 1280, 1920]) {
+// 360 : une largeur courante de téléphone. 1024 : là où le décor de /rejoindre élargissait la page.
+for (const width of [360, 375, 768, 1024, 1280, 1920]) {
   test(`aucun défilement horizontal à ${width} px`, async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop", "Largeurs testées une seule fois.");
     await page.setViewportSize({ width, height: 900 });
-    for (const path of PAGES) {
+    for (const path of [...PAGES, "/confidentialite", "/conquete/regles"]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

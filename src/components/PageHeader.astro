@@ -4,11 +4,13 @@ interface Props {
   intro?: string;
 }
 const { title, intro } = Astro.props;
+// « Confidentialité », « Administration » : un si long mot ne peut pas passer à la ligne.
+const hasLongWord = title.split(" ").some((word) => word.length >= 14);
 ---
 
 <header class="reveal pb-10 pt-12 md:pb-14 md:pt-20">
   <span class="tribar mb-6"></span>
-  <h1 class="page-title">{title}</h1>
+  <h1 class:list={["page-title", { "page-title-long": hasLongWord }]}>{title}</h1>
   {intro && <p class="mt-5 max-w-3xl text-lg text-muted">{intro}</p>}
   <slot />
 </header>

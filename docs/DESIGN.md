@@ -204,7 +204,7 @@ Le jeu reprend les boutons, les cartes et les couleurs du site, sans nouvelle id
 - Les chiffres qui défilent sont masqués aux lecteurs d'écran, qui reçoivent uniquement la valeur finale.
 - Graphiques de la page Progression doublés par des tableaux, identité jamais portée par la seule couleur.
 - Tests automatiques axe (WCAG 2.1 A et AA) sur les 8 pages en desktop et mobile. Ces tests ne remplacent pas un essai avec un lecteur d'écran, qui n'a pas été fait. Ils ne peuvent pas non plus toujours mesurer un contraste sur un dégradé : le texte des scènes a été choisi clair et vérifié à l'œil sur les captures.
-- Absence de défilement horizontal testée à 375, 768, 1 280 et 1 920 px.
+- Absence de défilement horizontal testée à 360, 375, 768, 1 024, 1 280 et 1 920 px. Ces tests tournent sans barre de défilement visible : une vraie barre retire 15 px de largeur, ce qui peut révéler un débordement qu'ils ne voient pas.
 
 ## États des données
 
