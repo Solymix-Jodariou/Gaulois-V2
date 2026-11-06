@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm test *)"
+    ],
+    "deny": [
+      "Bash(git push *)",
+      "Bash(npx supabase db push *)",
+      "Bash(supabase db push *)",
+      "Bash(git add -A *)",
+      "Bash(git add --all *)",
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./supabase/.temp/**)"
+    ]
+  }
+}
