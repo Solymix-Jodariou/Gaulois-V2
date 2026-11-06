@@ -170,3 +170,7 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - Le jeu ne publie pas qui a peint quel pixel : le site ne peut classer personne pour sa peinture.
 - De la Conquête des Gaulois, seules la connexion Discord et la désignation du fondateur ont été essayées en vrai. Ses parties n'ont tourné qu'en local, avec une imitation de Supabase et de Discord : voir [docs/CONQUETE.md](docs/CONQUETE.md).
 - Les parcours décrits dans « Comment participer » viennent du code du jeu et n'ont pas été essayés avec un compte. Le texte devra être relu par un membre du clan.
+
+## Licence
+
+Le code est sous [AGPL-3.0-only](LICENSE). [NOTICE.md](NOTICE.md) liste ce que la licence ne couvre pas (nom, logos et textes du clan, données d'OpenFront) et les conditions à respecter si du code d'OpenFront est repris.
