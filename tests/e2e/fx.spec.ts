@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre"];
+const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre", "/gazette"];
 
 /** Couleur franche de la case sous un point. Les vagues ambiantes, plus pâles, ne comptent pas. */
 const tileAt = (page: Page, x: number, y: number) =>

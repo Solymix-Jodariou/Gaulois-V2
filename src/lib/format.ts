@@ -23,6 +23,12 @@ export const fmtPct = (n: number | null | undefined) =>
 export const fmtDec1 = (n: number) => dec1.format(n);
 /** Un nombre et son nom, accordé : 1 partie, 2 parties. */
 export const fmtCount = (n: number, word: string) => `${int.format(n)} ${word}${n > 1 ? "s" : ""}`;
+export const fmtRank = (n: number) => `${n}${n === 1 ? "er" : "e"}`;
+/** Un écart en points de pourcentage, toujours signé : 4,9 donne « +4,9 points ». Un écart qui s'arrondit à zéro n'a pas de signe négatif. */
+export function fmtPoints(n: number): string {
+  const rounded = Math.round(n * 10) / 10;
+  return `${rounded < 0 ? "−" : "+"}${dec1.format(Math.abs(rounded))} ${Math.abs(rounded) >= 2 ? "points" : "point"}`;
+}
 export const fmtMinutes = (seconds: number) => `${int.format(Math.round(seconds / 60))} min`;
 export const fmtDateTime = (iso: string) => dateTime.format(new Date(iso));
 export const fmtClock = (iso: string) => clock.format(new Date(iso));

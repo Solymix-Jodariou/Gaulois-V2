@@ -6,9 +6,10 @@ import NewsBoard from "../components/NewsBoard";
 import { AUTH_ENABLED } from "../lib/compte/api";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
-import { loadAnnouncements, loadClanMapFilm, loadEvents, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
+import { loadAnnouncements, loadClanMapFilm, loadClanMapJournal, loadEvents, loadHistory, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
 import { fmtDate, fmtDateTime, fmtDay, fmtDec1, fmtInt, fmtPct, fmtScore } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
+import { editionLead, gazetteEditions, weekLabel } from "../lib/gazette";
 import { bestSlots, buildHeatmap, dailySeries } from "../lib/sessions";
 import { findClan, winRate, withOfficialRanks } from "../lib/stats";
 import { WEEKDAYS_FR } from "../lib/time";
@@ -45,6 +46,7 @@ const command = (members?.members ?? []).filter((m) => m.role !== "member");
 const anonymous = (members?.members ?? []).filter((m) => !m.username).length;
 const mapFilm = loadClanMapFilm();
 const onMap = mapFilm?.galSummary ?? null;
+const gazette = gazetteEditions({ sessions, history: loadHistory(), journal: loadClanMapJournal(), members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough })[0] ?? null;
 ---
 
 <Base>
@@ -249,6 +251,17 @@ const onMap = mapFilm?.galSummary ?? null;
               ))
             }
           </ol>
+        </section>
+      )
+    }
+
+    {
+      gazette && (
+        <section class="stage stage-night reveal" aria-labelledby="gazette-title" data-testid="home-gazette">
+          <h2 id="gazette-title" class="section-title">La gazette du clan</h2>
+          <p class="mt-4 text-sm font-semibold text-muted">Semaine {weekLabel(gazette)}</p>
+          <p class="mt-1 max-w-3xl text-lg text-muted">{editionLead(gazette, clan.tag)}</p>
+          <a href={`${base}/gazette`} class="btn btn-ghost mt-6">Lire la gazette</a>
         </section>
       )
     }

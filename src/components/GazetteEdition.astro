@@ -1,0 +1,121 @@
+---
+import { clan } from "../../config/clan";
+import { fmtCount, fmtDate, fmtDay, fmtInt, fmtPct } from "../lib/format";
+import { arrivalsGap, comparisonSentence, editionLead, type GazetteEdition, rankWords, standingDetails, standingGap, territoryDetails, territoryGap } from "../lib/gazette";
+
+interface Props {
+  edition: GazetteEdition;
+  /** Date du tout premier relevé de chaque mesure, pour expliquer une absence. `null` : aucun relevé. */
+  firstStanding: string | null;
+  firstTerritory: string | null;
+  /** Date de relevé de la liste des membres. */
+  membersAt: string | null;
+}
+const { edition, firstStanding, firstTerritory, membersAt } = Astro.props;
+const { totals, highlights, standing, territory, arrivals } = edition;
+const members = standing?.end.membersTotal ?? null;
+const comparison = comparisonSentence(edition);
+const tiles = highlights
+  ? [
+      { label: "Meilleure journée", value: fmtCount(highlights.bestDay.wins, "victoire"), hint: `sur ${fmtCount(highlights.bestDay.games, "partie")}, le ${fmtDay(highlights.bestDay.date)}` },
+      { label: "Plus longue série", value: fmtCount(highlights.streak.wins, "victoire"), hint: `dernière victoire le ${fmtDate(highlights.streak.endedAt)}` },
+      { label: "Le plus de Gaulois dans une partie gagnée", value: fmtCount(highlights.biggestGroup.players, "joueur"), hint: `le ${fmtDate(highlights.biggestGroup.at)}` },
+      { label: "Victoire avec le plus d'équipes en jeu", value: fmtCount(highlights.mostTeams.teams, "équipe"), hint: `${fmtCount(highlights.mostTeams.players, "joueur")} dans la partie, le ${fmtDate(highlights.mostTeams.at)}` },
+    ]
+  : [];
+---
+
+<p class="mt-4 max-w-3xl text-lg text-muted" data-testid="gazette-lead">{editionLead(edition, clan.tag)}</p>
+
+<div class="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+  <section class="panel" data-testid="gazette-totals">
+    <h3 class="text-xl">Les parties</h3>
+    <p class="tnum mt-2 font-display text-4xl font-extrabold">{fmtInt(totals.games)}</p>
+    <p class="tnum mt-1 text-sm text-muted">{totals.winRate === null ? "Aucune partie, donc pas de taux de victoire." : `${fmtCount(totals.wins, "victoire")}, soit ${fmtPct(totals.winRate)}.`}</p>
+    {comparison && <p class="tnum mt-1 text-sm text-muted" data-testid="gazette-comparison">{comparison}</p>}
+  </section>
+
+  <section class="panel" data-testid="gazette-standing">
+    <h3 class="text-xl">Le classement officiel</h3>
+    {
+      standing ? (
+        <>
+          <p class="tnum mt-2 font-display text-4xl font-extrabold">{rankWords(standing.end.rank)}</p>
+          {standingDetails(standing).map((line) => (
+            <p class="tnum mt-1 text-sm text-muted">{line}</p>
+          ))}
+          <p class="mt-1 text-xs text-muted">Le rang et le score portent sur 90 jours glissants, pas sur cette seule semaine.</p>
+        </>
+      ) : (
+        <>
+          <p class="mt-2 font-display text-lg font-bold">Pas de données</p>
+          <p class="mt-1 text-sm text-muted">{standingGap(firstStanding, edition.to)}</p>
+        </>
+      )
+    }
+  </section>
+
+  <section class="panel md:col-span-2 lg:col-span-1" data-testid="gazette-territory">
+    <h3 class="text-xl">La carte des clans</h3>
+    {
+      territory ? (
+        <>
+          <p class="tnum mt-2 font-display text-4xl font-extrabold">{fmtInt(territory.end.pixels)}</p>
+          {territoryDetails(territory).map((line) => (
+            <p class="tnum mt-1 text-sm text-muted">{line}</p>
+          ))}
+          <p class="mt-1 text-xs text-muted">Ce n'est pas le classement des clans.</p>
+        </>
+      ) : (
+        <>
+          <p class="mt-2 font-display text-lg font-bold">Pas de données</p>
+          <p class="mt-1 text-sm text-muted">{territoryGap(firstTerritory, edition.to)}</p>
+        </>
+      )
+    }
+  </section>
+
+  {
+    tiles.length > 0 && (
+      <section class="panel md:col-span-2 lg:col-span-3" data-testid="gazette-highlights">
+        <h3 class="text-xl">Les temps forts</h3>
+        <dl class="mt-3 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+          {tiles.map((t) => (
+            <div>
+              <dt class="text-sm font-semibold text-muted">{t.label}</dt>
+              <dd class="mt-0.5">
+                <span class="tnum block font-display text-xl font-extrabold">{t.value}</span>
+                <span class="tnum block text-xs text-muted">{t.hint}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p class="mt-3 text-xs text-muted">Tous joueurs du clan confondus : une série mêle donc plusieurs groupes, et elle s'arrête au dimanche. Le nombre de Gaulois compte aussi ceux partis avant la fin. Une partie jouée seul contre des robots n'est pas comptée.</p>
+      </section>
+    )
+  }
+
+  <section class="panel md:col-span-2 lg:col-span-3" data-testid="gazette-arrivals">
+    <h3 class="text-xl">Les arrivées</h3>
+    {
+      arrivals ? (
+        <>
+          <p class="tnum mt-2 font-display text-4xl font-extrabold">{fmtInt(arrivals.count)}</p>
+          {arrivals.count > 0 && <p class="tnum mt-1 text-sm text-muted">{fmtInt(arrivals.anonymous)} sans pseudo public.</p>}
+          {arrivals.named.length > 0 && (
+            <details class="mt-2 text-sm">
+              <summary class="cursor-pointer font-semibold">Voir {arrivals.named.length > 1 ? `les ${fmtInt(arrivals.named.length)} pseudos` : "le pseudo"}</summary>
+              <p class="mt-2 text-muted [overflow-wrap:anywhere]" data-testid="gazette-names">{arrivals.named.join(", ")}</p>
+            </details>
+          )}
+          <p class="mt-2 text-xs text-muted">Seuls les membres encore dans le clan sont comptés{membersAt ? `, d'après la liste du ${fmtDate(membersAt)}` : ""}.{members !== null && ` Effectif relevé le ${fmtDay(standing?.end.date ?? "")} : ${fmtInt(members)}.`}</p>
+        </>
+      ) : (
+        <>
+          <p class="mt-2 font-display text-lg font-bold">Pas de données</p>
+          <p class="mt-1 text-sm text-muted">{arrivalsGap(membersAt, edition.to)}</p>
+        </>
+      )
+    }
+  </section>
+</div>

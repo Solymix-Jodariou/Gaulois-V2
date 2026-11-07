@@ -1,0 +1,76 @@
+---
+import Base from "../layouts/Base.astro";
+import DataStatus from "../components/DataStatus.astro";
+import Empty from "../components/Empty.astro";
+import GazetteEditionBlock from "../components/GazetteEdition.astro";
+import PageHeader from "../components/PageHeader.astro";
+import { clan } from "../../config/clan";
+import { loadClanMapJournal, loadHistory, loadMembers, loadMeta, loadSessions } from "../lib/data";
+import { fmtCount, fmtPct } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { gazetteEditions, weekLabel } from "../lib/gazette";
+
+const meta = loadMeta();
+const history = loadHistory();
+const journal = loadClanMapJournal();
+const members = loadMembers();
+const editions = gazetteEditions({ sessions: loadSessions(), history, journal, members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough });
+const [latest, ...older] = editions;
+const context = { firstStanding: history[0]?.date ?? null, firstTerritory: journal[0]?.date ?? null, membersAt: members?.fetchedAt ?? null };
+// La date affichée est celle des sessions. Une panne des autres sources doit se voir aussi.
+const failures = [
+  { label: "du classement", state: meta.leaderboard },
+  { label: "de la carte des clans", state: meta.clanmap },
+  { label: "de la liste des membres", state: meta.members },
+].filter((source) => source.state.lastError);
+---
+
+<Base title="Gazette" description="Le bilan de chaque semaine du clan GAL : parties, victoires, classement, territoire et arrivées.">
+  <div class="wrap">
+    <PageHeader
+      title="La gazette du clan"
+      intro="Le bilan de chaque semaine complète, du lundi au dimanche à l'heure de Paris, écrit automatiquement à partir des données collectées. Une nouvelle édition paraît le lundi matin. Parties publiques en équipe jouées avec le tag : ce ne sont pas des données en temps réel."
+    >
+      <div class="mt-4">
+        <DataStatus state={meta.sessions} maxAgeHours={MAX_AGE_HOURS.sessions} />
+        {
+          failures.map((source) => (
+            <p class="mt-1 text-sm font-semibold text-warn" role="status" data-testid="gazette-failure">
+              La dernière collecte {source.label} a échoué : ses derniers relevés valides restent utilisés.
+            </p>
+          ))
+        }
+      </div>
+    </PageHeader>
+
+    {
+      latest ? (
+        <>
+          <article class="stage stage-blue reveal" aria-labelledby="gazette-latest-title" data-testid="gazette-latest">
+            <h2 id="gazette-latest-title" class="section-title">Semaine {weekLabel(latest)}</h2>
+            <GazetteEditionBlock edition={latest} {...context} />
+          </article>
+
+          {older.length > 0 && (
+            <section class="reveal mt-10" aria-labelledby="gazette-older-title">
+              <h2 id="gazette-older-title" class="section-title">Les éditions précédentes</h2>
+              <div class="mt-6 space-y-3">
+                {older.map((edition) => (
+                  <details class="card p-5" data-testid="gazette-older">
+                    <summary class="cursor-pointer font-semibold">
+                      Semaine {weekLabel(edition)}
+                      <span class="tnum font-normal text-muted"> · {fmtCount(edition.totals.games, "partie")}, {fmtCount(edition.totals.wins, "victoire")}{edition.totals.winRate !== null && `, ${fmtPct(edition.totals.winRate)}`}</span>
+                    </summary>
+                    <GazetteEditionBlock edition={edition} {...context} />
+                  </details>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      ) : (
+        <Empty title="Pas de données">Aucune semaine complète n'a encore été collectée.</Empty>
+      )
+    }
+  </div>
+</Base>

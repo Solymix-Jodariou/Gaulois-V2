@@ -42,5 +42,10 @@ export function dayRange(from: string, to: string): string[] {
   return out;
 }
 
+/** Le lundi de la semaine d'un jour AAAA-MM-JJ. Midi UTC tombe toujours le même jour à Paris, changement d'heure compris. */
+export function mondayOf(day: string): string {
+  return addDays(day, -parisParts(`${day}T12:00:00.000Z`).weekday);
+}
+
 /** Noms des jours, lundi en premier, comme `ParisParts.weekday`. */
 export const WEEKDAYS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"] as const;

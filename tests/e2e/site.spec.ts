@@ -1,12 +1,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { loadGames, loadMeta, loadSessions } from "../../src/lib/data";
+import { clan } from "../../config/clan";
+import { loadClanMapJournal, loadGames, loadHistory, loadMembers, loadMeta, loadSessions } from "../../src/lib/data";
 import { fmtCount } from "../../src/lib/format";
 import { faceOffs, mapResults } from "../../src/lib/games";
+import { editionLead, gazetteEditions, rankWords, standingDetails, territoryDetails, weekLabel } from "../../src/lib/gazette";
 import { mapLabel } from "../../src/lib/map-names";
 
-const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre"];
+const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre", "/gazette"];
 const lb = JSON.parse(readFileSync("data/leaderboard.json", "utf8"));
 const members = JSON.parse(readFileSync("data/members.json", "utf8"));
 const gal = lb.clans.find((c: { clanTag: string }) => c.clanTag === "GAL");
@@ -233,6 +235,59 @@ test("les face-à-face reprennent les chiffres calculés, sans aucun joueur", as
     expect(digits(await panel.getByTestId("face-off-others").textContent())).toBe(String(row.others));
   }
   await expect(block.getByRole("link")).toHaveCount(0);
+});
+
+test("la gazette donne le bilan de la dernière semaine complète, et n'invente pas ce qui manque", async ({ page }) => {
+  const history = loadHistory();
+  const journal = loadClanMapJournal();
+  const editions = gazetteEditions({ sessions: loadSessions(), history, journal, members: loadMembers(), archiveStart: clan.archiveStart, completeThrough: loadMeta().sessions.completeThrough });
+  const latest = editions[0];
+  if (!latest) throw new Error("La gazette devrait avoir au moins une semaine complète.");
+
+  await page.goto("/gazette");
+  const block = page.getByTestId("gazette-latest");
+  await expect(block.getByRole("heading", { level: 2 })).toHaveText(`Semaine ${weekLabel(latest)}`);
+  await expect(block.getByTestId("gazette-lead")).toHaveText(editionLead(latest, clan.tag));
+  expect(digits(await block.getByTestId("gazette-totals").locator("p").first().textContent())).toBe(String(latest.totals.games));
+  await expect(block.getByTestId("gazette-totals")).toContainText(fmtCount(latest.totals.wins, "victoire"));
+  await expect(page.getByTestId("gazette-older")).toHaveCount(editions.length - 1);
+  await expect(page.getByTestId("data-status").first()).toContainText("Dernière mise à jour");
+  // Les mois abrégés finissent déjà par un point : aucune phrase ne doit en avoir deux. Les pseudos, eux, sont libres.
+  for (const part of ["gazette-lead", "gazette-totals", "gazette-standing", "gazette-territory", "gazette-highlights"]) {
+    expect(await block.getByTestId(part).textContent()).not.toMatch(/\.\./);
+  }
+
+  // Un relevé qui n'existe pas s'écrit « Pas de données », jamais zéro.
+  const standing = block.getByTestId("gazette-standing");
+  if (latest.standing) {
+    await expect(standing).toContainText(rankWords(latest.standing.end.rank));
+    for (const line of standingDetails(latest.standing)) await expect(standing).toContainText(line);
+    await expect(standing).toContainText("90 jours glissants");
+  } else {
+    await expect(standing).toContainText("Pas de données");
+  }
+  const territory = block.getByTestId("gazette-territory");
+  if (latest.territory) {
+    expect(digits(await territory.locator("p").first().textContent())).toBe(String(latest.territory.end.pixels));
+    for (const line of territoryDetails(latest.territory)) await expect(territory).toContainText(line);
+  } else {
+    await expect(territory).toContainText("Pas de données");
+  }
+  const arrivals = block.getByTestId("gazette-arrivals");
+  if (latest.arrivals) {
+    expect(digits(await arrivals.locator("p").first().textContent())).toBe(String(latest.arrivals.count));
+    await expect(arrivals).toContainText("Seuls les membres encore dans le clan sont comptés");
+  } else {
+    await expect(arrivals).toContainText("Pas de données");
+  }
+
+  // La navigation est pleine : on y arrive depuis l'accueil et le pied de page.
+  await expect(page.locator("footer").getByRole("link", { name: "La gazette du clan" })).toHaveAttribute("href", /\/gazette$/);
+  await page.goto("/");
+  const home = page.getByTestId("home-gazette");
+  await expect(home).toContainText(editionLead(latest, clan.tag));
+  await home.getByRole("link", { name: "Lire la gazette" }).click();
+  await expect(page).toHaveURL(/gazette/);
 });
 
 test("signale les données périmées au visiteur", async ({ page }) => {
