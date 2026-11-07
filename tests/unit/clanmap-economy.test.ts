@@ -142,7 +142,7 @@ describe("grands moments", () => {
     expect(titles).toContain("GAL recule à la 8e place");
     expect(titles).toContain("GAL remonte à la 5e place");
     expect(titles).toContain(`GAL franchit ${n(10000)} pixels`);
-    expect(titles.at(-1)).toBe(`Aujourd'hui : ${n(11980)} pixels, 5e place`);
+    expect(titles.at(-1)).toBe(`Dernier relevé : ${n(11980)} pixels, 5e place`);
   });
 
   it("trouve la plus grande poussée et le plus dur recul", () => {
@@ -169,9 +169,15 @@ describe("grands moments", () => {
     expect(findMoments(frames([[0, null], [0, null]]))).toEqual([]);
   });
 
-  it("ne parle pas d'aujourd'hui si GAL a tout perdu", () => {
+  it("ne donne pas de dernier relevé si GAL a tout perdu", () => {
     const moments = findMoments(frames([[10, 1], [10, 1], [10, 1], [10, 1], [0, null]]));
     expect(moments.some((m) => m.kind === "now")).toBe(false);
+  });
+
+  it("date chaque moment si le film a des dates, sans en inventer sinon", () => {
+    const dated = findMoments([{ ev: 5000, gal: 0, rank: null, at: 100 }, { ev: 10000, gal: 50, rank: 1, at: 200 }]);
+    expect(dated[0]).toMatchObject({ frame: 2, at: 200 });
+    expect(findMoments(frames([[0, null], [50, 1]]))[0]?.at).toBeNull();
   });
 
   it("note le numéro d'événement de chaque moment", () => {

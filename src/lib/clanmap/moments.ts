@@ -6,6 +6,8 @@ export interface MomentFrame {
   ev: number;
   gal: number;
   rank: number | null;
+  /** Date de l'image, en secondes Unix. Absente d'un film sans dates. */
+  at?: number | undefined;
 }
 
 export type MomentKind = "first" | "rank" | "fall" | "comeback" | "threshold" | "push" | "loss" | "now";
@@ -14,6 +16,8 @@ export interface Moment {
   /** Numéro de l'image, à partir de 1. */
   frame: number;
   event: number;
+  /** Date du moment, en secondes Unix. `null` : film sans dates. */
+  at: number | null;
   kind: MomentKind;
   title: string;
 }
@@ -25,7 +29,7 @@ const fmt = new Intl.NumberFormat("fr-FR");
 const place = (rank: number) => `${rank}${rank === 1 ? "re" : "e"} place`;
 
 export function findMoments(frames: readonly MomentFrame[], tag = "GAL"): Moment[] {
-  const candidates: Omit<Moment, "event">[] = [];
+  const candidates: Omit<Moment, "event" | "at">[] = [];
   const firstIndex = frames.findIndex((f) => f.gal > 0);
   if (firstIndex < 0) return [];
   candidates.push({ frame: firstIndex + 1, kind: "first", title: `Premier pixel de ${tag}` });
@@ -90,11 +94,11 @@ export function findMoments(frames: readonly MomentFrame[], tag = "GAL"): Moment
   const last = frames[frames.length - 1]!;
   if (last.gal > 0) {
     const rank = last.rank === null ? "" : `, ${place(last.rank)}`;
-    candidates.push({ frame: frames.length, kind: "now", title: `Aujourd'hui : ${fmt.format(last.gal)} pixels${rank}` });
+    candidates.push({ frame: frames.length, kind: "now", title: `Dernier relevé : ${fmt.format(last.gal)} pixels${rank}` });
   }
 
   const minGap = Math.max(3, Math.floor(frames.length * 0.015));
-  const kept: Omit<Moment, "event">[] = [];
+  const kept: Omit<Moment, "event" | "at">[] = [];
   for (const kind of PRIORITY) {
     for (const candidate of candidates.filter((c) => c.kind === kind)) {
       if (kept.every((k) => Math.abs(k.frame - candidate.frame) >= minGap)) kept.push(candidate);
@@ -102,5 +106,5 @@ export function findMoments(frames: readonly MomentFrame[], tag = "GAL"): Moment
   }
   return kept
     .sort((a, b) => a.frame - b.frame)
-    .map((m) => ({ ...m, event: frames[m.frame - 1]?.ev ?? 0 }));
+    .map((m) => ({ ...m, event: frames[m.frame - 1]?.ev ?? 0, at: frames[m.frame - 1]?.at ?? null }));
 }

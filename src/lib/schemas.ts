@@ -265,8 +265,8 @@ export const StoredGameFile = z.object({
 export type StoredGameFile = z.infer<typeof StoredGameFile>;
 
 export const StoredClanMapFilm = z.object({
-  // 2 : film sans `neutralBorder`, refait au passage suivant de la collecte.
-  version: z.union([z.literal(2), z.literal(3)]),
+  // 2 : film sans `neutralBorder`. 3 : film sans dates. Tous deux sont refaits au passage suivant de la collecte.
+  version: z.union([z.literal(2), z.literal(3), z.literal(4)]),
   fetchedAt: isoDate,
   // Numéro du dernier événement lu, et nombre d'événements rejoués.
   seq: count,
@@ -292,7 +292,9 @@ export const StoredClanMapFilm = z.object({
       pixels: count,
       rank: count.nullable(),
       firstEvent: count,
-      peak: z.object({ pixels: count, event: count }),
+      // Dates en secondes Unix, absentes d'un film de version 3 ou moins.
+      firstAt: count.optional(),
+      peak: z.object({ pixels: count, event: count, at: count.optional() }),
       taken: count,
       lost: count,
       neutralTaken: count,
@@ -327,8 +329,24 @@ export const StoredClanMapFilm = z.object({
       rank: count.nullable(),
       top: z.array(z.tuple([count, count])),
       cam: z.tuple([count, count, count, count]).nullable(),
+      // Date du dernier événement de l'image, en secondes Unix. Absente d'un film de version 3 ou moins.
+      at: count.optional(),
     }),
   ),
+  // Les journées de GAL en heure de Paris, depuis celle de son premier pixel. Absentes d'un film de version 3 ou moins.
+  days: z
+    .array(
+      z.object({
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        // L'image du film, à partir de 1, qui se termine avec ce jour.
+        frame: count,
+        pixels: count,
+        rank: count.nullable(),
+        taken: count,
+        lost: count,
+      }),
+    )
+    .optional(),
 });
 export type StoredClanMapFilm = z.infer<typeof StoredClanMapFilm>;
 

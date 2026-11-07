@@ -1,3 +1,5 @@
+import { parisParts } from "./time";
+
 const TZ = "Europe/Paris";
 const int = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 const dec2 = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -13,6 +15,8 @@ const dateTime = new Intl.DateTimeFormat("fr-FR", {
 const clock = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", second: "2-digit" });
 const dateOnly = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "numeric", month: "short", year: "numeric" });
 const dayShort = new Intl.DateTimeFormat("fr-FR", { timeZone: "UTC", day: "numeric", month: "short" });
+const dayParis = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, day: "numeric", month: "short" });
+const timeParis = new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
 export const NO_DATA = "—";
 
@@ -43,5 +47,11 @@ export function fmtRanges(numbers: number[]): string {
   }
   return ranges.map(([from, to]) => (from === to ? int.format(from) : `${int.format(from)} à ${int.format(to)}`)).join(", ");
 }
+/** Une date en secondes Unix, écrite à Paris : « 3 nov. ». */
+export const fmtEpochDay = (seconds: number) => dayParis.format(new Date(seconds * 1000));
+/** Une date en secondes Unix, écrite à Paris à l'heure près : « 3 nov., 18 h ». Une image du film couvre souvent plus d'une demi-heure. */
+export const fmtEpochHour = (seconds: number) => `${fmtEpochDay(seconds)}, ${parisParts(new Date(seconds * 1000)).hour} h`;
+/** L'heure à Paris d'une date en secondes Unix : « 16:49 ». */
+export const fmtEpochTime = (seconds: number) => timeParis.format(new Date(seconds * 1000));
 /** `day` au format AAAA-MM-JJ, sans conversion de fuseau. */
 export const fmtDay = (day: string) => dayShort.format(new Date(`${day}T00:00:00.000Z`));

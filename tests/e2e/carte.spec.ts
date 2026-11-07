@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { changeSinceLastDay, dayHighlights, dayRows, filmDayMarks, parisDayOf } from "../../src/lib/clanmap/days";
+import { fmtDay, fmtEpochDay, fmtEpochHour, fmtInt, fmtRank } from "../../src/lib/format";
 
 /**
  * Sur tous les formats, la carte commence dans le haut de l'écran, juste sous l'en-tête et le titre.
@@ -11,6 +13,10 @@ import { expect, test, type Page } from "@playwright/test";
 const testViewportTitleLimit = 200;
 const film = JSON.parse(readFileSync("data/clanmap/film.json", "utf8"));
 const lastFrame = film.frames.at(-1);
+/** Un film d'avant les dates reste publié jusqu'au passage suivant du robot : ces contrôles l'attendent. */
+const datedFilm = film.version >= 4;
+/** Ce que le film doit dire de GAL à la fin d'une journée : les chiffres du tableau. */
+const galLine = (day: { pixels: number; rank: number | null }) => (day.rank === null ? "GAL n'est pas encore sur la carte." : `GAL : ${fmtRank(day.rank)} avec ${fmtInt(day.pixels)} pixels.`);
 const digits = (s: string | null) => (s ?? "").replace(/\D/g, "");
 
 const position = (page: Page) => page.getByTestId("film-pos").inputValue().then(Number);
@@ -88,7 +94,7 @@ test.describe("film de la carte", () => {
     expect(box.y).toBeLessThan(testViewportTitleLimit);
     await expect(page.locator("main h1")).toHaveText("La carte des clans");
     await expect(page.getByTestId("data-status")).toBeVisible();
-    for (const fold of ["fold-join", "fold-numbers", "fold-fronts", "fold-read"]) {
+    for (const fold of ["fold-join", "fold-numbers", ...(datedFilm ? ["fold-days"] : []), "fold-fronts", "fold-read"]) {
       await expect(page.getByTestId(fold)).not.toHaveAttribute("open");
     }
     // Un bloc replié s'ouvre et se referme.
@@ -179,6 +185,143 @@ test.describe("film de la carte", () => {
 
     await seekTo(page, film.frames.length);
     await expect.poll(() => colorfulPixels(page)).toBeGreaterThan(finalPixels * 0.9);
+  });
+
+  test("le film donne les vraies dates, à l'heure de Paris", async ({ page }) => {
+    test.skip(!datedFilm, "film sans dates, refait au prochain passage du robot");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/carte");
+    await expect(playButton(page)).toBeVisible();
+
+    // À la fin de l'historique, comme à chaque position : la date de l'image affichée.
+    const date = page.getByTestId("film-date");
+    await expect(date).toHaveText(fmtEpochHour(lastFrame.at));
+    const mid = Math.floor(film.frames.length / 2);
+    await seekTo(page, mid);
+    await expect(date).toHaveText(fmtEpochHour(film.frames[mid - 1].at));
+    // Le lecteur d'écran ne lit pas l'incrustation sur la carte : le curseur dit la même date.
+    await expect(page.getByTestId("film-pos")).toHaveAttribute("aria-valuetext", new RegExp(`^${fmtEpochHour(film.frames[mid - 1].at)}, événement `));
+    // Avant le premier changement, il n'y a pas encore de date à montrer.
+    await seekTo(page, 0);
+    await expect(date).toBeHidden();
+
+    // Sous la frise : le premier et le dernier jour, et un repère par jour.
+    const marks = filmDayMarks(film.frames);
+    const labels = page.getByTestId("film-dates").locator(".film-date");
+    await expect(labels.first()).toHaveText(fmtDay(marks[0]!.date));
+    await expect(labels.last()).toHaveText(fmtDay(marks.at(-1)!.date));
+    await expect(page.getByTestId("film-dates").locator(".film-day")).toHaveCount(marks.length);
+    // Les dates écrites ne se chevauchent pas et restent dans la frise.
+    const scrub = (await page.getByTestId("film-dates").boundingBox())!;
+    const boxes = await labels.evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ x: r.x, width: r.width })));
+    boxes.forEach((box, i) => {
+      expect(box.x).toBeGreaterThanOrEqual(scrub.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(scrub.x + scrub.width + 1);
+      if (i > 0) expect(box.x).toBeGreaterThanOrEqual(boxes[i - 1]!.x + boxes[i - 1]!.width - 1);
+    });
+  });
+
+  test("les grands moments portent leur date", async ({ page }) => {
+    test.skip(!datedFilm, "film sans dates, refait au prochain passage du robot");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/carte");
+    await expect(playButton(page)).toBeVisible();
+    const first = page.getByRole("button", { name: /Premier pixel de GAL/ });
+    const frame = Number(await first.getAttribute("data-film-moment"));
+    await expect(first).toContainText(fmtEpochDay(film.frames[frame - 1].at));
+    await page.getByRole("button", { name: /Dernier relevé/ }).click();
+    expect(await position(page)).toBe(film.frames.length);
+    // Le premier pixel de GAL et son record sont datés dans le détail des chiffres.
+    await page.getByTestId("fold-numbers").locator("summary").click();
+    await expect(page.getByTestId("film-fact").first()).toContainText(`Événement n° ${new Intl.NumberFormat("fr-FR").format(film.galSummary.firstEvent)}`);
+    const since = changeSinceLastDay(dayRows(film.days, film.frames, film.fetchedAt), film.galSummary.pixels)!;
+    await expect(page.getByTestId("map-journal")).toContainText(`${fmtInt(Math.abs(since.change))} pixels depuis la fin du ${fmtDay(since.date).replace(/\.$/, "")}`);
+  });
+
+  test("les grandes journées viennent de l'historique et se rejouent", async ({ page }) => {
+    test.skip(!datedFilm, "film sans dates, refait au prochain passage du robot");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/carte");
+    await expect(playButton(page)).toBeVisible();
+    const { gain, loss } = dayHighlights(dayRows(film.days, film.frames, film.fetchedAt));
+    const shown = [gain, loss].filter((d) => d !== null);
+    const cards = page.getByTestId("map-day");
+    await expect(cards).toHaveCount(shown.length);
+    for (const [i, day] of shown.entries()) {
+      const card = cards.nth(i);
+      expect(digits(await card.locator("p").nth(1).textContent())).toBe(String(Math.abs(day.net)));
+      await expect(card).toContainText(fmtDay(day.date));
+      // Sans mouvement : directement la carte de la fin de cette journée, et sa légende.
+      await card.getByRole("button", { name: "Revoir cette journée" }).click();
+      expect(await position(page)).toBe(day.frame);
+      await expect(page.locator("[data-film-caption]")).toContainText(fmtDay(day.date));
+      // Le film montre la fin de ce jour-là, avec les chiffres du tableau.
+      await expect(page.getByTestId("film-date")).toContainText(fmtDay(day.date));
+      await expect(page.getByTestId("film-gal")).toHaveText(galLine(day));
+      await expect(playButton(page)).not.toContainText("Pause");
+    }
+  });
+
+  test("rejouer une journée s'arrête à la fin de ce jour", async ({ page }) => {
+    test.skip(!datedFilm, "film sans dates, refait au prochain passage du robot");
+    await page.goto("/carte");
+    await expect(playButton(page)).toBeVisible();
+    const { gain } = dayHighlights(dayRows(film.days, film.frames, film.fetchedAt));
+    test.skip(!gain, "aucune journée positive à rejouer");
+    await page.getByTestId("map-day").first().getByRole("button", { name: "Revoir cette journée" }).click();
+    await expect(playButton(page)).toContainText("Pause");
+    expect(await position(page)).toBeGreaterThanOrEqual(gain!.start);
+    await expect(playButton(page)).toContainText("Lecture", { timeout: 30_000 });
+    expect(await position(page)).toBe(gain!.frame);
+    await expect(page.getByTestId("film-date")).toContainText(fmtDay(gain!.date));
+    await expect(page.getByTestId("film-gal")).toHaveText(galLine(gain!));
+    // La suite du film repart d'ici, jusqu'au bout.
+    await playButton(page).click();
+    await expect(playButton(page)).toContainText("Pause");
+    await seekTo(page, film.frames.length - 1);
+    await playButton(page).click();
+    await expect(playButton(page)).toContainText("Pause");
+    await expect.poll(() => position(page), { timeout: 15_000 }).toBe(film.frames.length);
+  });
+
+  test("jour après jour : une ligne par journée, le plus récent d'abord, sans date inventée", async ({ page }) => {
+    test.skip(!datedFilm, "film sans dates, refait au prochain passage du robot");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/carte");
+    await expect(playButton(page)).toBeVisible();
+    await page.getByTestId("fold-days").locator("summary").click();
+    const rows = dayRows(film.days, film.frames, film.fetchedAt).reverse();
+    const lines = page.getByTestId("film-days").locator("tbody tr");
+    await expect(lines).toHaveCount(rows.length);
+    const first = rows[0]!;
+    const cells = lines.first().locator("td");
+    await expect(cells.first()).toContainText(fmtDay(first.date));
+    expect(digits(await cells.nth(3).textContent())).toBe(String(Math.abs(first.net)));
+    expect(digits(await cells.nth(4).textContent())).toBe(String(first.pixels));
+    // Seule la dernière journée peut être en cours, et elle le dit.
+    await expect(page.getByTestId("film-day-partial")).toHaveCount(rows.filter((r) => !r.complete).length);
+    if (!rows[0]!.complete) await expect(page.getByTestId("film-day-partial")).toContainText("relevée jusqu'à");
+    // Le dernier jour de la liste est celui du premier pixel de GAL.
+    expect(rows.at(-1)!.date).toBe(parisDayOf(film.galSummary.firstAt));
+    // Les jours du tableau retombent sur les totaux du film.
+    expect(rows.reduce((n, r) => n + r.taken, 0)).toBe(film.galSummary.taken);
+    expect(rows.reduce((n, r) => n + r.lost, 0)).toBe(film.galSummary.lost);
+    // La fin de chaque journée a sa propre image : le film et le tableau disent la même chose.
+    for (const r of rows) {
+      const end = film.frames[r.frame - 1];
+      expect(end.gal).toBe(r.pixels);
+      expect(end.rank).toBe(r.rank);
+      expect(parisDayOf(end.at)).toBe(r.date);
+    }
+    // Un jour se rejoue d'un clic.
+    const day = rows[2]!;
+    await lines.nth(2).getByRole("button").click();
+    expect(await position(page)).toBe(day.frame);
+    await expect(page.locator("[data-film-caption]")).toContainText(fmtDay(day.date));
+    // La phrase de lecture décrit la frise datée.
+    await page.getByTestId("fold-read").locator("summary").click();
+    await expect(page.getByText("Des dates, mais pas une horloge.")).toBeVisible();
+    await expect(page.getByText("Pas de dates dans le film.")).toHaveCount(0);
   });
 
   test("revoir le premier pixel de GAL", async ({ page }) => {
@@ -274,9 +417,18 @@ test.describe("film de la carte", () => {
     await page.goto("/carte");
     await expect(page.locator("[data-testid=film-map] img")).toBeVisible();
     await expect(page.getByTestId("film-fact")).toHaveCount(3);
+    // Les grandes journées restent lisibles, sans leur bouton inutile.
+    if (datedFilm) {
+      await expect(page.getByTestId("map-day").first()).toBeVisible();
+      await expect(page.getByRole("button", { name: "Revoir cette journée" }).first()).toBeHidden();
+    }
     // Les blocs repliés s'ouvrent sans JavaScript.
     await page.getByTestId("fold-fronts").locator("summary").click();
     await expect(page.getByTestId("film-fronts")).toBeVisible();
+    if (datedFilm) {
+      await page.getByTestId("fold-days").locator("summary").click();
+      await expect(page.getByTestId("film-days")).toBeVisible();
+    }
     await expect(playButton(page)).toBeHidden();
     await context.close();
   });

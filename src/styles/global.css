@@ -765,12 +765,18 @@ th.fx-cross {
   position: absolute;
   top: 0.625rem;
   right: 0.625rem;
+  max-width: calc(100% - 1.25rem);
   padding: 0.125rem 0.5rem;
   border: 1px solid var(--color-line);
   border-radius: 0.375rem;
   background: rgb(6 11 34 / 0.88);
   font-size: 0.75rem;
   pointer-events: none;
+}
+.film-hud-date {
+  margin-right: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
 }
 .film-world {
   position: absolute;
@@ -858,7 +864,7 @@ th.fx-cross {
   position: relative;
   flex: 1 1 16rem;
   min-width: 0;
-  height: 3.25rem;
+  height: 4.25rem;
 }
 .film-scrub > svg {
   position: absolute;
@@ -874,7 +880,7 @@ th.fx-cross {
 }
 .film-scrub > input {
   position: absolute;
-  inset: auto 0 0;
+  inset: auto 0 1rem;
 }
 .film-scrub > input,
 .film-range {
@@ -918,7 +924,7 @@ th.fx-cross {
 /* Repères des grands moments sur la frise. */
 .film-ticks {
   position: absolute;
-  inset: auto 0.5rem 1.375rem;
+  inset: auto 0.5rem 2.375rem;
   height: 0;
   pointer-events: none;
 }
@@ -930,6 +936,30 @@ th.fx-cross {
   margin-left: -1.5px;
   border-radius: 1px;
   background: #fff;
+}
+/* Les vrais jours, sous la frise. Le film suit les événements : les jours n'ont pas la même largeur. */
+.film-dates {
+  position: absolute;
+  inset: auto 0.5rem 0;
+  height: 1.125rem;
+  pointer-events: none;
+}
+.film-day {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 0.25rem;
+  background: var(--color-muted);
+}
+.film-date {
+  position: absolute;
+  bottom: 0;
+  width: 3.5rem;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 0.875rem;
+  text-align: center;
+  white-space: nowrap;
 }
 .film-opts {
   display: flex;
@@ -990,11 +1020,12 @@ th.fx-cross {
     height: 100%;
     max-height: none;
   }
+  /* Au-dessus du classement : sur un écran bas, un message de panne reste lisible en entier. */
   .film-title {
     position: absolute;
     top: 0.75rem;
     left: 0.75rem;
-    z-index: 3;
+    z-index: 4;
     max-width: 24rem;
     padding: 0.5rem 0.875rem;
     border-radius: 0.75rem;
@@ -1003,7 +1034,7 @@ th.fx-cross {
   /* `main` : plus fort que la règle générale des cartes, qui les place en position relative. */
   main .film-ladder {
     position: absolute;
-    bottom: 4.75rem;
+    bottom: 5.75rem;
     left: 0.75rem;
     z-index: 3;
     width: 15rem;

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { z } from "zod";
+import { dayRows, territoryReadings, type TerritoryReading } from "./clanmap/days";
 import {
   Announcements,
   ClanMapJournal,
@@ -55,6 +56,11 @@ export const MEMBER_GAMES_FILE = ".cache/member-games/players.json";
 export const loadMemberGames = () => read(MEMBER_GAMES_FILE, StoredMemberGames) ?? {};
 export const loadClanMapFilm = () => read("data/clanmap/film.json", StoredClanMapFilm);
 export const loadClanMapJournal = () => read("data/clanmap/journal.json", ClanMapJournal) ?? [];
+/** Le territoire de GAL jour après jour, pour la gazette : voir `territoryReadings`. */
+export function loadTerritoryReadings(): TerritoryReading[] {
+  const film = loadClanMapFilm();
+  return territoryReadings(film ? dayRows(film.days ?? [], film.frames, film.fetchedAt) : [], loadClanMapJournal());
+}
 export const loadMapHeroes = () => read("content/carte-heros.json", MapHeroes) ?? { updatedOn: null, donors: [], highlights: [] };
 
 export function loadSessions(): StoredSession[] {

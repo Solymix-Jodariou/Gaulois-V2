@@ -7,7 +7,9 @@
  * alors que sur demande. Les grands moments viennent des chiffres de chaque image.
  */
 import { clanRgb, type DecodedFrames } from "../lib/clanmap/codec";
+import { filmDayMarks, placeDayLabels } from "../lib/clanmap/days";
 import { findMoments, type Moment } from "../lib/clanmap/moments";
+import { fmtDay, fmtEpochDay, fmtEpochHour } from "../lib/format";
 import { motionAllowed } from "../lib/fx/motion";
 import type { StoredClanMapFilm } from "../lib/schemas";
 import { loadFilmData } from "./film-data";
@@ -30,6 +32,10 @@ const CAPTION_MS = 3_400;
 const SLOW_FRAME_MS = 40;
 const SLOW_FRAMES_LIMIT = 24;
 const LOW_POWER_RESOLUTION = 0.7;
+/** Largeur d'une date sous la frise, en rem : voir `.film-date`. */
+const DAY_LABEL_REM = 3.5;
+/** Une journée rejouée dure au moins ce temps à la vitesse × 1 : un long historique lui laisse peu d'images. */
+const DAY_REPLAY_MS = 4_000;
 
 const fmt = new Intl.NumberFormat("fr-FR");
 const fmtPct = new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -100,6 +106,7 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
   const rowsBox = one<HTMLElement>("[data-film-rows]");
   const pinned = one<HTMLElement>("[data-film-pinned]");
   const eventLabel = one<HTMLElement>("[data-film-event]");
+  const dateLabel = one<HTMLElement>("[data-film-date]");
   const landLabel = one<HTMLElement>("[data-film-land]");
   const clansLabel = one<HTMLElement>("[data-film-clans]");
   const status = one<HTMLElement>("[data-film-status]");
@@ -365,7 +372,7 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
   function playMoment(moment: Moment, now: number, spot: { x: number; y: number } | null): void {
     showCaption(moment.title);
     markMoment(moment);
-    status.textContent = moment.title;
+    status.textContent = moment.at === null ? moment.title : `${fmtEpochDay(moment.at)} : ${moment.title}`;
     if (!motionAllowed() || follow || manual) return;
     const cam = film.frames[moment.frame - 1]?.cam;
     const target = moment.kind === "now" ? null : spot;
@@ -550,6 +557,9 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
   let lowPower = false;
   let slowFrames = 0;
   const frameMs = FILM_MS / F;
+  /** La fin de la journée rejouée : le film s'y arrête. */
+  let stopAt: number | null = null;
+  let dayFrameMs = 0;
 
   function schedule(): void {
     if (!raf) raf = requestAnimationFrame(loop);
@@ -575,9 +585,9 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
     if (shot && now >= shot.until) shot = null;
     if (playing && inView) {
       elapsed += dt * (shot ? SHOT_PACE : 1);
-      const step = frameMs / speed;
+      const step = Math.max(frameMs, dayFrameMs) / speed;
       let moved = false;
-      while (elapsed >= step && cur < F) {
+      while (elapsed >= step && cur < (stopAt ?? F)) {
         advance(now);
         elapsed -= step;
         moved = true;
@@ -586,7 +596,7 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
         updateHud();
         dirty = true;
       }
-      if (cur >= F) setPlaying(false);
+      if (cur >= (stopAt ?? F)) setPlaying(false);
       if (playing) dirty = true;
     }
     if (stepGlow(dt)) dirty = true;
@@ -657,11 +667,14 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
   function updateHud(): void {
     const frame = cur > 0 ? film.frames[cur - 1] : null;
     const events = frame?.ev ?? 0;
+    const when = frame?.at === undefined ? null : fmtEpochHour(frame.at);
+    dateLabel.textContent = when;
+    dateLabel.hidden = when === null;
     eventLabel.textContent = `${fmt.format(events)} / ${fmt.format(totalEvents)}`;
     landLabel.textContent = fmtPct.format(((frame?.total ?? 0) / film.land) * 100);
     clansLabel.textContent = fmt.format(frame?.clans ?? 0);
     pos.value = String(cur);
-    pos.setAttribute("aria-valuetext", `Événement ${fmt.format(events)} sur ${fmt.format(totalEvents)}`);
+    pos.setAttribute("aria-valuetext", `${when === null ? "Événement" : `${when}, événement`} ${fmt.format(events)} sur ${fmt.format(totalEvents)}`);
 
     const top = frame?.top ?? [];
     const lead = top[0]?.[1] ?? 1;
@@ -688,6 +701,8 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
 
   function setPlaying(on: boolean): void {
     playing = on;
+    stopAt = null;
+    dayFrameMs = 0;
     if (on) started = true;
     const label = on ? "Pause" : cur < F ? "Lecture" : started ? "Rejouer" : "Lancer le film";
     playIcon.setAttribute("d", on ? ICON_PAUSE : ICON_PLAY);
@@ -697,7 +712,8 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
       schedule();
     } else if (started) {
       const frame = cur > 0 ? film.frames[cur - 1] : null;
-      status.textContent = `Film arrêté à l'événement ${fmt.format(frame?.ev ?? 0)} sur ${fmt.format(totalEvents)}. ${pinned.textContent}`;
+      const when = frame?.at === undefined ? "" : `le ${fmtEpochHour(frame.at)}, `;
+      status.textContent = `Film arrêté ${when}à l'événement ${fmt.format(frame?.ev ?? 0)} sur ${fmt.format(totalEvents)}. ${pinned.textContent}`;
     }
   }
 
@@ -782,8 +798,8 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
       setPlaying(true);
       return;
     }
-    setPlaying(false);
     seek(frame);
+    setPlaying(false);
     const moment = momentAt.get(frame);
     if (moment) playMoment(moment, performance.now(), null);
   }
@@ -792,6 +808,29 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
   }
   const firstFrame = film.frames.findIndex((f) => f.gal > 0) + 1;
   document.querySelector("[data-film-jump]")?.addEventListener("click", () => jumpToMoment(firstFrame));
+
+  /** Rejoue une journée et s'arrête à sa fin. Sans mouvement : directement la carte de la fin de ce jour. */
+  function replayDay(start: number, end: number, label: string): void {
+    cancelAutoplay();
+    releaseView();
+    markMoment(null);
+    revealMap();
+    shot = null;
+    if (motionAllowed()) {
+      seek(start);
+      setPlaying(true);
+      stopAt = end;
+      dayFrameMs = DAY_REPLAY_MS / Math.max(1, end - start);
+    } else {
+      seek(end);
+      setPlaying(false);
+    }
+    showCaption(label);
+    status.textContent = label;
+  }
+  for (const button of document.querySelectorAll<HTMLElement>("[data-film-day]")) {
+    button.addEventListener("click", () => replayDay(Number(button.dataset.filmDay), Number(button.dataset.filmDayEnd), button.dataset.filmDayLabel ?? ""));
+  }
 
   // Regarder un front ou une zone : la carte d'aujourd'hui, cadrée sur cet endroit.
   for (const button of document.querySelectorAll<HTMLElement>("[data-film-look]")) {
@@ -874,6 +913,30 @@ function mount(root: HTMLElement, film: StoredClanMapFilm, frames: DecodedFrames
     tick.style.left = `${(moment.frame / F) * 100}%`;
     ticks.append(tick);
   }
+
+  // Les vrais jours sous la frise : autant de dates écrites que la largeur en laisse.
+  const dayMarks = filmDayMarks(film.frames);
+  const dates = one<HTMLElement>("[data-film-dates]");
+  for (const mark of dayMarks) {
+    const tick = document.createElement("i");
+    tick.className = "film-day";
+    tick.style.left = `${(mark.frame / F) * 100}%`;
+    dates.append(tick);
+  }
+  const dayLabels: HTMLElement[] = [];
+  const writeDayLabels = () => {
+    for (const label of dayLabels.splice(0)) label.remove();
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    for (const { mark, left } of placeDayLabels(dayMarks, F, dates.clientWidth, DAY_LABEL_REM * rem)) {
+      const label = document.createElement("span");
+      label.className = "film-date";
+      label.style.left = `${left}px`;
+      label.textContent = fmtDay(mark.date);
+      dates.append(label);
+      dayLabels.push(label);
+    }
+  };
+  new ResizeObserver(writeDayLabels).observe(dates);
 
   buildPalette();
   applyUpTo(F);

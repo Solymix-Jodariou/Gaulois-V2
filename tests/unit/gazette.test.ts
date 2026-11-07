@@ -14,7 +14,7 @@ function member(joinedAt: string, username: string | null): StoredMember {
   return { role: "member", joinedAt, publicId: username, username, team: null };
 }
 // Le 7 novembre 2026 est un samedi. Le dernier dimanche définitif est le 1er : sa semaine commence le 26 octobre.
-const sources = (over: Partial<GazetteSources> = {}): GazetteSources => ({ sessions: [], history: [], journal: [], members: null, archiveStart: "2026-10-12", completeThrough: "2026-11-06", ...over });
+const sources = (over: Partial<GazetteSources> = {}): GazetteSources => ({ sessions: [], history: [], territory: [], members: null, archiveStart: "2026-10-12", completeThrough: "2026-11-06", ...over });
 
 describe("mondayOf", () => {
   it("donne le lundi de la semaine, le dimanche compris, même au changement d'heure", () => {
@@ -92,7 +92,7 @@ describe("gazetteEditions", () => {
 
   describe("le classement et la carte", () => {
     it("n'invente rien pour une semaine sans relevé", () => {
-      const [latest] = gazetteEditions(sources({ history: [snapshot("2026-11-05")], journal: [{ date: "2026-11-05", pixels: 10, rank: 5, caps: null, troops: null }] }));
+      const [latest] = gazetteEditions(sources({ history: [snapshot("2026-11-05")], territory: [{ date: "2026-11-05", pixels: 10, rank: 5 }] }));
       expect(latest?.standing).toBeNull();
       expect(latest?.territory).toBeNull();
     });
@@ -118,11 +118,11 @@ describe("gazetteEditions", () => {
       expect(gazetteEditions(sources({ history }))[0]?.standing?.end.rank).toBe(2);
     });
     it("suit le territoire de la même façon", () => {
-      const journal = [
+      const readings = [
         { date: "2026-10-25", pixels: 100, rank: 6, caps: null, troops: null },
         { date: "2026-11-01", pixels: 150, rank: 5, caps: null, troops: null },
       ];
-      const territory = gazetteEditions(sources({ journal }))[0]?.territory;
+      const territory = gazetteEditions(sources({ territory: readings }))[0]?.territory;
       expect(territory?.start?.pixels).toBe(100);
       expect(territory?.end.pixels).toBe(150);
     });

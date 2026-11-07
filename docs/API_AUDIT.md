@@ -372,7 +372,9 @@ Depuis le 6 novembre 2026, la collecte lit `GET /public/clanmap/history`, docume
 - Chaque événement vaut `[seq, x, y, clanId, previousClanId, createdAt]`.
 - La collecte suit `next` et garde la taille de page par défaut : la documentation indique que seules ces pages tombent dans le cache d'OpenFront. Après une interruption, elle reprend donc à la dernière page complète.
 - `previousClanId` sert de contrôle à chaque mise à jour : si le rejeu ne retombe pas sur l'ancien propriétaire annoncé, le film n'est pas remplacé.
-- `createdAt` n'est pas encore conservé : le film suit l'ordre des événements, sans dates. Il pourrait devenir une vraie frise temporelle.
+- `createdAt` est conservé depuis le 7 novembre 2026, à la seconde près, avec chaque événement du cache. Une date impossible arrête la collecte, comme un événement hors de la carte : le dernier film reste. Le 7 novembre, 77 événements sur 1 977 088 avaient une date un peu plus ancienne que le précédent, de 7 secondes au plus : le temps du film ne recule donc jamais. L'historique commence le 29 octobre 2026 à 19 h 25, heure de Paris.
+- Le film ne reprend ces dates qu'image par image, et les journées de GAL se comptent en jours de Paris : pixels pris, pixels perdus, territoire et place à la fin du jour (`src/lib/clanmap/replay.ts` et `days.ts`). Une image se ferme aussi à chaque minuit de Paris : le film s'arrête donc sur la fin exacte d'une journée, avec les chiffres du tableau. Ces journées vérifient les totaux du film : leur somme redonne les pixels pris et perdus.
+- Limite connue : la lecture de l'historique local s'arrête à 2 Gio, soit environ 107 millions d'événements, ou 17 mois au rythme de novembre 2026.
 - La route passe depuis GitHub : premier passage le 6 novembre 2026 à 13 h 01 UTC, en un peu plus de 3 minutes, avec 1 788 073 événements et 0 écart.
 
 La route ne donne pas les troupes des clans : le site n'affiche donc plus le coût exact d'un pixel ennemi. Elle ne donne pas le terrain non plus, mais il est public : voir « Licences ».
@@ -465,7 +467,7 @@ Le dépôt ne contient ni les réserves des clans, ni leurs troupes : ces chiffr
 
 ### Données personnelles
 
-Le film ne contient que des tags, des couleurs et des troupes de clans, aucun joueur. Les noms complets des clans et le Plutonium ne sont pas conservés. Le film est toutefois fait de dessins peints par les joueurs, que le site ne filtre pas.
+Le film ne contient que des tags, des couleurs, des troupes et des dates de changement de clans, aucun joueur. Les noms complets des clans et le Plutonium ne sont pas conservés. Le film est toutefois fait de dessins peints par les joueurs, que le site ne filtre pas.
 
 ## 9. Vérifier les joueurs et lire les dons
 

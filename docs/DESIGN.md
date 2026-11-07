@@ -110,7 +110,8 @@ C'est le seul effet qui affiche des données : chaque image vient de l'historiqu
 | Halo qui respire | Le territoire de GAL, pendant la lecture |
 | Grand moment | Plan rapproché, ralenti, bandes de cinéma, éclair doux et sous-titre |
 | Classement posé sur la carte | Les 5 plus grands territoires, avec des barres et des places qui glissent. Les valeurs sont celles de l'image affichée. Il occupe l'océan au sud-ouest. |
-| Frise, courbe et repères | Position dans l'historique, pixels de GAL tout au long du film, et grands moments |
+| Frise, courbe et repères | Position dans l'historique, pixels de GAL tout au long du film, grands moments et vrais jours. Le film suit les événements, pas le temps : une journée active prend plus de place. Les dates écrites sous la frise s'espacent selon la largeur. |
+| Date posée sur la carte | Le jour et l'heure de Paris de l'image affichée, à l'heure près. Le curseur donne la même date aux lecteurs d'écran. |
 | Griser les autres clans | GAL seul en couleur, sans changer aucun chiffre |
 | Suivre GAL | La caméra accompagne son territoire. Activé par défaut sur téléphone. |
 | Survol ou pression sur la carte | Le tag du clan à cet endroit |
@@ -140,9 +141,10 @@ Sous le film, la page transforme les données publiques en objectif concret. **A
 | Plus gros donateurs | Recopiés par le clan s'il choisit de les publier. Sinon, un renvoi vers le jeu. | `content/carte-heros.json` |
 | Le plus de victoires sous le tag | Les 3 premiers | `stats.team` |
 | Peuvent peindre pour GAL | Le chef et les officiers, sans classement | Rôles de la liste des membres |
+| Grandes journées, jour après jour | Le plus fort gain et le plus fort recul d'une journée terminée, puis chaque journée en tableau. Un clic rejoue la journée et s'arrête à sa fin. Sans mouvement : directement la carte de la fin du jour. | Historique daté, jours de Paris |
 | Explorer nos territoires, fronts | Un clic cadre la carte sur une zone ou un front, et met le clan adverse en évidence | Carte complète, rejouée |
 
-Le calculateur est dans `src/scripts/conquest.ts`, et ses règles dans `src/lib/clanmap/economy.ts`. Pour garder la page courte, les explications, les chiffres détaillés et les fronts sont repliés. Tout reste dans le HTML et s'ouvre sans JavaScript.
+Le calculateur est dans `src/scripts/conquest.ts`, et ses règles dans `src/lib/clanmap/economy.ts`. Pour garder la page courte, les explications, les chiffres détaillés, le tableau jour après jour et les fronts sont repliés. Tout reste dans le HTML et s'ouvre sans JavaScript.
 
 **Le clic droit garde son menu habituel** sur les liens, les boutons, les champs, les images autres que le logo et le texte sélectionné. Maj + clic droit l'ouvre partout.
 

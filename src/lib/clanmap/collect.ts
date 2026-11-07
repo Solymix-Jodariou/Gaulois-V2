@@ -19,9 +19,17 @@ import { API_ORIGIN, ApiClient, markError, markOk, readJson, writeJson, type Dep
 import { ApiClanCard, ApiClanMapHistory, ClanMapJournal, Meta, StoredClanMapFilm, emptyMeta } from "../schemas";
 import { parisParts } from "../time";
 
-const FILM_VERSION = 3;
+const FILM_VERSION = 4;
 const SCALE = 2;
-const RECORD_BYTES = 16;
+/** Numéro, x, y, clan, ancien clan, puis la date en secondes Unix. */
+const RECORD_BYTES = 20;
+/**
+ * La carte n'existait pas avant 2020. Une date plus ancienne trahit un fichier d'un autre format :
+ * lu avec 20 octets par événement, l'ancien format donnerait pour date le numéro de l'événement suivant.
+ */
+const EARLIEST_EVENT_SECONDS = 1_577_836_800;
+/** Un petit décalage d'horloge est toléré, pas une date franchement dans le futur. */
+const FUTURE_TOLERANCE_MS = 86_400_000;
 const MIN_INTERVAL_MS = 20 * 3_600_000;
 /** Une seule exécution ne télécharge pas tout : la suite reprendra au passage suivant. */
 const MAX_PAGES_PER_RUN = 1_500;
@@ -51,6 +59,7 @@ export function parseEventLog(bytes: Uint8Array): EventLog | null {
     y: new Uint16Array(length),
     clan: new Uint32Array(length),
     previous: new Uint32Array(length),
+    at: new Uint32Array(length),
   };
   let last = 0;
   for (let i = 0; i < length; i++) {
@@ -63,19 +72,23 @@ export function parseEventLog(bytes: Uint8Array): EventLog | null {
     log.y[i] = view.getUint16(o + 6, true);
     log.clan[i] = view.getUint32(o + 8, true);
     log.previous[i] = view.getUint32(o + 12, true);
+    const at = view.getUint32(o + 16, true);
+    if (at < EARLIEST_EVENT_SECONDS) return null;
+    log.at[i] = at;
   }
   return log;
 }
 
-function encodeRecords(events: readonly (readonly [string, number, number, string, string, ...unknown[]])[]): Buffer {
+function encodeRecords(events: readonly (readonly [string, number, number, string, string, number, ...unknown[]])[]): Buffer {
   const out = Buffer.alloc(events.length * RECORD_BYTES);
-  events.forEach(([seq, x, y, clan, previous], i) => {
+  events.forEach(([seq, x, y, clan, previous, createdAt], i) => {
     const o = i * RECORD_BYTES;
     out.writeUInt32LE(Number(seq), o);
     out.writeUInt16LE(x, o + 4);
     out.writeUInt16LE(y, o + 6);
     out.writeUInt32LE(Number(clan), o + 8);
     out.writeUInt32LE(Number(previous), o + 12);
+    out.writeUInt32LE(Math.floor(createdAt / 1000), o + 16);
   });
   return out;
 }
@@ -124,7 +137,7 @@ async function resumePoint(logPath: string, deps: ClanMapDeps): Promise<number> 
   if (!existsSync(logPath)) return 0;
   const log = parseEventLog(await readFile(logPath));
   if (!log) {
-    deps.log("carte : historique local abîmé, nouveau téléchargement complet");
+    deps.log("carte : historique local abîmé ou d'un ancien format, nouveau téléchargement complet");
     await rm(logPath);
     return 0;
   }
@@ -141,9 +154,11 @@ async function downloadHistory(api: ApiClient, deps: ClanMapDeps, width: number,
     if (page >= MAX_PAGES_PER_RUN) throw new Error(`historique incomplet après ${page} pages, reprise au prochain passage`);
     const res = await api.get(`/clanmap/history?after=${after}`, ApiClanMapHistory);
     let lastSeq = after;
-    for (const [seq, x, y] of res.events) {
+    const latestDate = deps.now().getTime() + FUTURE_TOLERANCE_MS;
+    for (const [seq, x, y, , , createdAt] of res.events) {
       if (Number(seq) <= lastSeq) throw new Error(`événement ${seq} hors d'ordre`);
       if (x >= width || y >= height) throw new Error(`événement ${seq} hors de la carte`);
+      if (createdAt < EARLIEST_EVENT_SECONDS * 1000 || createdAt > latestDate) throw new Error(`événement ${seq} avec une date impossible`);
       lastSeq = Number(seq);
     }
     for (const [id, clan] of Object.entries(res.clans)) clans[id] = { tag: clan.tag, color: clan.color ?? null };
@@ -236,6 +251,7 @@ async function updateClanMap(api: ApiClient, deps: ClanMapDeps, at: string): Pro
     standings: order.map((i) => ({ ...clanAt(i), pixels: result.pixels[i]! })),
     treasury,
     frames: result.frames,
+    days: result.days,
   };
   await writeBytes(join(dir, "film.bin"), encodeFrames(result.deltas));
   await writeJson(join(dir, "film.json"), film);

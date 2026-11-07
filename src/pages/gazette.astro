@@ -5,18 +5,18 @@ import Empty from "../components/Empty.astro";
 import GazetteEditionBlock from "../components/GazetteEdition.astro";
 import PageHeader from "../components/PageHeader.astro";
 import { clan } from "../../config/clan";
-import { loadClanMapJournal, loadHistory, loadMembers, loadMeta, loadSessions } from "../lib/data";
+import { loadHistory, loadMembers, loadMeta, loadSessions, loadTerritoryReadings } from "../lib/data";
 import { fmtCount, fmtPct } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
 import { gazetteEditions, weekLabel } from "../lib/gazette";
 
 const meta = loadMeta();
 const history = loadHistory();
-const journal = loadClanMapJournal();
+const territory = loadTerritoryReadings();
 const members = loadMembers();
-const editions = gazetteEditions({ sessions: loadSessions(), history, journal, members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough });
+const editions = gazetteEditions({ sessions: loadSessions(), history, territory, members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough });
 const [latest, ...older] = editions;
-const context = { firstStanding: history[0]?.date ?? null, firstTerritory: journal[0]?.date ?? null, membersAt: members?.fetchedAt ?? null };
+const context = { firstStanding: history[0]?.date ?? null, firstTerritory: territory[0]?.date ?? null, membersAt: members?.fetchedAt ?? null };
 // La date affichée est celle des sessions. Une panne des autres sources doit se voir aussi.
 const failures = [
   { label: "du classement", state: meta.leaderboard },

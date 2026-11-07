@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -9,7 +9,9 @@ import { Meta, StoredClanMapFilm } from "../../src/lib/schemas";
 const WIDTH = 8;
 const HEIGHT = 4;
 const PAGE = 5_000;
-const RECORD_BYTES = 16;
+const RECORD_BYTES = 20;
+/** Une date de 2026, en millisecondes comme dans l'API. */
+const DATE_MS = 1_793_298_352_135;
 const MAP = { width: WIDTH, height: HEIGHT, land: WIDTH * HEIGHT };
 
 /** [numéro, x, y, clan], sans l'ancien propriétaire ni la date : `toApi` les ajoute. */
@@ -34,7 +36,7 @@ function toApi(events: Raw[]): ApiEvent[] {
     const pixel = y * WIDTH + x;
     const previous = owners.get(pixel) ?? 0;
     owners.set(pixel, clan);
-    return [String(seq), x, y, String(clan), String(previous), 1_793_298_352_135 + seq];
+    return [String(seq), x, y, String(clan), String(previous), DATE_MS + seq * 1000];
   });
 }
 
@@ -105,7 +107,11 @@ describe("collecte de la carte", () => {
     const run = await runClanMap(deps());
     expect(run).toEqual({ errors: [], updated: true });
     const f = film();
-    expect(f).toMatchObject({ version: 3, seq: 5, events: 4, land: WIDTH * HEIGHT, claimed: 3, cols: 4, rows: 2 });
+    expect(f).toMatchObject({ version: 4, seq: 5, events: 4, land: WIDTH * HEIGHT, claimed: 3, cols: 4, rows: 2 });
+    // La date de chaque image, et les journées de GAL : ici une seule, sur le même jour de Paris.
+    expect(f.frames.at(-1)?.at).toBe(Math.floor((DATE_MS + 5_000) / 1000));
+    expect(f.days).toEqual([{ date: "2026-10-29", frame: 1, pixels: 2, rank: 1, taken: 2, lost: 0 }]);
+    expect(f.galSummary).toMatchObject({ firstAt: Math.floor((DATE_MS + 2_000) / 1000), peak: { pixels: 2, at: Math.floor((DATE_MS + 4_000) / 1000) } });
     expect(f.check).toEqual({ events: 4, mismatches: 0 });
     expect(f.galSummary).toMatchObject({ pixels: 2, rank: 1, firstEvent: 2, taken: 2, lost: 0, neutralTaken: 1 });
     // ITA a un pixel en (2, 0), au contact de GAL en (1, 0).
@@ -174,7 +180,7 @@ describe("collecte de la carte", () => {
     writeFileSync(join(dir, "clanmap", "film.json"), JSON.stringify({ ...old, version: 2 }));
     now = new Date("2026-11-05T11:00:00.000Z");
     expect((await runClanMap(deps())).updated).toBe(true);
-    expect(film().version).toBe(3);
+    expect(film().version).toBe(4);
     now = new Date("2026-11-05T12:00:00.000Z");
     expect((await runClanMap(deps())).updated).toBe(false);
   });
@@ -186,13 +192,15 @@ describe("collecte de la carte", () => {
     expect(StoredClanMapFilm.parse({ ...old, version: 2 }).galSummary?.neutralBorder).toBeNull();
   });
 
-  it("ne garde aucun identifiant de joueur, ni le plutonium, ni les noms des clans, ni les dates", async () => {
+  it("ne garde aucun identifiant de joueur, ni le plutonium, ni les noms des clans, ni la date exacte de chaque événement", async () => {
     await runClanMap(deps());
     const raw = readFileSync(join(dir, "clanmap", "film.json"), "utf8");
     expect(raw).not.toContain("publicId");
     expect(raw).not.toContain("878");
     expect(raw).not.toContain("Les Gaulois");
-    expect(raw).not.toContain("179329835");
+    // Les dates ne restent qu'à la seconde, sur les images du film et le résumé de GAL.
+    expect(raw).not.toContain("createdAt");
+    expect(raw).not.toContain(String(DATE_MS + 1_000));
   });
 
   it("garde le film si la fiche du clan est indisponible, sans inventer de trésor", async () => {
@@ -315,7 +323,7 @@ describe("collecte de la carte", () => {
   });
 
   it("refuse un événement qui remonte le temps", async () => {
-    const events: ApiEvent[] = [["2", 0, 0, "9", "0", 1], ["2", 1, 0, "9", "0", 2]];
+    const events: ApiEvent[] = [["2", 0, 0, "9", "0", DATE_MS], ["2", 1, 0, "9", "0", DATE_MS + 1]];
     const run = await runClanMap(deps((url) => (isHistory(url) ? { body: { events, clans: CLANS, next: null } } : undefined)));
     expect(run.errors[0]).toContain("hors d'ordre");
   });
@@ -357,10 +365,54 @@ describe("collecte de la carte", () => {
     expect(film().events).toBe(4);
   });
 
+  it("refuse une date impossible sans l'ajouter à l'historique, et garde le dernier film", async () => {
+    await runClanMap(deps());
+    const before = readFileSync(join(dir, "clanmap", "film.json"), "utf8");
+    now = new Date("2026-11-06T10:00:00.000Z");
+    // Des secondes au lieu des millisecondes, puis une date franchement dans le futur.
+    for (const createdAt of [Math.floor(DATE_MS / 1000), Date.parse("2026-11-08T10:00:00.000Z")]) {
+      const event: ApiEvent = ["900", 0, 0, "9", "43", createdAt];
+      const run = await runClanMap(deps((url) => (isHistory(url) ? { body: { events: [event], clans: CLANS, next: null } } : undefined)));
+      expect(run.errors[0]).toContain("date impossible");
+    }
+    expect([...(parseEventLog(readFileSync(join(cache, "events.bin")))?.seq ?? [])]).not.toContain(900);
+    expect(readFileSync(join(dir, "clanmap", "film.json"), "utf8")).toBe(before);
+  });
+
+  it("n'accepte pas l'historique local sans dates, même quand sa taille tombe juste", () => {
+    // Cinq événements de 16 octets : 80 octets, soit aussi quatre enregistrements actuels.
+    const old = Buffer.alloc(80);
+    for (let i = 0; i < 5; i++) {
+      old.writeUInt32LE(i + 1, i * 16);
+      old.writeUInt16LE(i, i * 16 + 4);
+      old.writeUInt32LE(43, i * 16 + 8);
+    }
+    expect(old.length % RECORD_BYTES).toBe(0);
+    expect(parseEventLog(old)).toBeNull();
+  });
+
+  it("retélécharge tout l'historique local sans dates, puis fait le film daté", async () => {
+    const old = Buffer.alloc(80);
+    for (let i = 0; i < 5; i++) old.writeUInt32LE(i + 1, i * 16);
+    mkdirSync(cache, { recursive: true });
+    writeFileSync(join(cache, "events.bin"), old);
+    expect((await runClanMap(deps())).errors).toEqual([]);
+    expect(calls.filter((c) => c.includes("/history"))[0]).toContain("after=0");
+    expect(film().events).toBe(4);
+    expect(film().frames[0]?.at).toBeGreaterThan(0);
+  });
+
+  it("relit les dates de l'historique local", async () => {
+    await runClanMap(deps());
+    const log = parseEventLog(readFileSync(join(cache, "events.bin")));
+    expect([...(log?.at ?? [])]).toEqual(HISTORY.map(([seq]) => Math.floor((DATE_MS + seq * 1000) / 1000)));
+  });
+
   it("n'accepte pas un historique local de l'ancien format, sans l'ancien propriétaire", () => {
-    // Quatre événements de 12 octets : 48 octets, soit aussi un nombre entier d'enregistrements actuels.
-    const old = Buffer.alloc(48);
-    HISTORY.forEach(([seq, x, y, clan], i) => {
+    // Cinq événements de 12 octets : 60 octets, soit aussi un nombre entier d'enregistrements actuels.
+    const old = Buffer.alloc(60);
+    expect(old.length % RECORD_BYTES).toBe(0);
+    [...HISTORY, [6, 3, 0, 9] as Raw].forEach(([seq, x, y, clan], i) => {
       old.writeUInt32LE(seq, i * 12);
       old.writeUInt16LE(x, i * 12 + 4);
       old.writeUInt16LE(y, i * 12 + 6);
@@ -381,6 +433,8 @@ describe("collecte de la carte", () => {
     const bytes = Buffer.alloc(RECORD_BYTES * 2);
     bytes.writeUInt32LE(5, 0);
     bytes.writeUInt32LE(5, RECORD_BYTES);
+    bytes.writeUInt32LE(Math.floor(DATE_MS / 1000), 16);
+    bytes.writeUInt32LE(Math.floor(DATE_MS / 1000), RECORD_BYTES + 16);
     expect(parseEventLog(bytes)).toBeNull();
     expect(parseEventLog(new Uint8Array(0))?.length).toBe(0);
   });

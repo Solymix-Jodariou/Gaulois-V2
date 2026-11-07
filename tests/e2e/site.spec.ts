@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { clan } from "../../config/clan";
-import { loadClanMapJournal, loadGames, loadHistory, loadMemberGames, loadMembers, loadMeta, loadSessions } from "../../src/lib/data";
+import { loadTerritoryReadings, loadGames, loadHistory, loadMemberGames, loadMembers, loadMeta, loadSessions } from "../../src/lib/data";
 import { fmtCount } from "../../src/lib/format";
 import { faceOffs, mapResults } from "../../src/lib/games";
 import { editionLead, gazetteEditions, rankWords, standingDetails, territoryDetails, weekLabel } from "../../src/lib/gazette";
@@ -240,8 +240,7 @@ test("les face-à-face reprennent les chiffres calculés, sans aucun joueur", as
 
 test("la gazette donne le bilan de la dernière semaine complète, et n'invente pas ce qui manque", async ({ page }) => {
   const history = loadHistory();
-  const journal = loadClanMapJournal();
-  const editions = gazetteEditions({ sessions: loadSessions(), history, journal, members: loadMembers(), archiveStart: clan.archiveStart, completeThrough: loadMeta().sessions.completeThrough });
+  const editions = gazetteEditions({ sessions: loadSessions(), history, territory: loadTerritoryReadings(), members: loadMembers(), archiveStart: clan.archiveStart, completeThrough: loadMeta().sessions.completeThrough });
   const latest = editions[0];
   if (!latest) throw new Error("La gazette devrait avoir au moins une semaine complète.");
 

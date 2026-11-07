@@ -6,8 +6,12 @@
  * carte officielle : ce n'est pas le classement des clans, qui reste celui de l'API.
  */
 import { LAND } from "./terrain";
+import { parisParts } from "../time";
 
-/** Taille d'une image du film en événements, doublée quand le film devient trop long. */
+/**
+ * Taille d'une image du film en événements, doublée quand le film devient trop long.
+ * Une image se ferme aussi à chaque minuit de Paris : le film compte donc jusqu'à `FRAME_MAX` images, plus une par jour.
+ */
 export const FRAME_BASE = 5_000;
 export const FRAME_MAX = 480;
 export const TOP_SIZE = 5;
@@ -31,6 +35,8 @@ export interface EventLog {
   clan: Uint32Array;
   /** L'ancien propriétaire annoncé par OpenFront. Il permet de contrôler le rejeu. */
   previous: Uint32Array;
+  /** La date annoncée par OpenFront, en secondes Unix. */
+  at: Uint32Array;
 }
 
 export interface ReplayOptions {
@@ -48,13 +54,31 @@ export interface FilmFrameData {
   rank: number | null;
   top: [number, number][];
   cam: [number, number, number, number] | null;
+  /** Date du dernier événement de l'image, en secondes Unix. */
+  at: number;
+}
+
+/** Une journée de GAL sur la carte, en heure de Paris. */
+export interface GalDay {
+  /** AAAA-MM-JJ. */
+  date: string;
+  /** L'image du film, à partir de 1, qui se termine avec ce jour. */
+  frame: number;
+  /** Territoire et place à la fin de ce jour. */
+  pixels: number;
+  rank: number | null;
+  /** Pixels pris et perdus ce jour-là. Leur différence est l'évolution du territoire. */
+  taken: number;
+  lost: number;
 }
 
 export interface GalReplay {
   pixels: number;
   rank: number | null;
   firstEvent: number;
-  peak: { pixels: number; event: number };
+  /** Date du premier pixel, en secondes Unix. */
+  firstAt: number;
+  peak: { pixels: number; event: number; at: number };
   taken: number;
   lost: number;
   neutralTaken: number;
@@ -74,6 +98,8 @@ export interface ReplayResult {
   check: { events: number; mismatches: number };
   pixels: Int32Array;
   galSummary: GalReplay | null;
+  /** Les journées de GAL, depuis celle de son premier pixel. Une journée sans aucun événement sur la carte n'y figure pas. */
+  days: GalDay[];
   /** La carte complète à la fin de l'historique. */
   grid: Uint16Array;
 }
@@ -186,6 +212,20 @@ export function analyzeTerritory(grid: Uint16Array, width: number, height: numbe
   return { zones: zones.slice(0, ZONES_KEPT), zoneCount, neutralBorder: terrain ? neutralBorder : null, borders };
 }
 
+/** Le jour de Paris d'une date en secondes. Le décalage de Paris est d'un nombre entier d'heures : le résultat se garde par heure. */
+function parisDayReader(): (seconds: number) => string {
+  const days = new Map<number, string>();
+  return (seconds) => {
+    const hour = Math.floor(seconds / 3_600);
+    let day = days.get(hour);
+    if (day === undefined) {
+      day = parisParts(new Date(hour * 3_600_000)).date;
+      days.set(hour, day);
+    }
+    return day;
+  };
+}
+
 function rankedClans(pixels: Int32Array): number[] {
   const order: number[] = [];
   for (let i = 1; i < pixels.length; i++) if (pixels[i]! > 0) order.push(i);
@@ -219,7 +259,10 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
   const taken = new Map<number, number>();
   const lost = new Map<number, number>();
   let firstEvent = 0;
-  const peak = { pixels: 0, event: 0 };
+  let firstAt = 0;
+  const peak = { pixels: 0, event: 0, at: 0 };
+  // Les événements suivent leur numéro : si une date recule de quelques secondes, le temps ne recule pas pour autant.
+  let latestAt = 0;
 
   // Centre et étendue de GAL, tenus à jour à chaque case modifiée.
   let n = 0;
@@ -263,7 +306,9 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
   const deltas: number[][] = [];
   const bucket = bucketSize(log.length);
 
+  let closedEvents = 0;
   const closeFrame = (event: number) => {
+    closedEvents = event;
     const delta: number[] = [];
     for (const cell of [...touched].sort((a, b) => a - b)) {
       const v = majority(cell);
@@ -285,6 +330,7 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
       gal: gal === null ? 0 : pixels[gal]!,
       rank: position >= 0 ? position + 1 : null,
       top: order.slice(0, TOP_SIZE).map((i) => [i, pixels[i]!] as [number, number]),
+      at: latestAt,
       cam:
         n > 0
           ? [
@@ -297,9 +343,38 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     });
   };
 
+  const days: GalDay[] = [];
+  const parisDay = parisDayReader();
+  let dayDate: string | null = null;
+  let dayTaken = 0;
+  let dayLost = 0;
+  const closeDay = () => {
+    if (gal === null || firstEvent === 0 || dayDate === null) return;
+    const position = rankedClans(pixels).indexOf(gal);
+    days.push({
+      date: dayDate,
+      frame: frames.length,
+      pixels: pixels[gal]!,
+      rank: position >= 0 ? position + 1 : null,
+      taken: dayTaken,
+      lost: dayLost,
+    });
+    dayTaken = 0;
+    dayLost = 0;
+  };
+
   let mismatches = 0;
 
   for (let i = 0; i < log.length; i++) {
+    const at = Math.max(latestAt, log.at[i]!);
+    const date = parisDay(at);
+    if (date !== dayDate) {
+      // Minuit à Paris : le film peut ainsi s'arrêter sur la fin exacte de ce jour, avec les chiffres de ce jour.
+      if (i > closedEvents) closeFrame(i);
+      closeDay();
+      dayDate = date;
+    }
+    latestAt = at;
     const x = log.x[i]!;
     const y = log.y[i]!;
     const v = owners[i]!;
@@ -311,14 +386,20 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
       if (v) pixels[v]!++;
       grid[p] = v;
       if (gal !== null && v === gal) {
-        if (firstEvent === 0) firstEvent = i + 1;
+        if (firstEvent === 0) {
+          firstEvent = i + 1;
+          firstAt = latestAt;
+        }
         taken.set(prev, (taken.get(prev) ?? 0) + 1);
+        dayTaken++;
         if (pixels[gal]! > peak.pixels) {
           peak.pixels = pixels[gal]!;
           peak.event = i + 1;
+          peak.at = latestAt;
         }
       } else if (gal !== null && prev === gal) {
         lost.set(v, (lost.get(v) ?? 0) + 1);
+        dayLost++;
       }
       const cx = Math.floor(x / scale);
       const cy = Math.floor(y / scale);
@@ -326,6 +407,7 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     }
     if ((i + 1) % bucket === 0 || i === log.length - 1) closeFrame(i + 1);
   }
+  closeDay();
 
   let galSummary: GalReplay | null = null;
   if (gal !== null && firstEvent > 0) {
@@ -335,6 +417,7 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
       pixels: pixels[gal]!,
       rank: position >= 0 ? position + 1 : null,
       firstEvent,
+      firstAt,
       peak,
       taken: sum(taken),
       lost: sum(lost),
@@ -347,5 +430,5 @@ export function replayHistory(log: EventLog, options: ReplayOptions): ReplayResu
     };
   }
 
-  return { clanIds, gal, frames, deltas, bucket, cols, rows, check: { events: log.length, mismatches }, pixels, galSummary, grid };
+  return { clanIds, gal, frames, deltas, bucket, cols, rows, check: { events: log.length, mismatches }, pixels, galSummary, days, grid };
 }

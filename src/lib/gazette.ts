@@ -4,7 +4,8 @@
  */
 import { fmtCount, fmtDate, fmtDay, fmtInt, fmtPct, fmtPoints, fmtRank, fmtScore } from "./format";
 import { clanRecords, type ClanRecords } from "./results";
-import type { ClanMapJournal, HistorySnapshot, StoredMembers, StoredSession } from "./schemas";
+import type { TerritoryReading } from "./clanmap/days";
+import type { HistorySnapshot, StoredMembers, StoredSession } from "./schemas";
 import { winRate } from "./stats";
 import { addDays, mondayOf, parisParts } from "./time";
 
@@ -39,7 +40,7 @@ export interface GazetteEdition {
   /** `null` : pas de relevé du classement cette semaine-là. */
   standing: Evolution<HistorySnapshot> | null;
   /** `null` : pas de relevé de la carte des clans cette semaine-là. */
-  territory: Evolution<ClanMapJournal[number]> | null;
+  territory: Evolution<TerritoryReading> | null;
   /** `null` : pas de liste de membres, liste antérieure à la fin de la semaine, ou semaine antérieure à la première arrivée connue. */
   arrivals: WeekArrivals | null;
 }
@@ -47,7 +48,8 @@ export interface GazetteEdition {
 export interface GazetteSources {
   sessions: readonly StoredSession[];
   history: readonly HistorySnapshot[];
-  journal: ClanMapJournal;
+  /** Les relevés du territoire : voir `territoryReadings`. */
+  territory: readonly TerritoryReading[];
   members: StoredMembers | null;
   archiveStart: string;
   /** Dernier jour UTC définitif : le dimanche de Paris se termine avant la fin du dimanche UTC. */
@@ -65,7 +67,7 @@ function evolution<T extends { date: string }>(rows: readonly T[], from: string,
 const byDate = <T extends { date: string }>(rows: readonly T[]) => [...rows].sort((a, b) => a.date.localeCompare(b.date));
 
 /** Une édition par semaine complète couverte par l'archive, de la plus récente à la plus ancienne. */
-export function gazetteEditions({ sessions, history, journal, members, archiveStart, completeThrough }: GazetteSources): GazetteEdition[] {
+export function gazetteEditions({ sessions, history, territory, members, archiveStart, completeThrough }: GazetteSources): GazetteEdition[] {
   if (!completeThrough) return [];
   const startMonday = mondayOf(archiveStart);
   const first = startMonday === archiveStart ? archiveStart : addDays(startMonday, 7);
@@ -86,7 +88,7 @@ export function gazetteEditions({ sessions, history, journal, members, archiveSt
   };
 
   const snapshots = byDate(history);
-  const readings = byDate(journal);
+  const readings = byDate(territory);
   const joined = [...(members?.members ?? [])].map((m) => ({ date: parisParts(m.joinedAt).date, at: m.joinedAt, username: m.username })).sort((a, b) => a.at.localeCompare(b.at));
   const firstJoin = joined[0]?.date ?? null;
   const listDate = members ? parisParts(members.fetchedAt).date : null;
@@ -141,7 +143,7 @@ export function standingDetails({ start, end }: Evolution<HistorySnapshot>): str
 }
 
 /** Les lignes du panneau de la carte des clans. */
-export function territoryDetails({ start, end }: Evolution<ClanMapJournal[number]>): string[] {
+export function territoryDetails({ start, end }: Evolution<TerritoryReading>): string[] {
   const now = end.rank === null ? `pixels le ${endingOn(end.date)}` : `pixels le ${fmtDay(end.date)}, ${fmtRank(end.rank)} sur la carte.`;
   if (!start) return [now];
   const diff = end.pixels - start.pixels;

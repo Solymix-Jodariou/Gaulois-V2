@@ -3,12 +3,15 @@ import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
 import Empty from "../components/Empty.astro";
 import MyPlace from "../components/MyPlace.tsx";
+import TerritoryChart from "../components/TerritoryChart.tsx";
 import { clan } from "../../config/clan";
 import { clanRgb } from "../lib/clanmap/codec";
 import { RULES_CHECKED_ON, TROOPS_PER_CAP, NEUTRAL_PIXEL_TROOPS, ENEMY_PIXEL_BASE_TROOPS, capsToTroops, neutralPixelsFor, objectiveFor } from "../lib/clanmap/economy";
+import { changeSinceLastDay, dayHighlights, dayRows, parisDayOf, territorySeries, type DayRow } from "../lib/clanmap/days";
 import { findMoments } from "../lib/clanmap/moments";
 import { loadClanMapFilm, loadClanMapJournal, loadMapHeroes, loadMembers, loadMeta } from "../lib/data";
-import { fmtDate, fmtDay, fmtDec1, fmtInt } from "../lib/format";
+import { fmtDate, fmtDay, fmtDec1, fmtEpochDay, fmtEpochTime, fmtInt, fmtRank } from "../lib/format";
+import { endingOn } from "../lib/gazette";
 import { MAX_AGE_HOURS } from "../lib/freshness";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -26,6 +29,18 @@ const standings = film?.standings ?? [];
 const lead = standings[0]?.pixels ?? 1;
 const galLine = gal ? (gal.rank === null ? `[${clan.tag}] n'a plus de pixel sur la carte.` : `GAL : ${ordinal(gal.rank)} avec ${fmtInt(gal.pixels)} pixels.`) : "GAL n'est pas sur la carte.";
 const moments = film ? findMoments(film.frames) : [];
+
+// Les vraies dates : absentes d'un film d'avant leur collecte, qui se refait au passage suivant.
+const lastAt = film?.frames.at(-1)?.at;
+const days = film ? dayRows(film.days ?? [], film.frames, film.fetchedAt) : [];
+const recentDays = [...days].reverse();
+const { gain: bestDay, loss: worstDay } = dayHighlights(days);
+const dayLabel = (day: DayRow) => `Le ${fmtDay(day.date)} : ${signed(day.net)} pixels`;
+const dayReplay = (day: DayRow) => ({ "data-film-day": day.start, "data-film-day-end": day.frame, "data-film-day-label": dayLabel(day) });
+const dayCards = [
+  { row: bestDay, title: "Le jour où GAL a le plus progressé" },
+  { row: worstDay, title: "Le jour où GAL a le plus reculé" },
+].flatMap(({ row, title }) => (row ? [{ row, title }] : []));
 
 // Objectif et réserves : uniquement des chiffres collectés, et un calcul documenté.
 const objective = objectiveFor(standings, clan.tag);
@@ -55,6 +70,14 @@ const winLead = topWinners[0]?.team?.wins ?? 1;
 const journal = loadClanMapJournal();
 const today = journal.at(-1);
 const previousDay = journal.at(-2);
+// Depuis la dernière journée terminée, comme le tableau jour après jour. Le journal ne sert qu'aux films sans dates.
+const sinceDay = gal ? changeSinceLastDay(days, gal.pixels) : null;
+const sinceLine =
+  sinceDay
+    ? `${signed(sinceDay.change)} pixels depuis la fin du ${fmtDay(sinceDay.date).replace(/\.$/, "")}.`
+    : today && previousDay
+      ? `${signed(today.pixels - previousDay.pixels)} pixels depuis le ${fmtDay(previousDay.date).replace(/\.$/, "")}.`
+      : null;
 ---
 
 <Base title="Carte" description="Le territoire du clan GAL sur la carte officielle des clans d'OpenFront, rejoué du premier pixel au dernier. Objectif du moment et votre place dans le clan.">
@@ -88,7 +111,7 @@ const previousDay = journal.at(-2);
                 alt={`La carte officielle des clans à la fin de l'historique. ${galLine}`}
               />
               <canvas data-film-canvas hidden role="img" aria-label="Carte animée des territoires de clans. Les mêmes chiffres sont donnés en texte à côté et sous la carte."></canvas>
-              <p class="film-hud tnum" data-film-ready hidden aria-hidden="true">Événement <span data-film-event></span></p>
+              <p class="film-hud tnum" data-film-ready hidden aria-hidden="true"><strong class="film-hud-date" data-film-date data-testid="film-date" hidden></strong>Événement <span data-film-event></span></p>
               <button type="button" class="chip film-world" data-film-world hidden>Vue d'ensemble</button>
               <p class="film-caption" data-film-caption hidden aria-hidden="true"></p>
               <div class="film-tip" data-film-tip hidden aria-hidden="true"></div>
@@ -123,6 +146,7 @@ const previousDay = journal.at(-2);
                   <svg data-film-curve preserveAspectRatio="none" aria-hidden="true" style={{ "--gal": rgb(film.gal === null ? null : (film.clans[film.gal]?.color ?? null)) }}><path></path></svg>
                   <span class="film-ticks" data-film-ticks aria-hidden="true"></span>
                   <input type="range" min="0" value="0" step="1" data-film-pos data-testid="film-pos" aria-label="Position dans le film" />
+                  <span class="film-dates tnum" data-film-dates data-testid="film-dates" aria-hidden="true"></span>
                 </div>
                 <div class="film-opts" role="group" aria-label="Vitesse de lecture">
                   <button type="button" class="chip" data-film-speed="1" aria-pressed="true">× 1</button>
@@ -152,10 +176,30 @@ const previousDay = journal.at(-2);
                   <ol class="film-moments mt-2">
                     {moments.map((m) => (
                       <li>
-                        <button type="button" class="chip film-moment" data-film-moment={m.frame}>{m.title}</button>
+                        <button type="button" class="chip film-moment" data-film-moment={m.frame}>{m.at !== null && <span class="font-normal">{fmtEpochDay(m.at)} · </span>}{m.title}</button>
                       </li>
                     ))}
                   </ol>
+                </div>
+              )
+            }
+            {
+              dayCards.length > 0 && (
+                <div data-testid="map-days">
+                  <h2 class="text-base">Les grandes journées de GAL</h2>
+                  <div class="mt-2 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {dayCards.map(({ row, title }) => (
+                      <div class="card p-5" data-testid="map-day">
+                        <p class="text-sm font-semibold text-muted">{title}</p>
+                        <p class="tnum mt-2 font-display text-3xl font-extrabold">{signed(row.net)} pixels</p>
+                        <p class="tnum mt-1 text-sm text-muted">Le {fmtDay(row.date)} : {fmtInt(row.taken)} pris, {fmtInt(row.lost)} perdus.</p>
+                        <div class="mt-4" data-film-ready hidden>
+                          <button type="button" class="btn btn-ghost !min-h-10 !py-1.5 !text-sm" {...dayReplay(row)} aria-label={`Revoir cette journée, le ${fmtDay(row.date)}`}>Revoir cette journée</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p class="mt-2 text-sm text-muted">Pixels pris moins pixels perdus, en heure de Paris, sur les journées terminées.</p>
                 </div>
               )
             }
@@ -396,8 +440,8 @@ const previousDay = journal.at(-2);
                   <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div class="card p-5" data-testid="film-fact">
                       <p class="text-sm font-semibold text-muted">Premier pixel</p>
-                      <p class="tnum mt-2 font-display text-3xl font-extrabold">Événement n° {fmtInt(gal.firstEvent)}</p>
-                      <p class="mt-1 text-sm text-muted">Sur {fmtInt(film.events)} changements de main au total.</p>
+                      <p class="tnum mt-2 font-display text-3xl font-extrabold">{gal.firstAt === undefined ? `Événement n° ${fmtInt(gal.firstEvent)}` : fmtDate(new Date(gal.firstAt * 1000).toISOString())}</p>
+                      <p class="mt-1 text-sm text-muted">{gal.firstAt !== undefined && `Événement n° ${fmtInt(gal.firstEvent)}, sur `}{gal.firstAt === undefined && "Sur "}{fmtInt(film.events)} changements de main au total.</p>
                       <button type="button" class="btn btn-ghost mt-4 !min-h-10 !py-1.5 !text-sm" data-film-jump data-film-ready hidden>Revoir ce moment</button>
                     </div>
                     <div class="card p-5" data-testid="film-fact">
@@ -405,11 +449,11 @@ const previousDay = journal.at(-2);
                       <p class="tnum mt-2 font-display text-3xl font-extrabold">{fmtInt(gal.pixels)} pixels</p>
                       <p class="mt-1 text-sm text-muted">
                         {gal.rank === null ? "Plus aucun pixel sur la carte." : `${ordinal(gal.rank)} sur la carte.`}
-                        {gal.peak.pixels === gal.pixels ? " C'est aussi son plus grand territoire." : ` Son record : ${fmtInt(gal.peak.pixels)} pixels.`}
+                        {gal.peak.pixels === gal.pixels ? " C'est aussi son plus grand territoire." : ` Son record : ${fmtInt(gal.peak.pixels)} pixels${gal.peak.at === undefined ? "." : `, le ${endingOn(parisDayOf(gal.peak.at))}`}`}
                       </p>
                       {
-                        today && previousDay ? (
-                          <p class="tnum mt-1 text-sm font-semibold" data-testid="map-journal">{signed(today.pixels - previousDay.pixels)} pixels depuis le {fmtDay(previousDay.date).replace(/\.$/, "")}.</p>
+                        sinceLine ? (
+                          <p class="tnum mt-1 text-sm font-semibold" data-testid="map-journal">{sinceLine}</p>
                         ) : (
                           <p class="mt-1 text-sm text-muted" data-testid="map-journal">L'évolution jour par jour s'affichera ici à partir du prochain relevé.</p>
                         )
@@ -421,6 +465,48 @@ const previousDay = journal.at(-2);
                       <p class="mt-1 text-sm text-muted">Dont {fmtInt(gal.neutralTaken)} pixels pris sur des terres neutres.</p>
                     </div>
                   </div>
+                </details>
+              )
+            }
+
+            {
+              days.length > 0 && (
+                <details class="fold" data-testid="fold-days">
+                  <summary><h2 class="text-xl">Jour après jour</h2></summary>
+                  <div class="mt-4">
+                    <TerritoryChart client:visible points={territorySeries(days)} />
+                  </div>
+                  <div class="card mt-4 overflow-x-auto">
+                    <table class="data-table film-fronts tnum w-full" data-testid="film-days">
+                      <caption class="p-3 text-left text-sm text-muted">Les journées de GAL sur la carte depuis son premier pixel, la plus récente d'abord, en heure de Paris. Territoire et place à la fin de la journée.</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Jour</th>
+                          <th scope="col" class="num hidden sm:table-cell">Pris</th>
+                          <th scope="col" class="num hidden sm:table-cell">Perdus</th>
+                          <th scope="col" class="num">Solde</th>
+                          <th scope="col" class="num">Territoire</th>
+                          <th scope="col" class="num">Place</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {recentDays.map((d) => (
+                          <tr>
+                            <td class="font-semibold">
+                              <button type="button" class="film-front-link" {...dayReplay(d)} aria-label={`Revoir la journée du ${fmtDay(d.date)} sur la carte`}>{fmtDay(d.date)}</button>
+                              {!d.complete && lastAt !== undefined && <span class="block text-xs font-normal text-muted" data-testid="film-day-partial">relevée jusqu'à {fmtEpochTime(lastAt)}</span>}
+                            </td>
+                            <td class="num hidden sm:table-cell">{fmtInt(d.taken)}</td>
+                            <td class="num hidden sm:table-cell">{fmtInt(d.lost)}</td>
+                            <td class="num font-semibold">{signed(d.net)}</td>
+                            <td class="num">{fmtInt(d.pixels)}</td>
+                            <td class="num">{d.rank === null ? "—" : fmtRank(d.rank)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p class="mt-2 text-sm text-muted" data-film-ready hidden>Cliquez sur un jour pour le rejouer sur la carte.</p>
                 </details>
               )
             }
@@ -481,7 +567,13 @@ const previousDay = journal.at(-2);
               <summary><h2 class="text-xl">Comment lire cette carte</h2></summary>
               <ul class="mt-4 max-w-prose list-disc space-y-3 pl-5 text-muted">
                 <li><strong class="text-white">Ce n'est pas le classement des clans.</strong> La carte compte des pixels peints, pas des victoires. L'ordre des clans suit celui de la carte officielle. Le classement du clan reste sur la page <a href={`${base}/classement`}>Classement</a>.</li>
-                <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps.</li>
+                {
+                  lastAt === undefined ? (
+                    <li><strong class="text-white">Pas de dates dans le film.</strong> La frise suit l'ordre réel des changements, pas le temps.</li>
+                  ) : (
+                    <li><strong class="text-white">Des dates, mais pas une horloge.</strong> Chaque image porte la date de son dernier changement, donnée par OpenFront et écrite en heure de Paris. Le film suit le rythme des changements : une journée très active prend plus de place sur la frise qu'une journée calme.</li>
+                  )
+                }
                 <li><strong class="text-white">Une mise à jour par jour.</strong> Ce ne sont pas des données en temps réel. La carte vient de l'historique public documenté par OpenFront, lu par la collecte du site et jamais par votre navigateur. Les réserves du clan viennent de sa fiche, une route non documentée : quand elle ne répond pas à la collecte, la page écrit « Pas de données ».</li>
                 <li><strong class="text-white">Vérifié à chaque mise à jour.</strong> Chaque événement officiel annonce l'ancien propriétaire du pixel. Rejoué depuis le premier pixel, l'historique retombe dessus, avec {fmtInt(film.check.mismatches)} écart sur {fmtInt(film.check.events)} événements. En cas d'écart, le film n'est pas mis à jour.</li>
                 <li><strong class="text-white">Ce que l'historique ne donne pas.</strong> Il ne dit pas les troupes des autres clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi.</li>

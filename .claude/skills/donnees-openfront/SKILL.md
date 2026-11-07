@@ -30,7 +30,7 @@ Audit complet, routes et réponses observées : `docs/API_AUDIT.md`. Les visiteu
 - Toute réponse passe par un schéma Zod de `src/lib/schemas.ts`. Réponse invalide ou API en panne : les derniers fichiers valides restent, l'erreur va dans `data/meta.json`, le site l'affiche. Un champ nouveau = schéma + test unitaire + affichage daté.
 - Les calculs (rang, score, taux, créneaux, jeu en groupe, ma place, territoire, coûts) sont listés dans `README.md` et vivent dans `src/lib/` avec un test chacun. Les constantes de jeu (`src/lib/calculator.ts`, `src/lib/clanmap/economy.ts`) sont figées à un commit d'OpenFront : si le jeu change, les mettre à jour à la main et noter le commit.
 - Stats des membres : `stats.team` uniquement. Le `publicId` d'un anonyme n'est jamais publié ; le serveur de connexion n'en garde que l'empreinte.
-- L'historique brut de la carte (`.cache/clanmap/`, environ 30 Mo) reste hors de Git, dans le cache de l'Action. Perdu, il se retélécharge (plus de 350 appels).
+- L'historique brut de la carte (`.cache/clanmap/`, environ 40 Mo, avec la date de chaque événement) reste hors de Git, dans le cache de l'Action. Perdu, il se retélécharge (plus de 350 appels).
 
 ## Dons et conditions d'utilisation
 

@@ -7,8 +7,12 @@ const WIDTH = 8;
 const HEIGHT = 4;
 const options = { width: WIDTH, height: HEIGHT, scale: 2, galId: 43 };
 
-/** Événements écrits [x, y, clan], numérotés à partir de 1, avec leur vrai ancien propriétaire. */
-function logOf(events: [number, number, number][], firstSeq = 1): EventLog {
+/** Une date en secondes Unix. */
+const seconds = (iso: string) => Date.parse(iso) / 1000;
+const START = seconds("2026-11-02T12:00:00Z");
+
+/** Événements écrits [x, y, clan], numérotés à partir de 1, avec leur vrai ancien propriétaire. Sans dates données : une seconde entre chacun. */
+function logOf(events: [number, number, number][], firstSeq = 1, dates?: number[]): EventLog {
   const owners = new Map<number, number>();
   const previous = events.map(([x, y, clan]) => {
     const pixel = y * WIDTH + x;
@@ -23,6 +27,7 @@ function logOf(events: [number, number, number][], firstSeq = 1): EventLog {
     y: Uint16Array.from(events.map((e) => e[1])),
     clan: Uint32Array.from(events.map((e) => e[2])),
     previous: Uint32Array.from(previous),
+    at: Uint32Array.from(events.map((_, i) => dates?.[i] ?? START + i)),
   };
 }
 
@@ -76,6 +81,162 @@ describe("découpage du film", () => {
     const longer = replayHistory(logOf(events), options);
     expect(longer.deltas[0]).toEqual(shorter.deltas[0]);
     expect(longer.frames[0]).toEqual(shorter.frames[0]);
+  });
+});
+
+describe("dates du film", () => {
+  it("donne à chaque image la date de son dernier événement", () => {
+    const events: [number, number, number][] = [];
+    for (let i = 0; i < FRAME_BASE + 3; i++) events.push([i % WIDTH, (i >> 3) % HEIGHT, 9]);
+    const { frames } = replayHistory(logOf(events), options);
+    expect(frames.map((f) => f.at)).toEqual([START + FRAME_BASE - 1, START + FRAME_BASE + 2]);
+  });
+
+  it("ne fait pas reculer le temps si une date recule de quelques secondes", () => {
+    const { frames } = replayHistory(logOf([[0, 0, 9], [1, 0, 9]], 1, [START + 10, START + 3]), options);
+    expect(frames[0]?.at).toBe(START + 10);
+  });
+
+  it("date le premier pixel et le record de GAL", () => {
+    const dates = [START, START + 100, START + 200, START + 300];
+    const { galSummary } = replayHistory(logOf([[0, 0, 9], [1, 0, 43], [2, 0, 43], [1, 0, 9]], 1, dates), options);
+    expect(galSummary).toMatchObject({ firstEvent: 2, firstAt: START + 100, peak: { pixels: 2, event: 3, at: START + 200 } });
+  });
+});
+
+describe("journées de GAL", () => {
+  it("coupe les journées à minuit à Paris, en hiver comme en été", () => {
+    const winter = replayHistory(
+      logOf([[0, 0, 43], [1, 0, 43]], 1, [seconds("2026-11-03T22:59:59Z"), seconds("2026-11-03T23:00:00Z")]),
+      options,
+    );
+    expect(winter.days.map((d) => d.date)).toEqual(["2026-11-03", "2026-11-04"]);
+    const summer = replayHistory(
+      logOf([[0, 0, 43], [1, 0, 43]], 1, [seconds("2026-07-14T21:59:59Z"), seconds("2026-07-14T22:00:00Z")]),
+      options,
+    );
+    expect(summer.days.map((d) => d.date)).toEqual(["2026-07-14", "2026-07-15"]);
+  });
+
+  it("garde le jour où l'heure change, sans le couper en deux", () => {
+    // Le 25 octobre 2026, Paris repasse à l'heure d'hiver : cette journée compte 25 heures.
+    const { days } = replayHistory(
+      logOf([[0, 0, 43], [1, 0, 43], [2, 0, 43]], 1, [seconds("2026-10-24T22:00:00Z"), seconds("2026-10-25T22:59:59Z"), seconds("2026-10-25T23:00:00Z")]),
+      options,
+    );
+    expect(days.map((d) => [d.date, d.taken])).toEqual([["2026-10-25", 2], ["2026-10-26", 1]]);
+  });
+
+  it("compte chaque jour les pixels pris, perdus, le territoire et la place à la fin du jour", () => {
+    const day1 = seconds("2026-11-03T12:00:00Z");
+    const day2 = seconds("2026-11-04T12:00:00Z");
+    const { days } = replayHistory(
+      logOf(
+        [
+          [0, 0, 9],
+          [1, 0, 9],
+          [2, 0, 43], // GAL arrive, 2e derrière le clan 9.
+          [3, 0, 43],
+          [4, 0, 43], // GAL passe devant.
+          [2, 0, 9], // Le lendemain, le clan 9 lui reprend un pixel.
+          [3, 0, 9],
+          [5, 0, 43],
+        ],
+        1,
+        [day1, day1, day1, day1, day1, day2, day2, day2],
+      ),
+      options,
+    );
+    expect(days).toEqual([
+      { date: "2026-11-03", frame: 1, pixels: 3, rank: 1, taken: 3, lost: 0 },
+      { date: "2026-11-04", frame: 2, pixels: 2, rank: 2, taken: 1, lost: 2 },
+    ]);
+  });
+
+  it("commence au premier pixel de GAL, et garde les jours où il ne se passe rien pour lui", () => {
+    const day = (n: number) => seconds(`2026-11-0${n}T12:00:00Z`);
+    const { days } = replayHistory(logOf([[0, 0, 9], [1, 0, 43], [2, 0, 9]], 1, [day(1), day(2), day(3)]), options);
+    expect(days).toEqual([
+      { date: "2026-11-02", frame: 2, pixels: 1, rank: 2, taken: 1, lost: 0 },
+      { date: "2026-11-03", frame: 3, pixels: 1, rank: 2, taken: 0, lost: 0 },
+    ]);
+  });
+
+  it("ne compte pas un pixel repeint par son propre propriétaire", () => {
+    const { days } = replayHistory(logOf([[0, 0, 43], [0, 0, 43]]), options);
+    // Le deuxième événement annonce un ancien propriétaire qui reste GAL : rien ne change.
+    expect(days[0]).toMatchObject({ taken: 1, lost: 0, pixels: 1 });
+  });
+
+  it("retombe sur les totaux de GAL, quel que soit le découpage", () => {
+    const events: [number, number, number][] = [];
+    const dates: number[] = [];
+    for (let i = 0; i < 700; i++) {
+      events.push([i % WIDTH, (i * 3) % HEIGHT, i % 3 === 0 ? 43 : i % 3 === 1 ? 9 : 7]);
+      dates.push(START + i * 1_000);
+    }
+    const { days, galSummary } = replayHistory(logOf(events, 1, dates), options);
+    expect(days.length).toBeGreaterThan(5);
+    expect(days.reduce((n, d) => n + d.taken, 0)).toBe(galSummary?.taken);
+    expect(days.reduce((n, d) => n + d.lost, 0)).toBe(galSummary?.lost);
+    expect(days.at(-1)?.pixels).toBe(galSummary?.pixels);
+    let pixels = 0;
+    for (const day of days) {
+      pixels += day.taken - day.lost;
+      expect(day.pixels).toBe(pixels);
+    }
+  });
+
+  it("n'ajoute pas d'image quand minuit tombe entre deux images", () => {
+    const events: [number, number, number][] = [];
+    const dates: number[] = [];
+    for (let i = 0; i < FRAME_BASE * 2 + 10; i++) {
+      events.push([i % WIDTH, (i >> 3) % HEIGHT, i % 2 === 0 ? 43 : 9]);
+      // Le deuxième jour commence au tout début de la deuxième image.
+      dates.push(i < FRAME_BASE ? seconds("2026-11-03T12:00:00Z") : seconds("2026-11-04T12:00:00Z"));
+    }
+    const { days, frames } = replayHistory(logOf(events, 1, dates), options);
+    expect(frames).toHaveLength(3);
+    expect(days.map((d) => d.frame)).toEqual([1, 3]);
+  });
+
+  it("ferme une image à minuit : le film s'arrête sur la fin exacte du jour, avec les chiffres du tableau", () => {
+    const events: [number, number, number][] = [];
+    const dates: number[] = [];
+    for (let i = 0; i < FRAME_BASE + 10; i++) {
+      events.push([i % WIDTH, (i >> 3) % HEIGHT, i % 3 === 0 ? 43 : i % 3 === 1 ? 9 : 7]);
+      dates.push(i < 100 ? seconds("2026-11-03T22:59:00Z") : seconds("2026-11-03T23:01:00Z"));
+    }
+    const { days, frames } = replayHistory(logOf(events, 1, dates), options);
+    // 100 événements le premier jour, puis les images reprennent leur découpage habituel.
+    expect(frames.map((f) => f.ev)).toEqual([100, FRAME_BASE, FRAME_BASE + 10]);
+    expect(days.map((d) => d.frame)).toEqual([1, 3]);
+    expect(frames.map((f) => f.at)).toEqual([dates[0], dates[100], dates[100]]);
+    for (const day of days) {
+      expect(frames[day.frame - 1]).toMatchObject({ gal: day.pixels, rank: day.rank });
+    }
+  });
+
+  it("ne réécrit pas les images déjà calculées quand l'historique grandit, minuits compris", () => {
+    const events: [number, number, number][] = [];
+    const dates: number[] = [];
+    for (let i = 0; i < FRAME_BASE * 2 + 40; i++) {
+      events.push([i % WIDTH, (i >> 3) % HEIGHT, i % 7 === 0 ? 43 : 9]);
+      dates.push(START + i * 30);
+    }
+    const cut = FRAME_BASE + 20;
+    const shorter = replayHistory(logOf(events.slice(0, cut), 1, dates.slice(0, cut)), options);
+    const longer = replayHistory(logOf(events, 1, dates), options);
+    expect(shorter.days.length).toBeGreaterThan(1);
+    // Seule la dernière image, encore incomplète, peut changer.
+    const kept = shorter.frames.length - 1;
+    expect(longer.frames.slice(0, kept)).toEqual(shorter.frames.slice(0, kept));
+    expect(longer.deltas.slice(0, kept)).toEqual(shorter.deltas.slice(0, kept));
+  });
+
+  it("n'a aucune journée si GAL n'est pas sur la carte", () => {
+    expect(replayHistory(logOf([[0, 0, 9]]), options).days).toEqual([]);
+    expect(replayHistory(logOf([[0, 0, 43]]), { ...options, galId: null }).days).toEqual([]);
   });
 });
 
@@ -205,6 +366,7 @@ describe("contrôle avec l'ancien propriétaire annoncé", () => {
       y: without(log.y, 2) as Uint16Array,
       clan: without(log.clan, 2) as Uint32Array,
       previous: without(log.previous, 2) as Uint32Array,
+      at: without(log.at, 2) as Uint32Array,
     };
     expect(replayHistory(holed, options).check.mismatches).toBe(1);
   });

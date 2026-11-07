@@ -6,7 +6,7 @@ import NewsBoard from "../components/NewsBoard";
 import { AUTH_ENABLED } from "../lib/compte/api";
 import { clan } from "../../config/clan";
 import { brandFile } from "../lib/brand";
-import { loadAnnouncements, loadClanMapFilm, loadClanMapJournal, loadEvents, loadHistory, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
+import { loadAnnouncements, loadClanMapFilm, loadTerritoryReadings, loadEvents, loadHistory, loadLeaderboard, loadMembers, loadMeta, loadSessions } from "../lib/data";
 import { fmtDate, fmtDateTime, fmtDay, fmtDec1, fmtInt, fmtPct, fmtScore } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
 import { editionLead, gazetteEditions, weekLabel } from "../lib/gazette";
@@ -46,7 +46,7 @@ const command = (members?.members ?? []).filter((m) => m.role !== "member");
 const anonymous = (members?.members ?? []).filter((m) => !m.username).length;
 const mapFilm = loadClanMapFilm();
 const onMap = mapFilm?.galSummary ?? null;
-const gazette = gazetteEditions({ sessions, history: loadHistory(), journal: loadClanMapJournal(), members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough })[0] ?? null;
+const gazette = gazetteEditions({ sessions, history: loadHistory(), territory: loadTerritoryReadings(), members, archiveStart: clan.archiveStart, completeThrough: meta.sessions.completeThrough })[0] ?? null;
 ---
 
 <Base>
