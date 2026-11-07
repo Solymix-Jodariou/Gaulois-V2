@@ -105,6 +105,8 @@ Tout est écrit dans `data/` :
 | `sessions/AAAA-MM.json` | Sessions du clan, sans doublon | Chaque heure |
 | `members.json` | Membres et leurs stats d'équipe | Une fois par jour |
 | `history/AAAA-MM-JJ.json` | Instantané quotidien : rang, score, totaux | Chaque heure, dernière valeur du jour conservée |
+| `rivals/AAAA-MM-JJ.json` | Tags et scores de tout le classement du jour, dans l'ordre officiel | Chaque heure, dernière valeur du jour conservée |
+| `ranked.json` | Par mode classé : places lues, membres avec pseudo sur ces places, et combien dans les 10 premières. Aucun nom ni chiffre individuel | Chaque heure |
 | `clanmap/film.bin`, `clanmap/film.json` | Film de la carte des clans : changements de cases et chiffres de chaque image | Une fois par jour |
 | `clanmap/terrain.webp` | Fond de carte, tiré de Giant World Map d'OpenFront (CC BY-SA 4.0) | Une seule fois |
 | `clanmap/journal.json` | Un relevé par jour : pixels, rang, capsules et troupes de GAL | Une fois par jour |
@@ -133,6 +135,10 @@ Tous les calculs sont dans `src/lib/` et testés :
 - **Stats d'un membre :** champ `stats.team` de l'API.
 - **Meilleurs créneaux :** les plus de parties sur 90 jours, puis les plus de joueurs du clan par partie. Un créneau sous 5 parties est écarté.
 - **Jeu en groupe :** `victoires ÷ parties` selon `clanPlayerCount`, sur toutes les sessions archivées. Une taille sous 30 parties est écartée. Le bloc disparaît si la plus grande taille retenue ne gagne pas plus que la plus petite.
+- **Course avec les voisins :** score de GAL moins celui du clan voisin, sur chaque relevé de `data/rivals/`. Voisins : le clan au-dessus et les deux en dessous dans le dernier classement. Un clan absent d'un relevé laisse un trou, pas un zéro.
+- **Joueurs au classé :** `/public/leaderboard/ranked`, pages 1 et 2, croisé avec les membres avec pseudo par `publicId`. Le site n'écrit que des décomptes par mode : les stats publiées d'un membre restent `stats.team`, or le classé peut venir de parties jouées hors du tag. Ces décomptes restent à part des stats de clan.
+- **Résultats par format :** `victoires ÷ parties` selon `playerTeams`, sur 90 jours et depuis le début de l'archive. Un format sous 30 parties sur 90 jours est écarté. Le repère de hasard est la moyenne de `1 ÷ numTeams` sur ces parties. Les parties jouées seul contre des robots y restent : 11 sur plus de 13 000 au 7 novembre 2026.
+- **Records du clan :** plus longue série de victoires (par heure de début), journée de Paris avec le plus de victoires, plus de joueurs du clan et plus d'équipes dans une partie gagnée. Une partie où `totalPlayerCount` vaut moins de 2 est écartée : seul contre des robots, elle fausserait les records. Il n'y a pas de record de score pour cette raison : ces parties y arrivaient en tête.
 - **Ma place :** position d'un membre parmi ceux dont les stats sont connues, triés par `stats.team.wins`, comme la page Membres. Deux membres à égalité partagent la même place.
 - **Territoire sur la carte :** pixels rejoués depuis l'historique. L'ordre des clans suit le nombre de pixels, comme la liste de la carte officielle. Ce n'est pas le classement des clans.
 - **Pixels pris et perdus :** comptés à chaque changement de main d'un pixel. Les terres neutres sont comptées à part.
@@ -169,7 +175,8 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 ## Limites connues
 
 - La route de la liste des membres n'est pas documentée par OpenFront et peut changer. En cas de panne, le site garde la dernière liste valide.
-- Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané.
+- Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané. Celles des clans voisins partent du premier fichier de `data/rivals/`.
+- Le classement classé ne reconnaît que les membres avec un pseudo public : les chiffres affichés sont donc des minimums. Il ne dit pas non plus sous quel tag ces parties ont été jouées.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
 - La route documentée de la carte ne donne pas les troupes des clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi. Le message prévu pour OpenFront, à la section 10 de [docs/API_AUDIT.md](docs/API_AUDIT.md), demande cette donnée.
 - Le trésor vient de `/clans/GAL`, une route non documentée. Elle n'a pas répondu à la collecte sur GitHub le 6 novembre 2026 : la page écrit donc « Pas de données » pour les réserves du clan.

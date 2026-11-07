@@ -665,6 +665,16 @@ th.fx-cross {
 .meter-other > i {
   background: #6f7fb3;
 }
+/* Repère sur une jauge : sa valeur est toujours écrite à côté, en texte. */
+.meter-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-red);
+  /* Le rouge seul se perd sur le dégradé de la jauge : un liseré sombre le détache. */
+  box-shadow: 0 0 0 1px var(--color-night);
+}
 .score-bar {
   position: absolute;
   top: 0.25rem;

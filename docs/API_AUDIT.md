@@ -184,6 +184,36 @@ C'est une route de l'application du jeu, pas de l'API publique : elle peut chang
 - `/public/player/:id/sessions` renvoie 100 lignes par page avec un curseur, et indique le `clanTag` utilisé dans chaque partie.
 - **Non utilisés en V1 :** le roster suffit, les profils détaillés sont hors périmètre, et ces routes demanderaient au moins 759 appels. Elles restent disponibles pour une future page de profil.
 
+### `GET /public/leaderboard/ranked` — statut 200, documenté
+
+Testé le 7 novembre 2026. Paramètre `page`, 1 ou 2. Chaque page donne 50 joueurs par mode, donc les places 1 à 100 de `1v1`, `2v2` et `ffa`. `Cache-Control: public, max-age=900`.
+
+```json
+{
+  "1v1": [{"rank":1,"elo":"…","peakElo":"…","wins":"…","losses":"…","total":"…","public_id":"<masqué>","accountUsername":null,"username":"<masqué>","level":"…","prestige":"…","legend":false}],
+  "2v2": ["…"],
+  "ffa": ["…"]
+}
+```
+
+- **Ce classement est individuel.** Il ne dit pas sous quel tag les parties ont été jouées, et ne se mélange pas aux stats de clan.
+- **La collecte n'écrit que des décomptes par mode** : places lues, membres avec pseudo sur ces places, et combien dans les 10 premières. Les membres sont reconnus par `public_id` dans la liste stockée, qui n'a pas l'identifiant des anonymes : ces nombres sont donc des minimums.
+- **Pourquoi aucun nom ni Elo.** Le site limite les stats publiées d'un membre à `stats.team`. Une place, un Elo ou un bilan au classé n'en font pas partie, et peuvent venir de parties jouées hors du tag.
+- **Un mode vide est traité comme une panne**, comme une liste de membres incomplète : le dernier relevé valide reste.
+- **Les deux pages sont lues l'une après l'autre.** Un joueur qui change de place entre-temps peut figurer sur les deux : il n'est compté qu'une fois, à sa meilleure place.
+
+### `GET /public/game/:id`, `/public/player/:id/games`, `/public/games` — statut 200, documentés, pas encore utilisés
+
+Testés le 7 novembre 2026, à la main.
+
+- **`/public/game/:id?turns=false`** donne la carte, la durée, le tag et le `publicID` de chaque joueur, les vainqueurs (`info.winner`) et des stats détaillées par joueur. Sur 20 parties récentes : environ 47 Ko et 170 ms par réponse, `hasWon` d'accord avec les vainqueurs 20 fois sur 20, `clanPlayerCount` égal au nombre de joueurs GAL 19 fois sur 20. Dans une partie, GAL avait des joueurs des deux côtés. Y lire des joueurs imposerait de ne garder aucun `publicID` d'anonyme et de suivre `/public/players/recently-deleted`.
+- **`/public/player/:id/games`** donne pour un joueur la carte, la durée et le résultat de chaque partie, 10 lignes par page dans l'essai.
+- **`/public/games`** donne les métadonnées de toutes les parties, sur 2 jours au plus par appel.
+
+### Parties seules dans le salon
+
+Sur 13 272 sessions du 10 avril au 6 novembre 2026, 11 ont un `totalPlayerCount` de 1, et toutes sont gagnées. Le détail de l'une d'elles confirme un seul joueur humain, dans une partie publique avec 400 robots. Ces parties ont les meilleurs scores de toute l'archive : le site ne publie donc pas de record de score, et les écarte de ses autres records.
+
 ### Routes essayées qui n'existent pas (404)
 
 `/public/clan/GAL/players`, `/public/clans`, `/public/clan/GAL/info`, `/stats`, `/profile`, `/elo`, `/history`, `/requests`, `/bans`, `/wars`, `/public/clans/GAL`.

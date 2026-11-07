@@ -62,6 +62,19 @@ export const ApiMembersPage = z.object({
 
 export const ApiClanExists = z.object({ exists: z.boolean() });
 
+const ApiRankedEntry = z.object({
+  rank: z.number().int().positive(),
+  public_id: z.string().min(1),
+});
+/** Une page de `GET /public/leaderboard/ranked` : classement individuel, jamais mêlé aux stats de clan. Elo et victoires ne sont pas lus. */
+export const ApiRankedPage = z.object({
+  "1v1": z.array(ApiRankedEntry),
+  "2v2": z.array(ApiRankedEntry),
+  ffa: z.array(ApiRankedEntry),
+});
+export type ApiRankedPage = z.infer<typeof ApiRankedPage>;
+export type RankedMode = keyof ApiRankedPage;
+
 /* ---------- Carte officielle des clans (voir docs/API_AUDIT.md, section 8) ---------- */
 
 const numericId = z.string().regex(/^\d+$/);
@@ -144,6 +157,28 @@ export const HistorySnapshot = z.object({
 export type HistorySnapshot = z.infer<typeof HistorySnapshot>;
 
 const count = z.number().int().nonnegative();
+
+/** Le classement officiel du jour, dans l'ordre de l'API : le rang est la position dans la liste. */
+export const RivalsSnapshot = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  capturedAt: isoDate,
+  leaderboardEnd: isoDate,
+  clans: z.array(z.object({ clanTag: z.string().min(1), weightedWins: z.number() })),
+});
+export type RivalsSnapshot = z.infer<typeof RivalsSnapshot>;
+
+const StoredRankedMode = z.object({
+  // Places lues sur l'API, tenues par des membres ou non. 0 : pas de données, ce n'est pas « aucun membre ».
+  listed: count,
+  // Membres avec pseudo reconnus sur ces places, et combien dans le haut du classement. Aucun joueur n'est écrit.
+  members: count,
+  top: count,
+});
+export const StoredRanked = z.object({
+  fetchedAt: isoDate,
+  modes: z.object({ "1v1": StoredRankedMode, "2v2": StoredRankedMode, ffa: StoredRankedMode }),
+});
+export type StoredRanked = z.infer<typeof StoredRanked>;
 
 export const StoredClanMapFilm = z.object({
   // 2 : film sans `neutralBorder`, refait au passage suivant de la collecte.
@@ -246,6 +281,7 @@ export const Meta = z.object({
   }),
   // Valeur par défaut : un meta.json plus ancien reste valide et garde tout son état.
   clanmap: DatasetState.default(EMPTY_STATE),
+  ranked: DatasetState.default(EMPTY_STATE),
 });
 export type Meta = z.infer<typeof Meta>;
 
@@ -256,6 +292,7 @@ export function emptyMeta(): Meta {
     members: { ...EMPTY_STATE },
     sessions: { ...EMPTY_STATE, completeThrough: null, coveredUntil: null },
     clanmap: { ...EMPTY_STATE },
+    ranked: { ...EMPTY_STATE },
   };
 }
 

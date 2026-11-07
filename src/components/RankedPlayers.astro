@@ -1,0 +1,50 @@
+---
+import DataStatus from "./DataStatus.astro";
+import { clan } from "../../config/clan";
+import { loadMeta, loadRanked } from "../lib/data";
+import { fmtInt } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { RANKED_MODES, RANKED_TOP } from "../lib/ranked";
+
+const meta = loadMeta();
+const ranked = loadRanked();
+---
+
+{
+  (ranked || meta.ranked.lastError) && (
+    <section class="stage stage-wine reveal mt-8" aria-labelledby="ranked-title" data-testid="ranked-block">
+      <h2 id="ranked-title" class="section-title">Membres présents au classé</h2>
+      <p class="mt-4 max-w-3xl text-lg text-muted">
+        Combien de membres de [{clan.tag}] figurent au classement officiel de chaque mode classé d'OpenFront. Ce classement est individuel et à part : il ne compte pas dans le score du clan, et il ne dit pas sous quel tag ces parties ont été jouées. Seuls les membres avec un pseudo public sont reconnus : ces nombres sont donc des minimums.
+      </p>
+      {
+        ranked ? (
+          <ul class="mt-6 grid gap-4 md:grid-cols-3">
+            {RANKED_MODES.map(({ key, label }) => {
+              const mode = ranked.modes[key];
+              return (
+                <li class="panel" data-testid="ranked-mode">
+                  <h3 class="text-2xl">{label}</h3>
+                  {mode.listed === 0 ? (
+                    <p class="mt-2 font-display text-lg font-bold">Pas de données</p>
+                  ) : (
+                    <>
+                      <p class="tnum mt-2 font-display text-4xl font-extrabold" data-testid="ranked-members">{fmtInt(mode.members)}</p>
+                      <p class="tnum mt-1 text-sm text-muted">{mode.members > 1 ? "membres" : "membre"} sur les {fmtInt(mode.listed)} premières places</p>
+                      <p class="tnum mt-1 text-sm text-muted" data-testid="ranked-top">dont {fmtInt(mode.top)} sur les {RANKED_TOP} premières</p>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p class="mt-6 font-display text-lg font-bold">Pas de données</p>
+        )
+      }
+      <div class="mt-4">
+        <DataStatus state={meta.ranked} maxAgeHours={MAX_AGE_HOURS.ranked} />
+      </div>
+    </section>
+  )
+}

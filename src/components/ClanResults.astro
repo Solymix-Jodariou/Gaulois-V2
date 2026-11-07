@@ -1,0 +1,91 @@
+---
+import { clan } from "../../config/clan";
+import { loadMeta, loadSessions } from "../lib/data";
+import { fmtDate, fmtInt, fmtPct } from "../lib/format";
+import { clanRecords, formatResults, RESULTS_DAYS } from "../lib/results";
+
+const sessions = loadSessions();
+const results = formatResults(sessions, loadMeta().sessions.coveredUntil);
+const records = clanRecords(sessions);
+const groups = results
+  ? [
+      { title: "Par nombre d'équipes", rows: results.byTeams },
+      { title: "Par taille d'équipe", rows: results.bySize },
+    ].filter((g) => g.rows.length > 0)
+  : [];
+const start = fmtDate(`${clan.archiveStart}T12:00:00Z`);
+const plural = (n: number, word: string) => `${fmtInt(n)} ${word}${n > 1 ? "s" : ""}`;
+const tiles = records
+  ? [
+      { label: "Plus longue série", value: plural(records.streak.wins, "victoire"), hint: `terminée le ${fmtDate(records.streak.endedAt)}` },
+      { label: "Meilleure journée", value: plural(records.bestDay.wins, "victoire"), hint: `sur ${plural(records.bestDay.games, "partie")}, le ${fmtDate(`${records.bestDay.date}T12:00:00Z`)}` },
+      { label: "Le plus de Gaulois dans une partie gagnée", value: plural(records.biggestGroup.players, "joueur"), hint: `le ${fmtDate(records.biggestGroup.at)}` },
+      { label: "Victoire avec le plus d'équipes en jeu", value: plural(records.mostTeams.teams, "équipe"), hint: `${plural(records.mostTeams.players, "joueur")} dans la partie, le ${fmtDate(records.mostTeams.at)}` },
+    ]
+  : [];
+---
+
+{
+  tiles.length > 0 && (
+    <section class="stage stage-night reveal mt-12" aria-labelledby="records-title" data-testid="clan-records">
+      <h2 id="records-title" class="section-title">Les records du clan</h2>
+      <dl class="mt-8 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
+        {
+          tiles.map((t) => (
+            <div data-testid="clan-record">
+              <dt class="text-sm font-semibold text-muted">{t.label}</dt>
+              <dd class="mt-1">
+                <span class="tnum block font-display text-3xl font-extrabold">{t.value}</span>
+                <span class="tnum mt-1 block text-xs text-muted">{t.hint}</span>
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+      <p class="mt-8 max-w-3xl text-sm text-muted">
+        Depuis le {start}, parties publiques en équipe jouées avec le tag, tous joueurs du clan confondus : une série mêle donc plusieurs groupes. Le clan a parfois des joueurs dans plusieurs équipes d'une même partie : une partie gagnée compte alors aussi ceux de l'équipe perdante. Une partie jouée seul contre des robots n'est pas comptée.
+      </p>
+    </section>
+  )
+}
+
+{
+  results && groups.length > 0 && (
+    <section class="stage stage-indigo reveal mt-6" aria-labelledby="formats-title" data-testid="format-results">
+      <h2 id="formats-title" class="section-title">Nos résultats par format</h2>
+      <p class="mt-4 max-w-3xl text-lg text-muted">
+        Un taux seul ne dit pas grand-chose : à 2 équipes, le hasard donne déjà 50 %. Le trait rouge sur chaque jauge marque le taux d'une équipe prise au hasard.
+      </p>
+      <div class="mt-6 space-y-4">
+        {
+          groups.map((group) => (
+            <div class="panel">
+              <h3 class="text-sm tracking-wide text-muted">{group.title}</h3>
+              <ul class="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
+                {group.rows.map((row) => (
+                  <li data-testid="format-row">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                      <span class="font-semibold">{row.label}</span>
+                      <span class="tnum font-display text-xl font-extrabold">{fmtPct(row.winRate)}</span>
+                    </div>
+                    <div class="meter relative mt-1" aria-hidden="true">
+                      <i style={{ "--v": `${row.winRate}%` }}></i>
+                      {row.chance !== null && <b class="meter-tick" style={{ left: `${row.chance}%` }}></b>}
+                    </div>
+                    <p class="tnum mt-1 text-xs text-muted">
+                      {fmtInt(row.wins)} victoires sur {fmtInt(row.games)} parties{row.chance !== null && ` · au hasard : ${fmtPct(row.chance)}`}
+                    </p>
+                    <p class="tnum mt-0.5 text-xs text-muted">Depuis le {start} : {fmtPct(row.allTime.winRate)} sur {fmtInt(row.allTime.games)} parties</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </div>
+      <p class="mt-4 max-w-3xl text-sm text-muted">
+        Sur {RESULTS_DAYS} jours, du {fmtDate(`${results.from}T12:00:00Z`)} au {fmtDate(`${results.to}T12:00:00Z`)}. Le hasard est la moyenne de 1 ÷ nombre d'équipes sur ces parties. C'est un repère, pas une preuve : le clan a parfois des joueurs dans plusieurs équipes d'une même partie, et le niveau des adversaires compte aussi. Un format sous 30 parties sur cette période n'est pas affiché.
+      </p>
+    </section>
+  )
+}

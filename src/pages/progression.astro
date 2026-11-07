@@ -1,6 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
+import ClanResults from "../components/ClanResults.astro";
 import PageHeader from "../components/PageHeader.astro";
 import ProgressCharts from "../components/ProgressCharts.tsx";
 import { clan } from "../../config/clan";
@@ -25,5 +26,6 @@ const history = loadHistory();
       </div>
     </PageHeader>
     <ProgressCharts client:load days={days} history={history} />
+    <ClanResults />
   </div>
 </Base>

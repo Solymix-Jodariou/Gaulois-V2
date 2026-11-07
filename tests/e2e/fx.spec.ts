@@ -373,7 +373,7 @@ test.describe("à la souris", () => {
 
   test("le classement montre les scores en barres proportionnelles", async ({ page }) => {
     await page.goto("/classement");
-    const first = page.locator("tbody tr").first().locator(".score-bar");
+    const first = page.locator("tbody tr .score-bar").first();
     await expect(first).toHaveAttribute("style", /width:\s*100%/);
     await expect(page.getByTestId("score-lanes").locator("li")).toHaveCount(3);
   });

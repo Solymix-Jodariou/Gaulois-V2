@@ -5,6 +5,7 @@ import {
   ApiClanExists,
   ApiLeaderboard,
   ApiMembersPage,
+  ApiRankedPage,
   ApiSessionsPage,
   Meta,
   StoredMembers,
@@ -12,10 +13,12 @@ import {
   emptyMeta,
   type DatasetState,
   type HistorySnapshot,
+  type RivalsSnapshot,
   type StoredLeaderboard,
   type StoredSession,
 } from "./schemas";
 import { toStoredMember } from "./members";
+import { RANKED_MODES, rankedCounts } from "./ranked";
 import { mergeSessions } from "./sessions";
 import { findClan, withOfficialRanks } from "./stats";
 import { addDays, parisParts } from "./time";
@@ -131,6 +134,17 @@ async function fetchMembers(api: ApiClient, deps: Deps, at: string): Promise<num
   return total;
 }
 
+/** Les deux pages du classement classé, croisées avec le roster : les deux doivent répondre, sinon rien n'est remplacé. */
+async function fetchRanked(api: ApiClient, deps: Deps, at: string, members: StoredMembers): Promise<number> {
+  const pages = [await api.get("/leaderboard/ranked?page=1", ApiRankedPage), await api.get("/leaderboard/ranked?page=2", ApiRankedPage)];
+  const ranked = rankedCounts(pages, members.members, at);
+  // Un mode vide n'est pas « aucun membre » : il ne remplace jamais le dernier relevé valide.
+  const empty = RANKED_MODES.filter(({ key }) => ranked.modes[key].listed === 0).map(({ label }) => label);
+  if (empty.length > 0) throw new Error(`classement classé vide : ${empty.join(", ")}`);
+  await writeJson(join(deps.dataDir, "ranked.json"), ranked);
+  return RANKED_MODES.reduce((n, { key }) => n + ranked.modes[key].members, 0);
+}
+
 export async function fetchDaySessions(api: ApiClient, tag: string, day: string): Promise<StoredSession[]> {
   const q = `start=${day}T00:00:00.000Z&end=${day}T23:59:59.999Z&limit=${PAGE_SIZE}`;
   const byId = new Map<string, StoredSession>();
@@ -187,6 +201,7 @@ export interface RunSummary {
 /** Une collecte complète. Un jeu de données en échec garde ses derniers fichiers valides. */
 export async function runPipeline(deps: Deps): Promise<RunSummary> {
   await mkdir(join(deps.dataDir, "history"), { recursive: true });
+  await mkdir(join(deps.dataDir, "rivals"), { recursive: true });
   const metaPath = join(deps.dataDir, "meta.json");
   const meta = (await readJson(metaPath, Meta)) ?? emptyMeta();
   const api = new ApiClient(deps);
@@ -240,9 +255,21 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
     }
   }
 
+  const members = await readJson(join(deps.dataDir, "members.json"), StoredMembers);
+
+  // Sans roster, impossible de reconnaître nos joueurs : son absence est déjà signalée.
+  if (members) {
+    try {
+      const found = await fetchRanked(api, deps, at, members);
+      markOk(meta.ranked, at);
+      deps.log(`classé : ${found} places tenues par des membres`);
+    } catch (e) {
+      failed("classé", meta.ranked, e);
+    }
+  }
+
   if (leaderboard) {
     const me = findClan(withOfficialRanks(leaderboard.clans), deps.tag);
-    const members = await readJson(join(deps.dataDir, "members.json"), StoredMembers);
     const date = parisParts(at).date;
     const snapshot: HistorySnapshot = {
       date,
@@ -257,6 +284,14 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
       membersTotal: members?.total ?? null,
     };
     await writeJson(join(deps.dataDir, "history", `${date}.json`), snapshot);
+    // L'API ne donne pas le passé du classement : ce qui n'est pas relevé aujourd'hui est perdu.
+    const rivals: RivalsSnapshot = {
+      date,
+      capturedAt: at,
+      leaderboardEnd: leaderboard.end,
+      clans: leaderboard.clans.map((c) => ({ clanTag: c.clanTag, weightedWins: c.weightedWins })),
+    };
+    await writeJson(join(deps.dataDir, "rivals", `${date}.json`), rivals);
   }
 
   await writeJson(metaPath, meta);

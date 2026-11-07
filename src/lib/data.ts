@@ -9,9 +9,11 @@ import {
   Links,
   MapHeroes,
   Meta,
+  RivalsSnapshot,
   StoredClanMapFilm,
   StoredLeaderboard,
   StoredMembers,
+  StoredRanked,
   StoredSessionFile,
   emptyMeta,
   type StoredSession,
@@ -44,6 +46,7 @@ function listJson(dir: string): string[] {
 export const loadMeta = (): Meta => read("data/meta.json", Meta) ?? emptyMeta();
 export const loadLeaderboard = () => read("data/leaderboard.json", StoredLeaderboard);
 export const loadMembers = () => read("data/members.json", StoredMembers);
+export const loadRanked = () => read("data/ranked.json", StoredRanked);
 export const loadClanMapFilm = () => read("data/clanmap/film.json", StoredClanMapFilm);
 export const loadClanMapJournal = () => read("data/clanmap/journal.json", ClanMapJournal) ?? [];
 export const loadMapHeroes = () => read("content/carte-heros.json", MapHeroes) ?? { updatedOn: null, donors: [], highlights: [] };
@@ -55,6 +58,13 @@ export function loadSessions(): StoredSession[] {
 export function loadHistory(): HistorySnapshot[] {
   return listJson("data/history").flatMap((f) => {
     const snap = read(`data/history/${f}`, HistorySnapshot);
+    return snap ? [snap] : [];
+  });
+}
+
+export function loadRivals(): RivalsSnapshot[] {
+  return listJson("data/rivals").flatMap((f) => {
+    const snap = read(`data/rivals/${f}`, RivalsSnapshot);
     return snap ? [snap] : [];
   });
 }

@@ -34,6 +34,10 @@ const member = (publicId: string, username: string | null) => ({
   stats: { team: { wins: 1, losses: 2 }, total: { wins: 50, losses: 50 } },
 });
 
+const rankedEntries = (ids: string[]) =>
+  ids.map((public_id, i) => ({ rank: i + 1, elo: 2000 - i, peakElo: 2100, wins: 9, losses: 3, total: 12, public_id, accountUsername: "NomAPI", username: "NomAPI", level: 5 }));
+const rankedPage = (ids: string[]) => ({ "1v1": rankedEntries(ids), "2v2": rankedEntries(ids), ffa: rankedEntries(ids) });
+
 type Route = (url: URL) => { status?: number; body?: unknown } | undefined;
 
 const healthy: Route = (url) => {
@@ -48,6 +52,7 @@ const healthy: Route = (url) => {
     const results = day === "2026-11-04" ? [session("g1", `${day}T10:00:00.000Z`)] : [];
     return { body: { results: url.searchParams.get("page") === "1" ? results : [], total: results.length, page: 1, limit: 50 } };
   }
+  if (path === "/leaderboard/ranked") return { body: rankedPage(url.searchParams.get("page") === "1" ? ["id1", "AUTRE", "SECRET"] : ["LOIN"]) };
   return { status: 404 };
 };
 
@@ -168,7 +173,7 @@ describe("runPipeline", () => {
       deps((url) => (url.pathname.endsWith("/clans/leaderboard") && n++ === 0 ? { status: 429 } : undefined)),
     );
     expect(errors).toEqual([]);
-    expect(calls.filter((c) => c.includes("leaderboard"))).toHaveLength(2);
+    expect(calls.filter((c) => c.includes("/clans/leaderboard"))).toHaveLength(2);
   });
 
   it("ne relit que les jours non définitifs et ne duplique aucune session", async () => {
@@ -202,6 +207,61 @@ describe("runPipeline", () => {
     now = new Date("2026-11-06T07:00:00.000Z");
     await runPipeline(deps(healthy));
     expect(calls.some((c) => c.includes("/members"))).toBe(true);
+  });
+
+  it("relève le classement du jour, dans l'ordre de l'API et sans donnée individuelle", async () => {
+    await runPipeline(deps(healthy));
+    const snap = read("rivals/2026-11-05.json");
+    expect(snap.clans).toEqual([{ clanTag: "UN", weightedWins: 100 }, { clanTag: "GAL", weightedWins: 50 }]);
+    expect(snap).toMatchObject({ date: "2026-11-05", leaderboardEnd: "2026-11-05T09:00:00.000Z" });
+  });
+
+  it("ne relève pas le classement du jour si l'API échoue", async () => {
+    await runPipeline(deps((url) => (url.pathname.endsWith("/clans/leaderboard") ? { status: 500 } : undefined)));
+    expect(existsSync(join(dir, "rivals", "2026-11-05.json"))).toBe(false);
+  });
+
+  it("n'écrit du classé que des décomptes, aucun joueur ni chiffre individuel", async () => {
+    const { errors } = await runPipeline(deps(healthy));
+    expect(errors).toEqual([]);
+    const raw = readFileSync(join(dir, "ranked.json"), "utf8");
+    expect(read("ranked.json").modes["1v1"]).toEqual({ listed: 4, members: 1, top: 1 });
+    for (const absent of ["id1", "Alpha", "AUTRE", "SECRET", "LOIN", "NomAPI", "elo", "wins"]) expect(raw).not.toContain(absent);
+    expect(calls.filter((c) => c.includes("/leaderboard/ranked"))).toEqual(["/public/leaderboard/ranked?page=1", "/public/leaderboard/ranked?page=2"]);
+    expect(read("meta.json").ranked.lastSuccessAt).toBe(now.toISOString());
+  });
+
+  it("garde le dernier classé valide si une seule page échoue, et le signale", async () => {
+    await runPipeline(deps(healthy));
+    const before = read("ranked.json");
+    now = new Date("2026-11-05T11:00:00.000Z");
+    const { errors } = await runPipeline(
+      deps((url) => (url.pathname.endsWith("/leaderboard/ranked") && url.searchParams.get("page") === "2" ? { status: 500 } : undefined)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(read("ranked.json")).toEqual(before);
+    const meta = read("meta.json");
+    expect(meta.ranked.lastError).toContain("HTTP 500");
+    expect(meta.ranked.lastSuccessAt).toBe("2026-11-05T10:00:00.000Z");
+    expect(meta.leaderboard.lastError).toBeNull();
+  });
+
+  it("refuse un mode classé vide : garde le dernier relevé et le signale", async () => {
+    await runPipeline(deps(healthy));
+    const before = read("ranked.json");
+    now = new Date("2026-11-05T11:00:00.000Z");
+    const { errors } = await runPipeline(
+      deps((url) => (url.pathname.endsWith("/leaderboard/ranked") ? { body: { "1v1": rankedEntries(["id1"]), "2v2": rankedEntries(["id1"]), ffa: [] } } : undefined)),
+    );
+    expect(errors[0]).toContain("classement classé vide : FFA");
+    expect(read("ranked.json")).toEqual(before);
+    expect(read("meta.json").ranked.lastSuccessAt).toBe("2026-11-05T10:00:00.000Z");
+  });
+
+  it("n'appelle pas le classé sans liste de membres", async () => {
+    await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
+    expect(calls.some((c) => c.includes("/leaderboard/ranked"))).toBe(false);
+    expect(existsSync(join(dir, "ranked.json"))).toBe(false);
   });
 
   it("n'interroge jamais une fenêtre de plus d'un jour ni une date future", async () => {

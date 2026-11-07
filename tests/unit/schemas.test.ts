@@ -3,6 +3,7 @@ import {
   Announcements,
   ApiLeaderboard,
   ApiMembersPage,
+  ApiRankedPage,
   ApiSessionsPage,
   HistorySnapshot,
   Links,
@@ -68,6 +69,15 @@ describe("schémas de l'API", () => {
   ])("refuse un classement invalide : %s", (_label, value) => {
     expect(ApiLeaderboard.safeParse(value).success).toBe(false);
   });
+  // Forme relevée le 7 novembre 2026, valeurs remplacées.
+  const rankedEntry = { rank: 1, elo: 2000, peakElo: 2100, wins: 40, losses: 10, total: 50, public_id: "abc", accountUsername: null, username: "abc", level: 12, prestige: 1, legend: false };
+  it("accepte le classement classé et n'en garde que le nécessaire", () => {
+    const page = ApiRankedPage.parse({ "1v1": [rankedEntry], "2v2": [], ffa: [] });
+    expect(Object.keys(page["1v1"][0] ?? {}).sort()).toEqual(["public_id", "rank"]);
+  });
+  it("refuse un classement classé sans l'un de ses modes", () => {
+    expect(ApiRankedPage.safeParse({ "1v1": [rankedEntry], "2v2": [] }).success).toBe(false);
+  });
   it("refuse un rôle inconnu", () => {
     const bad = { ...members, results: [{ ...members.results[1], role: "roi" }] };
     expect(ApiMembersPage.safeParse(bad).success).toBe(false);
@@ -76,6 +86,11 @@ describe("schémas de l'API", () => {
 
 describe("fichiers du site", () => {
   it("accepte l'état initial de meta", () => expect(Meta.safeParse(emptyMeta()).success).toBe(true));
+  it("garde valide un meta.json écrit avant la collecte du classé", () => {
+    const older: Record<string, unknown> = { ...emptyMeta() };
+    delete older.ranked;
+    expect(Meta.parse(older).ranked.lastSuccessAt).toBeNull();
+  });
   it("refuse un rang 0 dans un instantané, et accepte l'absence de rang", () => {
     const snap = { date: "2026-11-05", capturedAt: "2026-11-05T10:00:00.000Z", leaderboardEnd: "2026-11-05T09:00:00.000Z", clansListed: 102, score: null, games: null, wins: null, losses: null, membersTotal: null };
     expect(HistorySnapshot.safeParse({ ...snap, rank: 0 }).success).toBe(false);

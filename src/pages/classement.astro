@@ -4,10 +4,13 @@ import DataStatus from "../components/DataStatus.astro";
 import Empty from "../components/Empty.astro";
 import PageHeader from "../components/PageHeader.astro";
 import LeaderboardTable from "../components/LeaderboardTable.tsx";
+import RankedPlayers from "../components/RankedPlayers.astro";
+import RivalRace from "../components/RivalRace.tsx";
 import { clan } from "../../config/clan";
-import { loadLeaderboard, loadMeta } from "../lib/data";
+import { loadLeaderboard, loadMeta, loadRivals } from "../lib/data";
 import { fmtDate, fmtScore } from "../lib/format";
 import { MAX_AGE_HOURS } from "../lib/freshness";
+import { rivalSeries } from "../lib/rivals";
 import { findClan, neighbours, withOfficialRanks } from "../lib/stats";
 
 const meta = loadMeta();
@@ -17,6 +20,8 @@ const me = findClan(clans, clan.tag);
 const near = neighbours(clans, clan.tag);
 const lanes = me && near ? [near.above?.clan, me, near.below?.clan].filter((c) => c !== undefined) : [];
 const laneMax = Math.max(1, ...lanes.map((c) => c.weightedWins));
+const snapshots = loadRivals();
+const race = leaderboard && snapshots.length > 0 ? rivalSeries(leaderboard.clans, snapshots, clan.tag) : null;
 ---
 
 <Base title="Classement" description="Classement officiel des clans OpenFront et position du clan GAL.">
@@ -85,10 +90,20 @@ const laneMax = Math.max(1, ...lanes.map((c) => c.weightedWins));
               [{clan.tag}] ne figure pas dans la liste officielle : le clan est hors classement.
             </p>
           )}
+          {race && race.length > 0 && (
+            <section class="reveal mb-8" aria-labelledby="race-title" data-testid="rival-race">
+              <h2 id="race-title" class="section-title">La course avec nos voisins</h2>
+              <p class="mb-4 mt-2 max-w-3xl text-sm text-muted">
+                L'écart de score entre [{clan.tag}] et les clans les plus proches au classement, relevé une fois par jour depuis le {fmtDate(`${snapshots[0]?.date}T12:00:00Z`)}. L'API ne donne pas le passé du classement : les courbes commencent à ce premier relevé. Chaque courbe a sa propre échelle : le tableau donne les valeurs exactes.
+              </p>
+              <RivalRace client:load series={race} />
+            </section>
+          )}
           <LeaderboardTable client:load clans={clans} tag={clan.tag} />
           <p class="mt-4 text-sm text-muted">
             Stats des parties publiques en équipe, hors classé et hors Humains contre Nations. L'API liste environ les 100 premiers clans.
           </p>
+          <RankedPlayers />
         </>
       )
     }

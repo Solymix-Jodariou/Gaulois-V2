@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -133,10 +133,61 @@ for (const path of ["/", "/rejoindre"]) {
   });
 }
 
+// Ces fichiers n'existent qu'après la première collecte : sans eux, rien ne doit s'afficher de faux.
+test("le classé ne publie que des décomptes, à part du classement des clans", async ({ page }) => {
+  await page.goto("/classement");
+  const block = page.getByTestId("ranked-block");
+  const panels = block.getByTestId("ranked-mode");
+  if (!existsSync("data/ranked.json")) {
+    await expect(panels).toHaveCount(0);
+    return;
+  }
+  const ranked = JSON.parse(readFileSync("data/ranked.json", "utf8"));
+  await expect(block).toContainText("ne compte pas dans le score du clan");
+  await expect(block).toContainText("ces nombres sont donc des minimums");
+  await expect(panels).toHaveCount(3);
+  for (const [i, key] of ["1v1", "2v2", "ffa"].entries()) {
+    const mode = ranked.modes[key];
+    expect(digits(await panels.nth(i).getByTestId("ranked-members").textContent())).toBe(String(mode.members));
+    expect(digits(await panels.nth(i).getByTestId("ranked-top").textContent())).toBe(`${mode.top}10`);
+  }
+  // Aucun nom ni chiffre individuel : ni lien de profil, ni tableau de joueurs.
+  await expect(block.getByRole("link")).toHaveCount(0);
+  await expect(block.getByRole("table")).toHaveCount(0);
+  await expect(block).toContainText("Dernière mise à jour");
+});
+
+test("la course avec les voisins part du premier relevé", async ({ page }) => {
+  await page.goto("/classement");
+  await hydrated(page);
+  const race = page.getByTestId("rival-race");
+  const me = lb.clans.indexOf(gal);
+  if (me < 0 || !existsSync("data/rivals") || readdirSync("data/rivals").length === 0) {
+    await expect(race).toHaveCount(0);
+    return;
+  }
+  await expect(race).toContainText("L'API ne donne pas le passé du classement");
+  const gaps = race.getByRole("heading", { name: /^Face à \[/ });
+  // Le clan au-dessus et les deux en dessous, s'ils existent.
+  await expect(gaps).toHaveCount(lb.clans.filter((_: unknown, i: number) => i !== me && i >= me - 1 && i <= me + 2).length);
+  await race.getByText("Voir le tableau des écarts").click();
+  await expect(race.getByRole("table").locator("tbody tr")).toHaveCount(readdirSync("data/rivals").length);
+});
+
+test("les résultats par format donnent le repère du hasard et les records", async ({ page }) => {
+  await page.goto("/progression");
+  const formats = page.getByTestId("format-results");
+  await expect(formats.getByTestId("format-row").first()).toContainText("au hasard");
+  await expect(formats).toContainText("à 2 équipes, le hasard donne déjà 50 %");
+  await expect(page.getByTestId("clan-record")).toHaveCount(4);
+  await expect(page.getByTestId("clan-records")).toContainText("n'est pas comptée");
+});
+
 test("signale les données périmées au visiteur", async ({ page }) => {
   await page.clock.setFixedTime(new Date(Date.now() + 10 * 86_400_000));
   await page.goto("/classement");
-  await expect(page.getByText(/Données périmées : dernière mise à jour il y a \d+ jours/)).toBeVisible();
+  // La page peut suivre deux jeux de données, le classement et le classé : chacun a son message. Celui-ci est celui du classement.
+  await expect(page.getByTestId("data-status").first().getByText(/Données périmées : dernière mise à jour il y a \d+ jours/)).toBeVisible();
 });
 
 test("affiche une erreur si la liste des membres ne charge pas", async ({ page }) => {
