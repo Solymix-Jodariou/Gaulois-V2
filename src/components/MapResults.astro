@@ -1,6 +1,7 @@
 ---
 import DataStatus from "./DataStatus.astro";
 import GamesCoverage from "./GamesCoverage.astro";
+import MapNamesCredit from "./MapNamesCredit.astro";
 import MapRow from "./MapRow.astro";
 import { loadGames, loadMeta, loadSessions } from "../lib/data";
 import { fmtDate, fmtInt } from "../lib/format";
@@ -85,9 +86,7 @@ const signals = results
           </>
         )
       }
-      <p class="mt-2 max-w-3xl text-sm text-muted">
-        Noms français des cartes : extraits de la <a href="https://github.com/openfrontio/OpenFrontIO/blob/main/resources/lang/fr.json" rel="noopener" class="font-semibold underline underline-offset-2">traduction du jeu OpenFront</a>, sous licence <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.fr" rel="noopener" class="font-semibold underline underline-offset-2">CC BY-SA 4.0</a>.
-      </p>
+      <MapNamesCredit />
       <div class="mt-4">
         <DataStatus state={meta.games} maxAgeHours={MAX_AGE_HOURS.games} />
       </div>

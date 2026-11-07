@@ -98,6 +98,31 @@ export const ApiGame = z.object({
 });
 export type ApiGame = z.output<typeof ApiGame>;
 
+const PlayerGameResult = z.enum(["victory", "defeat", "incomplete"]);
+/** Une ligne de `GET /public/player/:id/games`. Le pseudo et l'identifiant de la partie ne sont pas lus. */
+const ApiPlayerGame = z.object({
+  start: isoDate,
+  map: z.string().min(1),
+  mode: z.string(),
+  type: z.string(),
+  rankedType: z.string().nullable().optional(),
+  playerTeams: z
+    .union([z.string(), z.number()])
+    .nullable()
+    .optional()
+    .transform((v) => (v === null || v === undefined ? null : String(v))),
+  result: PlayerGameResult,
+  clanTag: z.string().nullable().optional(),
+});
+export type ApiPlayerGame = z.output<typeof ApiPlayerGame>;
+export const ApiPlayerGames = z.object({
+  results: z.array(ApiPlayerGame),
+  nextCursor: z.string().nullable(),
+});
+
+/** `GET /public/players/recently-deleted` : OpenFront demande de retirer ces joueurs de ce qui a été collecté. */
+export const ApiDeletedPlayers = z.array(z.object({ publicId: z.string().min(1) }));
+
 /* ---------- Carte officielle des clans (voir docs/API_AUDIT.md, section 8) ---------- */
 
 const numericId = z.string().regex(/^\d+$/);
@@ -163,6 +188,25 @@ export const StoredMembers = z.object({
   members: z.array(StoredMember),
 });
 export type StoredMembers = z.infer<typeof StoredMembers>;
+
+/** Une partie d'un membre avec pseudo, sous le tag : une ligne de `stats.team`, donc une victoire ou une défaite. Le jour, pas l'heure. */
+export const StoredMemberGame = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  map: z.string().min(1),
+  teams: z.string().nullable(),
+  result: z.enum(["victory", "defeat"]),
+});
+export type StoredMemberGame = z.infer<typeof StoredMemberGame>;
+export const StoredMemberRecent = z.object({
+  // Ses parties selon `stats.team` à la lecture : tant que ce nombre ne bouge pas, inutile de relire.
+  seen: z.number().int().nonnegative(),
+  readOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  recent: z.array(StoredMemberGame),
+});
+export type StoredMemberRecent = z.infer<typeof StoredMemberRecent>;
+/** Clé : le `publicId` d'un membre avec pseudo. Un anonyme n'y figure jamais. */
+export const StoredMemberGames = z.record(z.string().min(1), StoredMemberRecent);
+export type StoredMemberGames = z.infer<typeof StoredMemberGames>;
 
 export const HistorySnapshot = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -323,6 +367,7 @@ export const Meta = z.object({
   clanmap: DatasetState.default(EMPTY_STATE),
   ranked: DatasetState.default(EMPTY_STATE),
   games: DatasetState.default(EMPTY_STATE),
+  memberGames: DatasetState.default(EMPTY_STATE),
 });
 export type Meta = z.infer<typeof Meta>;
 
@@ -335,6 +380,7 @@ export function emptyMeta(): Meta {
     clanmap: { ...EMPTY_STATE },
     ranked: { ...EMPTY_STATE },
     games: { ...EMPTY_STATE },
+    memberGames: { ...EMPTY_STATE },
   };
 }
 

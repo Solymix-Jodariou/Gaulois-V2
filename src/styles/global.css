@@ -103,6 +103,8 @@ a:not([class]):hover {
 .page-title {
   font-size: clamp(2.5rem, 8vw, 4.75rem);
   line-height: 0.95;
+  /* Un pseudo peut être un seul très long mot : mieux vaut le couper que faire défiler la page. */
+  overflow-wrap: anywhere;
 }
 /* Sur un petit téléphone, le long mot rétrécit juste assez pour garder ses marges (1rem de chaque côté). */
 .page-title-long {

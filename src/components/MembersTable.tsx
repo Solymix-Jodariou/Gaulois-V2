@@ -5,6 +5,7 @@ import { filterMembers, gamesOf, rateOf, sortMembers, type SortDir, type SortKey
 import type { StoredMember, StoredMembers } from "../lib/schemas";
 
 const PAGE = 50;
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const ROLE: Record<StoredMember["role"], string> = { leader: "Chef", officer: "Officier", member: "Membre" };
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "wins", label: "Victoires" },
@@ -20,8 +21,7 @@ function Name({ m }: { m: StoredMember }) {
   return (
     <a
       class="font-semibold underline-offset-2 hover:underline"
-      href={`https://openfront.io/#modal=profile&publicID=${encodeURIComponent(m.publicId ?? "")}`}
-      rel="noopener"
+      href={`${BASE}/membres/${encodeURIComponent(m.publicId ?? "")}`}
     >
       {m.username}
     </a>

@@ -65,6 +65,8 @@ const healthy: Route = (url) => {
   }
   if (path === "/leaderboard/ranked") return { body: rankedPage(url.searchParams.get("page") === "1" ? ["id1", "AUTRE", "SECRET"] : ["LOIN"]) };
   if (path.startsWith("/game/")) return { body: game() };
+  if (path === "/players/recently-deleted") return { body: [] };
+  if (path.startsWith("/player/")) return { body: { results: Array.from({ length: 3 }, () => ({ start: "2026-11-03T20:00:00.000Z", map: "World", mode: "Team", type: "Public", result: "victory", clanTag: "GAL" })), nextCursor: null } };
   return { status: 404 };
 };
 
@@ -86,6 +88,7 @@ describe("runPipeline", () => {
     tag: "GAL",
     archiveStart: "2026-11-03",
     delayMs: 0,
+    memberGamesFile: join(dir, "cache", "players.json"),
     log: () => {},
   });
   const read = (file: string) => JSON.parse(readFileSync(join(dir, file), "utf8"));
@@ -174,8 +177,9 @@ describe("runPipeline", () => {
 
   it("n'écrit rien sur le clan si le tag n'existe pas", async () => {
     const { errors } = await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
-    expect(errors).toHaveLength(3);
+    expect(errors).toHaveLength(4);
     expect(read("meta.json").games.lastError).toContain("n'existe pas");
+    expect(read("meta.json").memberGames.lastError).toContain("n'existe pas");
     expect(existsSync(join(dir, "members.json"))).toBe(false);
     expect(existsSync(join(dir, "sessions", "2026-11.json"))).toBe(false);
   });
@@ -449,6 +453,222 @@ describe("runPipeline", () => {
     it("n'appelle aucune partie si le tag n'existe pas", async () => {
       await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
       expect(gameCalls()).toEqual([]);
+    });
+  });
+
+  describe("fiches des membres", () => {
+    const line = (over: Record<string, unknown> = {}) => ({ gameId: "g", start: "2026-11-03T20:00:00.000Z", durationSeconds: 100, map: "World", mode: "Team", type: "Public", playerTeams: "Duos", rankedType: "unranked", result: "victory", totalPlayers: 8, username: "NomAPI", clanTag: "GAL", ...over });
+    const games = (rows: unknown[], nextCursor: string | null = null) => ({ body: { results: rows, nextCursor } });
+    const lines = (count: number, over: Record<string, unknown> = {}) => Array.from({ length: count }, () => line(over));
+    const withMembers =
+      (list: unknown[], other: Route = () => undefined): Route =>
+      (url) => {
+        if (url.pathname.endsWith("/members")) return { body: { results: list, total: list.length, page: 1, limit: 50 } };
+        return other(url);
+      };
+    const withRecord = (id: string, username: string | null, wins: number, losses: number) => ({ ...member(id, username), stats: { team: { wins, losses } } });
+    /** Réponses exactes pour chaque joueur : autant de parties sous le tag que ses stats en annoncent. */
+    const answering =
+      (counts: Record<string, number>): Route =>
+      (url) => {
+        const id = url.pathname.match(/\/player\/([^/]+)\/games$/)?.[1];
+        return id ? games(lines(counts[id] ?? 0)) : undefined;
+      };
+    const playerCalls = () => calls.filter((c) => c.includes("/public/player/"));
+    const storedPath = () => join(dir, "cache", "players.json");
+    const stored = () => JSON.parse(readFileSync(storedPath(), "utf8"));
+
+    it("garde les parties sous le tag d'un membre avec pseudo, sans aucun joueur, ni heure, ni nombre de parties hors du tag", async () => {
+      const route = withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("SECRET", null, 5, 5)], (url) => (url.pathname.endsWith("/player/id1/games") ? games([line(), line({ clanTag: null, map: "SansTag" }), line({ result: "defeat", map: "Asia" })]) : undefined));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors).toEqual([]);
+      expect(stored()).toEqual({
+        id1: {
+          seen: 2,
+          readOn: "2026-11-05",
+          recent: [
+            { date: "2026-11-03", map: "World", teams: "Duos", result: "victory" },
+            { date: "2026-11-03", map: "Asia", teams: "Duos", result: "defeat" },
+          ],
+        },
+      });
+      const raw = readFileSync(storedPath(), "utf8");
+      for (const absent of ["SECRET", "Alpha", "NomAPI", "20:00", '"g"', "SansTag", "scanned"]) expect(raw).not.toContain(absent);
+      expect(read("meta.json").memberGames.lastSuccessAt).toBe(now.toISOString());
+    });
+
+    it("n'écrit pas les parties de chaque joueur dans data/, donc pas dans Git", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 0)], answering({ id1: 1 }))));
+      expect(existsSync(storedPath())).toBe(true);
+      expect(existsSync(join(dir, "member-games.json"))).toBe(false);
+      expect(readFileSync(join(dir, "meta.json"), "utf8")).not.toContain("World");
+    });
+
+    it("n'appelle jamais de partie pour un anonyme, ni pour un membre sans partie sous le tag", async () => {
+      await runPipeline(deps(withMembers([withRecord("SECRET", null, 5, 5), withRecord("id2", "Bravo", 0, 0)])));
+      expect(playerCalls()).toEqual([]);
+    });
+
+    it("ne relit un joueur que si ses parties selon stats.team ont bougé", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1)], answering({ id1: 2 }))));
+      expect(playerCalls()).toHaveLength(1);
+      calls = [];
+      now = new Date("2026-11-05T11:00:00.000Z");
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1)], answering({ id1: 2 }))));
+      expect(playerCalls()).toEqual([]);
+      calls = [];
+      now = new Date("2026-11-06T09:00:00.000Z");
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 2, 1)], answering({ id1: 3 }))));
+      expect(playerCalls()).toHaveLength(1);
+      expect(stored().id1).toMatchObject({ seen: 3, readOn: "2026-11-06" });
+    });
+
+    it("lit la page suivante s'il manque des parties sous le tag, et s'arrête à 3 pages sans rien dire de ce qu'il a trouvé d'autre", async () => {
+      const route = withMembers([withRecord("id1", "Alpha", 40, 0)], (url) => {
+        if (!url.pathname.endsWith("/player/id1/games")) return undefined;
+        const next = Number(url.searchParams.get("cursor") ?? 0) + 1;
+        return games(lines(10, { clanTag: null }), String(next));
+      });
+      await runPipeline(deps(route));
+      expect(playerCalls()).toHaveLength(3);
+      expect(playerCalls().every((c) => c.includes("filter=team&type=public"))).toBe(true);
+      expect(playerCalls()[1]).toContain("cursor=1");
+      expect(stored().id1).toEqual({ seen: 40, readOn: "2026-11-05", recent: [] });
+    });
+
+    it("s'arrête dès qu'il a les 10 parties voulues", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 40, 0)], (url) => (url.pathname.endsWith("/player/id1/games") ? games(lines(10), "suite") : undefined))));
+      expect(playerCalls()).toHaveLength(1);
+      expect(stored().id1.recent).toHaveLength(10);
+    });
+
+    it("s'arrête dès qu'il a toutes les parties que stats.team annonce, même si l'historique continue", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1)], (url) => (url.pathname.endsWith("/player/id1/games") ? games([line(), line(), line({ clanTag: null })], "suite") : undefined))));
+      expect(playerCalls()).toHaveLength(1);
+      expect(stored().id1.recent).toHaveLength(2);
+    });
+
+    it("ne remplace pas une liste valide par une réponse vide, et la relit au passage suivant", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 3, 1)], answering({ id1: 4 }))));
+      const before = stored().id1;
+      expect(before.recent).toHaveLength(4);
+
+      now = new Date("2026-11-06T09:00:00.000Z");
+      const { errors } = await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 4, 1)], answering({ id1: 0 }))));
+      expect(errors).toEqual(["fiches sans réponse lisible, à relire : 1"]);
+      expect(stored().id1).toEqual(before);
+
+      calls = [];
+      now = new Date("2026-11-06T10:00:00.000Z");
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 4, 1)], answering({ id1: 5 }))));
+      expect(playerCalls()).toHaveLength(1);
+      expect(stored().id1).toMatchObject({ seen: 5 });
+      expect(stored().id1.recent).toHaveLength(5);
+    });
+
+    it("oublie un membre parti ou qui a retiré son pseudo", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", "Bravo", 1, 1)], answering({ id1: 2, id2: 2 }))));
+      expect(Object.keys(stored())).toEqual(["id1", "id2"]);
+      now = new Date("2026-11-06T09:00:00.000Z");
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", null, 1, 1)], answering({ id1: 2 }))));
+      expect(Object.keys(stored())).toEqual(["id1"]);
+      expect(readFileSync(storedPath(), "utf8")).not.toContain("id2");
+    });
+
+    it("oublie un membre qui retire son pseudo, même si la liste des comptes supprimés est en panne", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", "Bravo", 1, 1)], answering({ id1: 2, id2: 2 }))));
+      now = new Date("2026-11-06T09:00:00.000Z");
+      const { errors } = await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", null, 1, 1)], (url) => (url.pathname.endsWith("/players/recently-deleted") ? { status: 500 } : undefined))));
+      expect(errors[0]).toContain("fiches des membres : HTTP 500");
+      expect(Object.keys(stored())).toEqual(["id1"]);
+    });
+
+    it("oublie un membre qui retire son pseudo, même si l'API est tombée à ce moment-là", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", "Bravo", 1, 1)], answering({ id1: 2, id2: 2 }))));
+      now = new Date("2026-11-06T09:00:00.000Z");
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", null, 1, 1)], answering({ id1: 2 }))));
+      calls = [];
+      now = new Date("2026-11-06T10:00:00.000Z");
+      await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
+      expect(playerCalls()).toEqual([]);
+      expect(calls.some((c) => c.includes("recently-deleted"))).toBe(false);
+      expect(Object.keys(stored())).toEqual(["id1"]);
+    });
+
+    it("retire aussitôt un compte supprimé, de la liste et des fiches, sans attendre la relecture de la liste", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1), withRecord("id2", "Bravo", 1, 1)], answering({ id1: 2, id2: 2 }))));
+      now = new Date("2026-11-05T11:00:00.000Z");
+      calls = [];
+      const { errors } = await runPipeline(deps((url) => (url.pathname.endsWith("/players/recently-deleted") ? { body: [{ publicId: "id2", deletedAt: "2026-11-05T10:30:00.000Z" }] } : undefined)));
+      expect(errors).toEqual([]);
+      expect(calls.some((c) => c.includes("/members"))).toBe(false);
+      const list = read("members.json");
+      expect(list.total).toBe(1);
+      expect(JSON.stringify(list)).not.toContain("Bravo");
+      expect(Object.keys(stored())).toEqual(["id1"]);
+    });
+
+    it("ne lit pas de nouvelles fiches si la liste des comptes supprimés ne répond pas, et le signale", async () => {
+      const route = withMembers([withRecord("id1", "Alpha", 1, 1)], (url) => (url.pathname.endsWith("/players/recently-deleted") ? { status: 500 } : undefined));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors[0]).toContain("fiches des membres : HTTP 500");
+      expect(playerCalls()).toEqual([]);
+      expect(existsSync(storedPath())).toBe(false);
+      expect(read("meta.json").memberGames.lastError).toContain("HTTP 500");
+      expect(read("meta.json").members.lastError).toBeNull();
+    });
+
+    it("passe à la suite après un échec isolé, le relit ensuite et n'annonce pas de panne", async () => {
+      const list = [withRecord("id1", "Alpha", 1, 1), withRecord("id2", "Bravo", 1, 1)];
+      const { errors } = await runPipeline(deps(withMembers(list, (url) => (url.pathname.endsWith("/player/id1/games") ? { status: 404 } : answering({ id2: 2 })(url)))));
+      expect(errors).toEqual(["fiches sans réponse lisible, à relire : 1"]);
+      expect(Object.keys(stored())).toEqual(["id2"]);
+      expect(read("meta.json").memberGames.lastError).toBeNull();
+      calls = [];
+      now = new Date("2026-11-05T11:00:00.000Z");
+      await runPipeline(deps(withMembers(list, answering({ id1: 2, id2: 2 }))));
+      expect(playerCalls()).toHaveLength(1);
+      expect(Object.keys(stored()).sort()).toEqual(["id1", "id2"]);
+    });
+
+    it("signale une panne de la route sans rien perdre de ce qui est gardé, et sans écrire d'identifiant dans le message public", async () => {
+      const list = Array.from({ length: 6 }, (_, i) => withRecord(`id${i}`, `Nom${i}`, 1, 1));
+      const counts = Object.fromEntries(list.map((_, i) => [`id${i}`, 2]));
+      await runPipeline(deps(withMembers(list, answering(counts))));
+      const before = stored();
+      expect(Object.keys(before)).toHaveLength(6);
+
+      now = new Date("2026-11-06T09:00:00.000Z");
+      const changed = list.map((_, i) => withRecord(`id${i}`, `Nom${i}`, 2, 1));
+      const { errors } = await runPipeline(deps(withMembers(changed, (url) => (url.pathname.includes("/player/") ? { status: 404 } : undefined))));
+      expect(errors[0]).toContain("fiches des membres : 6 fiches sans réponse lisible, 0 lues");
+      expect(stored()).toEqual(before);
+      const meta = read("meta.json");
+      expect(meta.memberGames.lastError).toContain("HTTP 404");
+      expect(meta.memberGames.lastError).not.toMatch(/id\d/);
+      expect(meta.memberGames.lastSuccessAt).toBe("2026-11-05T10:00:00.000Z");
+    });
+
+    it("respecte à peu près le nombre d'appels prévu, et commence par ceux jamais lus", async () => {
+      const list = Array.from({ length: 5 }, (_, i) => withRecord(`id${i}`, `Nom${i}`, 1, 1));
+      const counts = Object.fromEntries(list.map((_, i) => [`id${i}`, 2]));
+      await runPipeline({ ...deps(withMembers(list, answering(counts))), memberCallsPerRun: 2 });
+      expect(playerCalls()).toHaveLength(2);
+      expect(Object.keys(stored())).toEqual(["id0", "id1"]);
+      calls = [];
+      now = new Date("2026-11-06T09:00:00.000Z");
+      const changed = list.map((m, i) => (i === 0 ? withRecord("id0", "Nom0", 9, 9) : m));
+      await runPipeline({ ...deps(withMembers(changed, answering({ ...counts, id0: 18 }))), memberCallsPerRun: 2 });
+      expect(playerCalls().map((c) => c.split("/")[3])).toEqual(["id2", "id3"]);
+    });
+
+    it("n'appelle pas les fiches si le tag n'existe pas", async () => {
+      await runPipeline(deps(withMembers([withRecord("id1", "Alpha", 1, 1)], answering({ id1: 2 }))));
+      calls = [];
+      now = new Date("2026-11-05T11:00:00.000Z");
+      await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
+      expect(playerCalls()).toEqual([]);
+      expect(calls.some((c) => c.includes("recently-deleted"))).toBe(false);
     });
   });
 

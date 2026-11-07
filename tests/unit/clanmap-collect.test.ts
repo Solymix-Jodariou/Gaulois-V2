@@ -69,6 +69,7 @@ describe("collecte de la carte", () => {
   const isTerrain = (url: URL) => url.pathname === TERRAIN_PATH;
 
   const deps = (route: Route = () => undefined, extra: Partial<ClanMapDeps> = {}): ClanMapDeps => ({
+    memberGamesFile: "inutile-ici.json",
     fetch: (async (input: string) => {
       const url = new URL(input);
       calls.push(url.pathname + url.search);

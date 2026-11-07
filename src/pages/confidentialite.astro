@@ -6,12 +6,16 @@ import { clan } from "../../config/clan";
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
-<Base title="Confidentialité" description="Ce que le site du clan GAL conserve pour la connexion Discord, pourquoi, et comment l'effacer.">
+<Base title="Confidentialité" description="Ce que le site du clan GAL publie sur ses membres, ce qu'il conserve pour la connexion Discord, et comment l'effacer.">
   <div class="wrap">
-    <PageHeader title="Confidentialité" intro="Ce que le site conserve pour la connexion Discord, pourquoi, et comment l'effacer." />
+    <PageHeader title="Confidentialité" intro="Ce que le site publie sur les membres du clan, ce qu'il conserve pour la connexion Discord, et comment l'effacer." />
     <div class="text-page max-w-3xl" data-testid="privacy">
+      <h2>Si vous êtes membre du clan dans le jeu</h2>
+      <p>Le site reprend la liste officielle du clan, publique chez OpenFront : votre rôle, votre date d'arrivée et vos parties d'équipe sous le tag. Si vous avez un pseudo public, il affiche aussi ce pseudo, votre arrivée dans la gazette, et une fiche avec vos 10 dernières parties sous le tag : le jour, la carte, le format et le résultat. La fiche n'est pas proposée aux moteurs de recherche, mais tout le monde peut l'ouvrir. Ces données viennent de l'API publique d'OpenFront : le site ne lit rien qui demande un compte.</p>
+      <p>Sans pseudo public, vous restez « Membre anonyme » : ni fiche, ni identifiant. Si vous quittez le clan ou retirez votre pseudo, votre fiche disparaît à la relecture de la liste, une fois par jour. Si vous supprimez votre compte OpenFront, elle disparaît dès que la collecte horaire le voit dans la liste des comptes supprimés. Les anciennes versions de la liste des membres, avec le pseudo, le rôle, la date d'arrivée et les parties d'équipe, restent dans l'historique public du code du site.</p>
+
       <h2>Sans compte</h2>
-      <p>Le site ne vous demande rien et ne pose pas de traceur publicitaire. Il ne conserve aucune donnée sur vous, à une exception près : si vous avez donné des capsules à [GAL] dans le jeu, le montant, la date et une empreinte de votre identifiant OpenFront peuvent figurer dans une liste des dons recopiée par les officiers pour un ancien jeu du site. Ni votre identifiant, ni votre pseudo. Cette liste n'est plus complétée ni affichée. Pour faire retirer un don, adressez-vous aux officiers.</p>
+      <p>Le site ne vous demande rien et ne pose pas de traceur publicitaire. Il ne conserve rien sur un simple visiteur. Pour un joueur du clan, il y a une autre exception que la liste ci-dessus : si vous avez donné des capsules à [GAL] dans le jeu, le montant, la date et une empreinte de votre identifiant OpenFront peuvent figurer dans une liste des dons recopiée par les officiers pour un ancien jeu du site. Ni votre identifiant, ni votre pseudo. Cette liste n'est plus complétée ni affichée. Pour faire retirer un don, adressez-vous aux officiers.</p>
 
       <h2>Avec un compte</h2>
       <ul>

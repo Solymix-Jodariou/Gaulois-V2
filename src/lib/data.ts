@@ -13,6 +13,7 @@ import {
   StoredClanMapFilm,
   StoredGameFile,
   StoredLeaderboard,
+  StoredMemberGames,
   StoredMembers,
   StoredRanked,
   StoredSessionFile,
@@ -49,6 +50,9 @@ export const loadMeta = (): Meta => read("data/meta.json", Meta) ?? emptyMeta();
 export const loadLeaderboard = () => read("data/leaderboard.json", StoredLeaderboard);
 export const loadMembers = () => read("data/members.json", StoredMembers);
 export const loadRanked = () => read("data/ranked.json", StoredRanked);
+/** Hors de `data/` et de Git : les lignes de chaque joueur ne doivent pas rester pour toujours dans l'historique public. */
+export const MEMBER_GAMES_FILE = ".cache/member-games/players.json";
+export const loadMemberGames = () => read(MEMBER_GAMES_FILE, StoredMemberGames) ?? {};
 export const loadClanMapFilm = () => read("data/clanmap/film.json", StoredClanMapFilm);
 export const loadClanMapJournal = () => read("data/clanmap/journal.json", ClanMapJournal) ?? [];
 export const loadMapHeroes = () => read("content/carte-heros.json", MapHeroes) ?? { updatedOn: null, donors: [], highlights: [] };

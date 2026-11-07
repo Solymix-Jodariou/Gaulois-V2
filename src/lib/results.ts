@@ -28,7 +28,8 @@ export interface FormatResults {
 
 const SIZE_FORMATS = ["Duos", "Trios", "Quads"];
 
-const label = (key: string) => (/^\d+$/.test(key) ? `${key} équipes` : key);
+/** Le nom d'un format : « 2 » signifie deux équipes, « Duos » reste « Duos ». */
+export const formatLabel = (key: string) => (/^\d+$/.test(key) ? `${key} équipes` : key);
 
 function tally(sessions: readonly StoredSession[]) {
   const rows = new Map<string, { games: number; wins: number; chanceSum: number; chanceGames: number }>();
@@ -74,7 +75,7 @@ export function formatResults(sessions: readonly StoredSession[], coveredUntil: 
     if (r.games < minGames || rate === null || !total || totalRate === null) return [];
     const row: FormatResult = {
       key,
-      label: label(key),
+      label: formatLabel(key),
       games: r.games,
       wins: r.wins,
       winRate: rate,

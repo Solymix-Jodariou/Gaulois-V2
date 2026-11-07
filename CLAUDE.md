@@ -31,7 +31,7 @@ Node 22 ou plus. Sous Windows, le shell est Git Bash : chemins avec `/`.
 ## Carte du projet
 
 - `config/clan.ts` : tag, nom, liens, logos, date de création du clan. Les champs à `null` ou `[]` masquent leur section.
-- `src/pages/*.astro` : une page par fichier, mise en page `src/layouts/Base.astro` (en-tête, navigation, pied de page). Pages personnelles `compte`, `admin`, `direction` en `noindex`.
+- `src/pages/*.astro` : une page par fichier, mise en page `src/layouts/Base.astro` (en-tête, navigation, pied de page). Pages personnelles `compte`, `admin`, `direction` et fiches `membres/[id]` en `noindex`.
 - `src/components/` : `.astro` statiques, `.tsx` Preact hydratés (`client:idle`, `client:visible` ou `client:only="preact"`). `src/components/compte/` : écrans de la connexion.
 - `src/lib/` : calculs purs et testés. `schemas.ts` (Zod), `data.ts` (lecture de `data/` et `content/`), `compte/` (client Supabase `api.ts`, `preflight.ts`, `roster.ts`), `clanmap/` (carte des clans), `fx/` (logique des effets).
 - `src/scripts/` : scripts navigateur — `fx.ts` effets, `film.ts` film de la carte, `conquest.ts` calculateur de la page Carte.

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { clan } from "../config/clan";
 import { runClanMap } from "../src/lib/clanmap/collect";
+import { MEMBER_GAMES_FILE } from "../src/lib/data";
 import { runPipeline, type Deps } from "../src/lib/pipeline";
 
 const deps: Deps = {
@@ -11,6 +12,7 @@ const deps: Deps = {
   tag: clan.tag,
   archiveStart: clan.archiveStart,
   delayMs: 300,
+  memberGamesFile: MEMBER_GAMES_FILE,
   log: console.log,
 };
 

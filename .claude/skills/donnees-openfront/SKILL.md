@@ -20,6 +20,8 @@ Audit complet, routes et réponses observées : `docs/API_AUDIT.md`. Les visiteu
 | `GET /public/clan/GAL/members` | Liste des membres, `stats.team` | Non documentée, peut changer |
 | `GET /public/leaderboard/ranked` | Décompte par mode des membres avec pseudo au classé (`data/ranked.json`), sans nom ni chiffre individuel, à part des stats de clan | Documentée |
 | `GET /public/game/:id?turns=false` | Carte, durée et équipes des clans de chaque partie (`data/games/`), 400 au plus par passage, aucun joueur écrit. L'équipe des perdants est calculée : `placeClans`, contrôlé sur les vainqueurs | Documentée |
+| `GET /public/player/:id/games?filter=team&type=public` | Dernières parties sous le tag des membres avec pseudo (`.cache/member-games/players.json`, hors de Git), détail de `stats.team`, sans statistique tirée ni rien de ce qui est joué hors du tag | Documentée |
+| `GET /public/players/recently-deleted` | Comptes à retirer de ce qui est collecté, lue à chaque passage | Documentée |
 | `GET /clans/GAL` | Trésor du clan (capsules, troupes) | Hors `/public`, non documentée ; n'a pas répondu depuis GitHub le 6 novembre 2026 |
 | `GET /public/clanmap/history` | Historique de la carte des clans, rejoué en film | Documentée pour cet usage |
 | `/clanmap/ownership` et le reste de `/clanmap/*` | — | Refusée aux machines de GitHub (403) : ne pas contourner, ne pas relire sans accord d'OpenFront |

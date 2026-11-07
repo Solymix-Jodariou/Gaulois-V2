@@ -1,0 +1,138 @@
+---
+import Base from "../../layouts/Base.astro";
+import DataStatus from "../../components/DataStatus.astro";
+import MapNamesCredit from "../../components/MapNamesCredit.astro";
+import PageHeader from "../../components/PageHeader.astro";
+import { clan } from "../../../config/clan";
+import { loadMemberGames, loadMembers, loadMeta } from "../../lib/data";
+import { fmtDate, fmtInt, fmtPct } from "../../lib/format";
+import { MAX_AGE_HOURS } from "../../lib/freshness";
+import { mapLabel } from "../../lib/map-names";
+import { gamesOf, rateOf, recentGamesTitle } from "../../lib/members";
+import { formatLabel } from "../../lib/results";
+import type { StoredMember } from "../../lib/schemas";
+import { parisParts } from "../../lib/time";
+
+/** Une fiche par membre avec pseudo : un anonyme n'en a pas, et son identifiant n'est écrit nulle part. */
+export function getStaticPaths() {
+  return (loadMembers()?.members ?? []).flatMap((member) => (member.username && member.publicId ? [{ params: { id: member.publicId }, props: { member } }] : []));
+}
+
+interface Props {
+  member: StoredMember;
+}
+const { member } = Astro.props;
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const meta = loadMeta();
+const username = member.username ?? "";
+const games = gamesOf(member);
+const rate = rateOf(member);
+const recent = loadMemberGames()[member.publicId ?? ""] ?? null;
+const recentTitle = recent && games ? recentGamesTitle(recent, games) : null;
+const joinedOn = parisParts(member.joinedAt).date;
+const ROLE = { leader: "Chef du clan", officer: "Officier du clan", member: null } as const;
+const RESULT = { victory: "Victoire", defeat: "Défaite" } as const;
+const atDay = (date: string) => fmtDate(`${date}T12:00:00Z`);
+const tiles = member.team
+  ? [
+      { label: "Victoires", value: fmtInt(member.team.wins) },
+      { label: "Défaites", value: fmtInt(member.team.losses) },
+      { label: "Parties", value: fmtInt(games) },
+      { label: "Taux de victoire", value: fmtPct(rate) },
+    ]
+  : [];
+---
+
+<Base title={username} description={`Fiche de ${username}, membre du clan ${clan.tag} : ses parties d'équipe sous le tag.`} noindex>
+  <div class="wrap">
+    <PageHeader title={username} intro={`Membre de [${clan.tag}] depuis le ${fmtDate(member.joinedAt)}.`}>
+      {ROLE[member.role] && <p class="mt-2 font-semibold" data-testid="member-role">{ROLE[member.role]}</p>}
+      <div class="mt-4">
+        <DataStatus state={meta.members} maxAgeHours={MAX_AGE_HOURS.members} />
+      </div>
+    </PageHeader>
+
+    <section class="stage stage-blue reveal" aria-labelledby="member-stats-title" data-testid="member-stats">
+      <h2 id="member-stats-title" class="section-title">Ses parties sous le tag</h2>
+      {
+        !member.team ? (
+          <p class="mt-6 font-display text-lg font-bold">Pas de données</p>
+        ) : games === 0 ? (
+          <p class="mt-6 font-display text-lg font-bold" data-testid="member-no-game">Aucune partie sous le tag</p>
+        ) : (
+          <dl class="mt-6 grid grid-cols-2 gap-x-6 gap-y-6 md:grid-cols-4">
+            {tiles.map((t) => (
+              <div data-testid="member-stat">
+                <dt class="text-sm font-semibold text-muted">{t.label}</dt>
+                <dd class="tnum mt-1 font-display text-3xl font-extrabold">{t.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )
+      }
+      <p class="mt-6 max-w-3xl text-sm text-muted">
+        Parties publiques en équipe jouées avec le tag {clan.tag}, sans le classé, le FFA ni Humains contre Nations.{games === 0 && " Cela ne veut pas dire que ce joueur est inactif."}
+      </p>
+    </section>
+
+    {
+      games !== null && games > 0 && (
+        <section class="stage stage-night reveal mt-6" aria-labelledby="member-recent-title" data-testid="member-recent">
+          <h2 id="member-recent-title" class="section-title">Ses dernières parties</h2>
+          {recent && recentTitle ? (
+            <>
+              <p class="mt-4 text-lg text-muted" data-testid="member-recent-title">{recentTitle}</p>
+                <div class="panel mt-4 !p-0">
+                  <table class="data-table tnum w-full text-sm">
+                    <caption class="sr-only">Ses dernières parties sous le tag, de la plus récente à la plus ancienne</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Jour</th>
+                        <th scope="col">Carte</th>
+                        <th scope="col" class="hidden sm:table-cell">Format</th>
+                        <th scope="col" class="whitespace-nowrap">Résultat</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recent.recent.map((game) => (
+                        <tr data-testid="member-game">
+                          <td>{atDay(game.date)}</td>
+                          <td>
+                            {mapLabel(game.map)}
+                            <span class="block text-xs text-muted sm:hidden">{game.teams === null ? "—" : formatLabel(game.teams)}</span>
+                          </td>
+                          <td class="hidden sm:table-cell">{game.teams === null ? "—" : formatLabel(game.teams)}</td>
+                          <td class="whitespace-nowrap font-semibold">{RESULT[game.result]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              <p class="mt-4 max-w-3xl text-sm text-muted">
+                Relevé le {atDay(recent.readOn)}{recent.seen !== games && " : ses parties les plus récentes n'y sont pas encore"}. Le résultat est celui qu'OpenFront compte pour ce joueur : s'il quitte la partie avant la fin, une victoire de son équipe peut compter comme une défaite pour lui. La fiche n'affiche que le jour.{recent.recent.some((game) => game.date < joinedOn) && " Certaines parties sont antérieures à son arrivée dans la liste officielle."}
+              </p>
+              <MapNamesCredit />
+            </>
+          ) : (
+            <>
+              <p class="mt-4 font-display text-lg font-bold">Pas de données</p>
+              <p class="mt-1 text-sm text-muted">Ses dernières parties ne sont pas disponibles.</p>
+            </>
+          )}
+          {
+            meta.memberGames.lastError && (
+              <div class="mt-4">
+                <DataStatus state={meta.memberGames} maxAgeHours={MAX_AGE_HOURS.memberGames} />
+              </div>
+            )
+          }
+        </section>
+      )
+    }
+
+    <div class="reveal mt-8 flex flex-col gap-3 sm:flex-row">
+      <a href={`${base}/membres`} class="btn btn-ghost">Retour aux membres</a>
+      <a href={`https://openfront.io/#modal=profile&publicID=${encodeURIComponent(member.publicId ?? "")}`} class="btn btn-ghost" rel="noopener">Son profil sur OpenFront</a>
+    </div>
+  </div>
+</Base>

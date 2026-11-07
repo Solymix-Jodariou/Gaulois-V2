@@ -1,17 +1,21 @@
 import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { z } from "zod";
 import { digestGame } from "./games";
 import {
   ApiClanExists,
+  ApiDeletedPlayers,
   ApiGame,
   ApiLeaderboard,
   ApiMembersPage,
+  ApiPlayerGames,
   ApiRankedPage,
   ApiSessionsPage,
   Meta,
   StoredGame,
   StoredGameFile,
+  StoredMemberGames,
+  StoredMemberRecent,
   StoredMembers,
   StoredSessionFile,
   emptyMeta,
@@ -19,9 +23,10 @@ import {
   type HistorySnapshot,
   type RivalsSnapshot,
   type StoredLeaderboard,
+  type StoredMemberGame,
   type StoredSession,
 } from "./schemas";
-import { toStoredMember } from "./members";
+import { gamesOf, MEMBER_RECENT_GAMES, memberGamesUnderTag, toStoredMember } from "./members";
 import { RANKED_MODES, rankedCounts } from "./ranked";
 import { mergeSessions } from "./sessions";
 import { findClan, withOfficialRanks } from "./stats";
@@ -40,6 +45,10 @@ const GAMES_PER_RUN = 400;
 const MAX_FAILURES_PER_RUN = 25;
 /** À partir de ce nombre d'échecs sans aucune partie lue, c'est une panne à signaler, même quand il n'y a que quelques nouvelles parties à lire. */
 const OUTAGE_FAILURES = 5;
+/** Appels par passage pour les fiches des membres, environ : un joueur commencé est lu jusqu'au bout. Moins de 3 minutes. */
+const MEMBER_CALLS_PER_RUN = 150;
+/** Pages lues au plus pour un joueur, de 10 parties chacune. Plus loin, ce qu'il a joué sous le tag est ancien : la fiche le dit. */
+const MEMBER_PAGES_MAX = 3;
 
 export interface Deps {
   fetch: typeof fetch;
@@ -50,6 +59,9 @@ export interface Deps {
   archiveStart: string;
   delayMs: number;
   gamesPerRun?: number;
+  memberCallsPerRun?: number;
+  /** Les parties de chaque membre : hors de `data/`, donc hors de Git. */
+  memberGamesFile: string;
   log: (msg: string) => void;
 }
 
@@ -267,6 +279,88 @@ export async function fetchGames(api: ApiClient, deps: Deps): Promise<{ read: nu
   return { read, left: todo.length - read, unreadable };
 }
 
+/** Retire les comptes supprimés de la liste des membres, comme le demande OpenFront, sans attendre sa relecture quotidienne. */
+async function dropDeletedMembers(api: ApiClient, deps: Deps, members: StoredMembers): Promise<StoredMembers> {
+  const deleted = new Set((await api.get("/players/recently-deleted", ApiDeletedPlayers)).map((d) => d.publicId));
+  const kept = members.members.filter((m) => !m.publicId || !deleted.has(m.publicId));
+  const removed = members.members.length - kept.length;
+  if (removed === 0) return members;
+  const cleaned = { ...members, total: members.total - removed, members: kept };
+  await writeJson(join(deps.dataDir, "members.json"), cleaned);
+  deps.log(`comptes supprimés retirés de la liste : ${removed}`);
+  return cleaned;
+}
+
+async function writeMemberGames(deps: Deps, players: ReadonlyMap<string, StoredMemberRecent>): Promise<void> {
+  await mkdir(dirname(deps.memberGamesFile), { recursive: true });
+  await writeJson(deps.memberGamesFile, Object.fromEntries(players));
+}
+
+/**
+ * Oublie un membre parti, ou qui a retiré son pseudo : il n'a plus de fiche, et son identifiant ne doit rester nulle part.
+ * Aucun appel à l'API : cela reste vrai quand une route est en panne.
+ */
+async function forgetFormerMembers(deps: Deps, members: StoredMembers): Promise<Map<string, StoredMemberRecent>> {
+  const stored = (await readJson(deps.memberGamesFile, StoredMemberGames)) ?? {};
+  const current = new Set(members.members.flatMap((m) => (m.username && m.publicId ? [m.publicId] : [])));
+  const players = new Map(Object.entries(stored).filter(([id]) => current.has(id)));
+  if (players.size !== Object.keys(stored).length) await writeMemberGames(deps, players);
+  return players;
+}
+
+/** Les dernières parties sous le tag des membres avec pseudo. Tant que ses parties selon `stats.team` ne bougent pas, un joueur n'est pas relu. Rien n'est écrit pour un anonyme. */
+export async function fetchMemberGames(api: ApiClient, deps: Deps, members: StoredMembers): Promise<{ read: number; left: number; unreadable: number }> {
+  const players = await forgetFormerMembers(deps, members);
+  const named = members.members.flatMap((m) => (m.username && m.publicId ? [{ id: m.publicId, games: gamesOf(m) ?? 0 }] : []));
+
+  // Ceux jamais lus d'abord : tant qu'ils n'ont rien, leur fiche ne montre aucune partie.
+  const todo = named.filter((m) => m.games > 0 && players.get(m.id)?.seen !== m.games).sort((a, b) => Number(players.has(a.id)) - Number(players.has(b.id)));
+  const today = parisParts(deps.now()).date;
+  const budget = deps.memberCallsPerRun ?? MEMBER_CALLS_PER_RUN;
+  let calls = 0;
+  let read = 0;
+  let unreadable = 0;
+  let lastFailure = "";
+  let changed = false;
+  try {
+    for (const { id, games } of todo) {
+      if (calls >= budget || unreadable >= MAX_FAILURES_PER_RUN) break;
+      try {
+        const wanted = Math.min(games, MEMBER_RECENT_GAMES);
+        const rows = [];
+        let found: StoredMemberGame[] = [];
+        let cursor: string | null = null;
+        let pages = 0;
+        do {
+          const query: string = `filter=team&type=public${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+          calls++;
+          pages++;
+          const page = await api.get(`/player/${encodeURIComponent(id)}/games?${query}`, ApiPlayerGames);
+          rows.push(...page.results);
+          found = memberGamesUnderTag(rows, deps.tag);
+          cursor = page.nextCursor;
+        } while (cursor && pages < MEMBER_PAGES_MAX && found.length < wanted);
+        // Tout son historique est lu sans y trouver ce que dit `stats.team` : c'est la réponse qui se trompe. Ce qui est déjà gardé reste.
+        if (cursor === null && found.length < wanted) throw new Error(`réponse incomplète : ${found.length} parties pour ${wanted} attendues`);
+        players.set(id, StoredMemberRecent.parse({ seen: games, readOn: today, recent: found }));
+        changed = true;
+        read++;
+      } catch (e) {
+        unreadable++;
+        // Ce message finit dans `meta.json` et dans le journal de l'Action, tous deux publics : sans l'identifiant du joueur, ni le curseur de l'API.
+        lastFailure = (e instanceof Error ? e.message : String(e)).replaceAll(id, "…").replace(/\?\S*/g, "").slice(0, 300);
+        deps.log(`fiche sans réponse lisible : ${lastFailure}`);
+      }
+    }
+  } finally {
+    if (changed) await writeMemberGames(deps, players);
+  }
+  if (unreadable >= MAX_FAILURES_PER_RUN || (read === 0 && unreadable >= OUTAGE_FAILURES)) {
+    throw new Error(`${unreadable} fiches sans réponse lisible, ${read} lues, dernière erreur : ${lastFailure}`);
+  }
+  return { read, left: todo.length - read, unreadable };
+}
+
 export interface RunSummary {
   errors: string[];
 }
@@ -306,6 +400,7 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
     failed("sessions", meta.sessions, e);
     failed("membres", meta.members, e);
     failed("parties", meta.games, e);
+    failed("fiches des membres", meta.memberGames, e);
   }
 
   if (clanExists) {
@@ -340,7 +435,22 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
     }
   }
 
-  const members = await readJson(join(deps.dataDir, "members.json"), StoredMembers);
+  let members = await readJson(join(deps.dataDir, "members.json"), StoredMembers);
+
+  if (members) {
+    try {
+      await forgetFormerMembers(deps, members);
+      if (clanExists) {
+        members = await dropDeletedMembers(api, deps, members);
+        const { read, left, unreadable } = await fetchMemberGames(api, deps, members);
+        if (read > 0 || unreadable === 0) markOk(meta.memberGames, at);
+        deps.log(`fiches des membres : ${read} lues, ${left} restent à lire`);
+        if (unreadable > 0) errors.push(`fiches sans réponse lisible, à relire : ${unreadable}`);
+      }
+    } catch (e) {
+      failed("fiches des membres", meta.memberGames, e);
+    }
+  }
 
   // Sans roster, impossible de reconnaître nos joueurs : son absence est déjà signalée.
   if (members) {

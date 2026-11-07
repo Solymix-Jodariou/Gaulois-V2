@@ -24,6 +24,7 @@ const src = `${import.meta.env.BASE_URL.replace(/\/$/, "")}/data/members.json`;
       <p>
         Les chiffres comptent les <strong class="text-white">parties publiques en équipe jouées avec le tag GAL</strong>, sans le classé, le FFA ni Humains contre Nations.
         « 0 » signifie aucune partie sous le tag, ce qui ne veut pas dire que le joueur est inactif. « — » signifie pas de données, ou pas de taux sans partie jouée.
+        Un pseudo mène à la fiche du membre.
       </p>
     </section>
     <MembersTable client:load src={src} />

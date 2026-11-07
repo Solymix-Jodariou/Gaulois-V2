@@ -104,6 +104,7 @@ Tout est écrit dans `data/` :
 | `leaderboard.json` | Classement officiel | Chaque heure |
 | `sessions/AAAA-MM.json` | Sessions du clan, sans doublon | Chaque heure |
 | `members.json` | Membres et leurs stats d'équipe | Une fois par jour |
+| `.cache/member-games/players.json`, hors de `data/` | Pour chaque membre avec pseudo, ses 10 dernières parties sous le tag : le jour, la carte, le format et le résultat. Aucun anonyme. Hors de Git, dans le cache de l'Action | Quand ses parties selon `stats.team` ont bougé, environ 150 appels par passage |
 | `history/AAAA-MM-JJ.json` | Instantané quotidien : rang, score, totaux | Chaque heure, dernière valeur du jour conservée |
 | `rivals/AAAA-MM-JJ.json` | Tags et scores de tout le classement du jour, dans l'ordre officiel | Chaque heure, dernière valeur du jour conservée |
 | `ranked.json` | Par mode classé : places lues, membres avec pseudo sur ces places, et combien dans les 10 premières. Aucun nom ni chiffre individuel | Chaque heure |
@@ -134,6 +135,7 @@ Tous les calculs sont dans `src/lib/` et testés :
 - **Taux de victoire :** `victoires ÷ parties`. Sans partie, il n'y a pas de taux.
 - **Écart avec un voisin :** différence de `weightedWins`.
 - **Stats d'un membre :** champ `stats.team` de l'API.
+- **Fiche d'un membre :** une page `/membres/:id` par membre avec pseudo, en `noindex`, avec ses stats `stats.team`, sa date d'arrivée et ses dernières parties. Celles-ci viennent de `/public/player/:id/games` et sont le détail de `stats.team` : publiques, en équipe, hors classé, avec le tag, gagnées ou perdues. Aucune statistique n'en est tirée, et rien de ce que le joueur fait hors du tag n'est gardé.
 - **Meilleurs créneaux :** les plus de parties sur 90 jours, puis les plus de joueurs du clan par partie. Un créneau sous 5 parties est écarté.
 - **Jeu en groupe :** `victoires ÷ parties` selon `clanPlayerCount`, sur toutes les sessions archivées. Une taille sous 30 parties est écartée. Le bloc disparaît si la plus grande taille retenue ne gagne pas plus que la plus petite.
 - **Course avec les voisins :** score de GAL moins celui du clan voisin, sur chaque relevé de `data/rivals/`. Voisins : le clan au-dessus et les deux en dessous dans le dernier classement. Un clan absent d'un relevé laisse un trou, pas un zéro.
@@ -184,6 +186,7 @@ Les effets au curseur et aux clics sont dans `src/scripts/fx.ts`. Ils sont décr
 - Le passé du rang et du score n'existe pas dans l'API : ces courbes partent du premier instantané. Celles des clans voisins partent du premier fichier de `data/rivals/`.
 - Le classement classé ne reconnaît que les membres avec un pseudo public : les chiffres affichés sont donc des minimums. Il ne dit pas non plus sous quel tag ces parties ont été jouées.
 - Le classement couvre 90 jours glissants : ce ne sont pas des totaux depuis la création du clan.
+- Une fiche peut écrire « Pas de données » pour ses dernières parties, sans en donner la raison : pas encore lues, joueur qui ne répond pas, ou parties trop anciennes pour la lecture, limitée à quelques pages. Les parties de chaque joueur restent hors de Git, mais les anciennes versions de la liste des membres sont dans son historique public. Si le cache de l'Action est perdu, les fiches écrivent « Pas de données » le temps de se remplir.
 - La gazette ne donne le rang et le territoire que depuis le 5 novembre 2026, premiers relevés. Ses arrivées ne comptent que les membres encore dans le clan : une ancienne édition perd donc un arrivant quand il repart. Elles attendent une liste de membres relevée après le dimanche : le lundi matin, elles peuvent rester en « Pas de données » jusqu'à la relecture suivante de la liste, au plus tard le soir.
 - Le détail des parties se lit petit à petit, des plus récentes aux plus anciennes : les pages disent combien sont lues, et les totaux depuis le début n'apparaissent qu'à la fin de cette lecture. Une partie qui ne répond pas reste à lire : rien de définitif n'est écrit. Après 25 échecs dans un passage, ou 5 sans aucune partie lue, la page signale une panne. Les équipes des clans sont retrouvées par calcul tant que les fiches ne les donnent pas : si OpenFront change sa façon de les former, il faudra adapter `placeClans`.
 - La route documentée de la carte ne donne pas les troupes des clans. Le site n'affiche donc pas le coût exact d'un pixel ennemi. Le message prévu pour OpenFront, à la section 10 de [docs/API_AUDIT.md](docs/API_AUDIT.md), demande cette donnée.

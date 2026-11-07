@@ -2,10 +2,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { clan } from "../../config/clan";
-import { loadClanMapJournal, loadGames, loadHistory, loadMembers, loadMeta, loadSessions } from "../../src/lib/data";
+import { loadClanMapJournal, loadGames, loadHistory, loadMemberGames, loadMembers, loadMeta, loadSessions } from "../../src/lib/data";
 import { fmtCount } from "../../src/lib/format";
 import { faceOffs, mapResults } from "../../src/lib/games";
 import { editionLead, gazetteEditions, rankWords, standingDetails, territoryDetails, weekLabel } from "../../src/lib/gazette";
+import { gamesOf, recentGamesTitle } from "../../src/lib/members";
 import { mapLabel } from "../../src/lib/map-names";
 
 const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre", "/gazette"];
@@ -288,6 +289,85 @@ test("la gazette donne le bilan de la dernière semaine complète, et n'invente 
   await expect(home).toContainText(editionLead(latest, clan.tag));
   await home.getByRole("link", { name: "Lire la gazette" }).click();
   await expect(page).toHaveURL(/gazette/);
+});
+
+test.describe("fiches des membres", () => {
+  const roster = loadMembers()?.members ?? [];
+  const named = roster.filter((m) => m.username && m.publicId);
+  const active = [...named].sort((a, b) => (gamesOf(b) ?? 0) - (gamesOf(a) ?? 0))[0];
+  const idle = named.find((m) => gamesOf(m) === 0);
+  // Le mot le plus long, pas le pseudo le plus long : c'est lui qui peut faire déborder la page.
+  const widestWord = (name: string | null) => Math.max(...(name ?? "").split(" ").map((word) => word.length));
+  const longest = [...named].sort((a, b) => widestWord(b.username) - widestWord(a.username))[0];
+
+  test("une fiche reprend les stats d'équipe du membre, et n'est pas indexée", async ({ page }) => {
+    if (!active?.team) throw new Error("Il faudrait au moins un membre avec une partie sous le tag.");
+    await page.goto(`/membres/${active.publicId}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(active.username ?? "");
+    await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex");
+    const stats = page.getByTestId("member-stat");
+    await expect(stats).toHaveCount(4);
+    expect(digits(await stats.nth(0).locator("dd").textContent())).toBe(String(active.team.wins));
+    expect(digits(await stats.nth(1).locator("dd").textContent())).toBe(String(active.team.losses));
+    expect(digits(await stats.nth(2).locator("dd").textContent())).toBe(String(gamesOf(active)));
+    await expect(page.getByTestId("member-stats")).toContainText("sans le classé");
+
+    // Ni heure ni statistique d'un autre mode : le jour, la carte, le format et le résultat.
+    const recent = loadMemberGames()[active.publicId ?? ""];
+    const title = recent ? recentGamesTitle(recent, gamesOf(active) ?? 0) : null;
+    const block = page.getByTestId("member-recent");
+    if (recent && title) {
+      await expect(block.getByTestId("member-recent-title")).toHaveText(title);
+      await expect(block.getByTestId("member-game")).toHaveCount(recent.recent.length);
+      expect(await block.locator("table").textContent()).not.toMatch(/\d{1,2}[:h]\d{2}/);
+      await expect(block.getByTestId("map-names-credit")).toContainText("CC BY-SA 4.0");
+    } else {
+      await expect(block).toContainText("Pas de données");
+      await expect(block.getByTestId("member-game")).toHaveCount(0);
+    }
+    await expect(page.getByRole("link", { name: "Son profil sur OpenFront" })).toHaveAttribute("href", `https://openfront.io/#modal=profile&publicID=${active.publicId}`);
+    await page.getByRole("link", { name: "Retour aux membres" }).click();
+    await expect(page).toHaveURL(/\/membres\/?$/);
+  });
+
+  test("un membre sans partie sous le tag n'a pas de faux zéro", async ({ page }) => {
+    if (!idle) return;
+    await page.goto(`/membres/${idle.publicId}`);
+    await expect(page.getByTestId("member-no-game")).toHaveText("Aucune partie sous le tag");
+    await expect(page.getByTestId("member-stat")).toHaveCount(0);
+    await expect(page.getByTestId("member-recent")).toHaveCount(0);
+  });
+
+  test("le tableau des membres mène à la fiche, et un anonyme n'en a pas", async ({ page }) => {
+    await page.goto("/membres");
+    await hydrated(page);
+    const link = page.getByRole("link", { name: active?.username ?? "", exact: true }).filter({ visible: true }).first();
+    await expect(link).toHaveAttribute("href", new RegExp(`/membres/${active?.publicId}$`));
+    expect(existsSync("dist/membres")).toBe(true);
+    const pages = readdirSync("dist/membres").filter((name) => name !== "index.html");
+    expect(pages.sort()).toEqual(named.map((m) => m.publicId).sort());
+  });
+
+  test("seuls les membres avec pseudo ont des parties gardées", () => {
+    const ids = new Set(named.map((m) => m.publicId));
+    expect(Object.keys(loadMemberGames()).filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  for (const width of [360, 375, 768, 1024, 1280, 1920]) {
+    test(`la fiche au mot le plus long ne fait pas défiler la page à ${width} px`, async ({ page }) => {
+      if (!longest) throw new Error("Il faudrait au moins un membre avec un pseudo.");
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`/membres/${longest.publicId}`);
+      await page.waitForLoadState("networkidle");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    });
+  }
+  test("une fiche passe le contrôle d'accessibilité", async ({ page }) => {
+    await page.goto(`/membres/${active?.publicId}`);
+    await page.waitForLoadState("networkidle");
+    const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(violations.map((v) => v.id)).toEqual([]);
+  });
 });
 
 test("signale les données périmées au visiteur", async ({ page }) => {

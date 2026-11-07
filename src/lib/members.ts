@@ -1,5 +1,9 @@
-import type { StoredMember } from "./schemas";
+import type { ApiPlayerGame, StoredMember, StoredMemberGame, StoredMemberRecent } from "./schemas";
 import { winRate } from "./stats";
+import { parisParts } from "./time";
+
+/** Parties montrées sur une fiche. */
+export const MEMBER_RECENT_GAMES = 10;
 
 /** Conversion API → fichier public. Le `publicId` d'un membre sans pseudo n'est jamais écrit. */
 export function toStoredMember(m: {
@@ -17,6 +21,31 @@ export function toStoredMember(m: {
     username,
     team: m.stats ? { wins: m.stats.team.wins, losses: m.stats.team.losses } : null,
   };
+}
+
+/**
+ * Les lignes de `stats.team` d'un joueur : publiques, en équipe, hors classé, avec le tag du clan, gagnées ou perdues. Vérifié sur 10 joueurs relus en entier :
+ * leur décompte égale ses victoires et ses défaites. Rien n'est gardé de ses autres parties, ni leur nombre. Le jour seulement, à l'heure de Paris.
+ */
+export function memberGamesUnderTag(rows: readonly ApiPlayerGame[], tag: string): StoredMemberGame[] {
+  return rows
+    .flatMap((r): StoredMemberGame[] => {
+      const inTeamStats = r.clanTag === tag && r.mode === "Team" && r.type === "Public" && (r.rankedType ?? "unranked") === "unranked";
+      if (!inTeamStats || r.result === "incomplete") return [];
+      return [{ date: parisParts(r.start).date, map: r.map, teams: r.playerTeams, result: r.result }];
+    })
+    .slice(0, MEMBER_RECENT_GAMES);
+}
+
+/**
+ * Ce que la fiche dit de ses dernières parties. `games` : ses parties selon `stats.team`. `null` : rien à montrer.
+ * Sans partie trouvée, la fiche écrit « Pas de données », comme pour un joueur pas encore lu : en donner la raison dirait ce qu'il joue hors du tag.
+ */
+export function recentGamesTitle(recent: StoredMemberRecent, games: number): string | null {
+  const found = recent.recent.length;
+  if (found === 0) return null;
+  if (found === games) return found === 1 ? "Sa seule partie sous le tag." : `Ses ${found} parties sous le tag.`;
+  return found === 1 ? "Sa dernière partie sous le tag." : `Ses ${found} dernières parties sous le tag.`;
 }
 
 export const gamesOf = (m: StoredMember): number | null => (m.team ? m.team.wins + m.team.losses : null);
