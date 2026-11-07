@@ -1,13 +1,17 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { z } from "zod";
+import { digestGame } from "./games";
 import {
   ApiClanExists,
+  ApiGame,
   ApiLeaderboard,
   ApiMembersPage,
   ApiRankedPage,
   ApiSessionsPage,
   Meta,
+  StoredGame,
+  StoredGameFile,
   StoredMembers,
   StoredSessionFile,
   emptyMeta,
@@ -30,6 +34,12 @@ const PAGE_SIZE = 50;
 const SETTLE_MS = 6 * 3_600_000;
 /** Les membres ne sont relus qu'une fois par jour : le fichier est lourd pour Git. */
 const MEMBERS_MIN_INTERVAL_MS = 20 * 3_600_000;
+/** Parties lues par passage : environ 4 minutes. L'archive se lit donc en un jour ou deux, sans charger l'API. */
+const GAMES_PER_RUN = 400;
+/** Au-delà dans un passage, le problème vient de l'API : inutile d'insister. Assez haut pour que quelques parties cassées, toujours en tête de file, ne bloquent pas les plus anciennes. */
+const MAX_FAILURES_PER_RUN = 25;
+/** À partir de ce nombre d'échecs sans aucune partie lue, c'est une panne à signaler, même quand il n'y a que quelques nouvelles parties à lire. */
+const OUTAGE_FAILURES = 5;
 
 export interface Deps {
   fetch: typeof fetch;
@@ -39,6 +49,7 @@ export interface Deps {
   tag: string;
   archiveStart: string;
   delayMs: number;
+  gamesPerRun?: number;
   log: (msg: string) => void;
 }
 
@@ -68,9 +79,13 @@ export class ApiClient {
     throw new Error(`${lastError} sur ${path} après 4 essais`);
   }
 
-  async get<S extends z.ZodType>(path: string, schema: S, base: string = API_BASE): Promise<z.output<S>> {
+  async getJson(path: string, base: string = API_BASE): Promise<unknown> {
     const res = await this.request(`${base}${path}`, path);
-    const parsed = schema.safeParse(await res.json());
+    return res.json();
+  }
+
+  async get<S extends z.ZodType>(path: string, schema: S, base: string = API_BASE): Promise<z.output<S>> {
+    const parsed = schema.safeParse(await this.getJson(path, base));
     if (!parsed.success) throw new Error(`réponse invalide sur ${path} : ${parsed.error.message.slice(0, 300)}`);
     return parsed.data;
   }
@@ -194,6 +209,64 @@ async function fetchSessions(api: ApiClient, deps: Deps, meta: Meta): Promise<vo
   }
 }
 
+async function jsonNames(dir: string): Promise<string[]> {
+  return (await readdir(dir)).filter((name) => name.endsWith(".json"));
+}
+
+/**
+ * Le détail des parties pas encore lues, des plus récentes aux plus anciennes : une partie finie ne change plus, elle n'est lue qu'une fois.
+ * Une partie qui ne répond pas, même en 404, reste simplement à lire : rien de définitif n'est écrit, donc une panne ne peut rien fausser.
+ * Ce qui est déjà lu reste acquis si la lecture s'arrête en route.
+ */
+export async function fetchGames(api: ApiClient, deps: Deps): Promise<{ read: number; left: number; unreadable: number }> {
+  const dir = join(deps.dataDir, "games");
+  await mkdir(dir, { recursive: true });
+  const files = new Map<string, StoredGameFile>();
+  for (const name of await jsonNames(dir)) {
+    const file = await readJson(join(dir, name), StoredGameFile);
+    if (file) files.set(file.month, file);
+  }
+  const known = new Set([...files.values()].flatMap((f) => f.games.map((g) => g.id)));
+
+  const sessionsDir = join(deps.dataDir, "sessions");
+  const sessions: StoredSession[] = [];
+  for (const name of await jsonNames(sessionsDir)) {
+    sessions.push(...((await readJson(join(sessionsDir, name), StoredSessionFile))?.sessions ?? []));
+  }
+  const todo = sessions.filter((s) => !known.has(s.gameId)).sort((a, b) => b.gameStart.localeCompare(a.gameStart));
+
+  const touched = new Set<string>();
+  let read = 0;
+  let unreadable = 0;
+  let lastFailure = "";
+  try {
+    for (const session of todo.slice(0, deps.gamesPerRun ?? GAMES_PER_RUN)) {
+      if (unreadable >= MAX_FAILURES_PER_RUN) break;
+      try {
+        const game = ApiGame.parse(await api.getJson(`/game/${encodeURIComponent(session.gameId)}?turns=false`));
+        // Une seule ligne invalide ferait rejeter tout le fichier du mois à la lecture.
+        const stored = StoredGame.parse(digestGame(game, session, deps.tag));
+        const month = session.gameStart.slice(0, 7);
+        const file = files.get(month) ?? { month, games: [] };
+        file.games.push(stored);
+        files.set(month, file);
+        touched.add(month);
+        read++;
+      } catch (e) {
+        unreadable++;
+        lastFailure = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        deps.log(`partie sans réponse lisible, ${session.gameId} : ${lastFailure}`);
+      }
+    }
+  } finally {
+    for (const month of touched) await writeJson(join(dir, `${month}.json`), files.get(month));
+  }
+  if (unreadable >= MAX_FAILURES_PER_RUN || (read === 0 && unreadable >= OUTAGE_FAILURES)) {
+    throw new Error(`${unreadable} parties sans réponse lisible, ${read} lues, dernière erreur : ${lastFailure}`);
+  }
+  return { read, left: todo.length - read, unreadable };
+}
+
 export interface RunSummary {
   errors: string[];
 }
@@ -232,6 +305,7 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
   } catch (e) {
     failed("sessions", meta.sessions, e);
     failed("membres", meta.members, e);
+    failed("parties", meta.games, e);
   }
 
   if (clanExists) {
@@ -241,6 +315,17 @@ export async function runPipeline(deps: Deps): Promise<RunSummary> {
       deps.log(`sessions : couvertes jusqu'au ${meta.sessions.coveredUntil}`);
     } catch (e) {
       failed("sessions", meta.sessions, e);
+    }
+
+    try {
+      const { read, left, unreadable } = await fetchGames(api, deps);
+      // Rien de lu alors qu'il y avait à lire : les données n'ont pas bougé, la date de mise à jour non plus.
+      if (read > 0 || unreadable === 0) markOk(meta.games, at);
+      deps.log(`parties : ${read} lues, ${left} restent à lire`);
+      // Peu nombreux, ces échecs ne sont pas une panne : le site ne l'annonce pas, et son décompte des parties lues reste juste. Le journal de l'Action les garde.
+      if (unreadable > 0) errors.push(`parties sans réponse lisible, à relire : ${unreadable}`);
+    } catch (e) {
+      failed("parties", meta.games, e);
     }
 
     const lastMembers = meta.members.lastSuccessAt ? Date.parse(meta.members.lastSuccessAt) : 0;

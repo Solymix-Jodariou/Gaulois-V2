@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runPipeline, type Deps } from "../../src/lib/pipeline";
+import { StoredGameFile } from "../../src/lib/schemas";
 
 const clan = (clanTag: string, weightedWins: number) => ({
   clanTag,
@@ -38,7 +39,17 @@ const rankedEntries = (ids: string[]) =>
   ids.map((public_id, i) => ({ rank: i + 1, elo: 2000 - i, peakElo: 2100, wins: 9, losses: 3, total: 12, public_id, accountUsername: "NomAPI", username: "NomAPI", level: 5 }));
 const rankedPage = (ids: string[]) => ({ "1v1": rankedEntries(ids), "2v2": rankedEntries(ids), ffa: rankedEntries(ids) });
 
-type Route = (url: URL) => { status?: number; body?: unknown } | undefined;
+const player = (clientID: string, clanTag: string) => ({ clientID, clanTag, username: "NomSecret", publicID: "IdSecret", persistentID: "IdPersistant", stats: { gold: [1] } });
+const game = (duration = 600) => ({
+  info: {
+    config: { gameMap: "World" },
+    duration,
+    winner: ["team", "Red", "a", "b"],
+    players: [player("a", "GAL"), player("b", "GAL"), player("c", "UN"), player("d", "UN")],
+  },
+});
+
+type Route =(url: URL) => { status?: number; body?: unknown; raw?: string } | undefined;
 
 const healthy: Route = (url) => {
   const path = url.pathname.replace("/public", "");
@@ -53,6 +64,7 @@ const healthy: Route = (url) => {
     return { body: { results: url.searchParams.get("page") === "1" ? results : [], total: results.length, page: 1, limit: 50 } };
   }
   if (path === "/leaderboard/ranked") return { body: rankedPage(url.searchParams.get("page") === "1" ? ["id1", "AUTRE", "SECRET"] : ["LOIN"]) };
+  if (path.startsWith("/game/")) return { body: game() };
   return { status: 404 };
 };
 
@@ -66,7 +78,7 @@ describe("runPipeline", () => {
       const url = new URL(input);
       calls.push(url.pathname + url.search);
       const r = route(url) ?? healthy(url);
-      return new Response(JSON.stringify(r?.body ?? {}), { status: r?.status ?? 200 });
+      return new Response(r?.raw ?? JSON.stringify(r?.body ?? {}), { status: r?.status ?? 200 });
     }) as unknown as typeof fetch,
     sleep: async () => {},
     now: () => now,
@@ -162,7 +174,8 @@ describe("runPipeline", () => {
 
   it("n'écrit rien sur le clan si le tag n'existe pas", async () => {
     const { errors } = await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
-    expect(errors).toHaveLength(2);
+    expect(errors).toHaveLength(3);
+    expect(read("meta.json").games.lastError).toContain("n'existe pas");
     expect(existsSync(join(dir, "members.json"))).toBe(false);
     expect(existsSync(join(dir, "sessions", "2026-11.json"))).toBe(false);
   });
@@ -262,6 +275,181 @@ describe("runPipeline", () => {
     await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
     expect(calls.some((c) => c.includes("/leaderboard/ranked"))).toBe(false);
     expect(existsSync(join(dir, "ranked.json"))).toBe(false);
+  });
+
+  describe("détail des parties", () => {
+    /** Plusieurs parties le même jour, de la plus ancienne à la plus récente : g0, g1, … */
+    const withSessions =
+      (count: number, games: Route): Route =>
+      (url) => {
+        if (url.pathname.endsWith("/clan/GAL/sessions")) {
+          const day = url.searchParams.get("start")?.slice(0, 10);
+          const results = day === "2026-11-04" ? Array.from({ length: count }, (_, i) => session(`g${i}`, `${day}T10:${String(i).padStart(2, "0")}:00.000Z`)) : [];
+          return { body: { results: url.searchParams.get("page") === "1" ? results : [], total: results.length, page: 1, limit: 50 } };
+        }
+        return games(url);
+      };
+    /** Toutes les parties répondent, sauf celles que `special` traite autrement. */
+    const gamesExcept =
+      (special: (name: string) => ReturnType<Route>): Route =>
+      (url) => {
+        if (!url.pathname.includes("/game/")) return undefined;
+        return special(url.pathname.split("/").at(-1) ?? "") ?? { body: game() };
+      };
+    const allAnswer = gamesExcept(() => undefined);
+    const gameCalls = () => calls.filter((c) => c.includes("/public/game/"));
+    const readIds = () => read("games/2026-11.json").games.map((g: { id: string }) => g.id);
+    const gamesFile = () => join(dir, "games/2026-11.json");
+    /** Le jour des parties n'est pas encore définitif : de nouvelles sessions peuvent apparaître d'un passage à l'autre. */
+    const sameEvening = (time: string) => {
+      now = new Date(`2026-11-04T${time}:00.000Z`);
+    };
+
+    it("lit chaque partie une seule fois et n'en écrit aucun joueur", async () => {
+      const route = withSessions(1, allAnswer);
+      const { errors } = await runPipeline(deps(route));
+      expect(errors).toEqual([]);
+      expect(gameCalls()).toEqual(["/public/game/g0?turns=false"]);
+      expect(read("games/2026-11.json")).toEqual({
+        month: "2026-11",
+        games: [
+          {
+            id: "g0",
+            map: "World",
+            seconds: 600,
+            win: 0,
+            clans: [
+              ["GAL", 2, 0],
+              ["UN", 2, 1],
+            ],
+          },
+        ],
+      });
+      const raw = readFileSync(gamesFile(), "utf8");
+      for (const absent of ["NomSecret", "IdSecret", "IdPersistant"]) expect(raw).not.toContain(absent);
+      expect(read("meta.json").games.lastSuccessAt).toBe(now.toISOString());
+
+      calls = [];
+      now = new Date("2026-11-05T11:00:00.000Z");
+      await runPipeline(deps(route));
+      expect(gameCalls()).toEqual([]);
+      expect(read("games/2026-11.json").games).toHaveLength(1);
+    });
+
+    it("commence par les plus récentes et s'arrête au nombre prévu par passage", async () => {
+      const route = withSessions(3, allAnswer);
+      await runPipeline({ ...deps(route), gamesPerRun: 2 });
+      expect(gameCalls()).toEqual(["/public/game/g2?turns=false", "/public/game/g1?turns=false"]);
+      calls = [];
+      await runPipeline({ ...deps(route), gamesPerRun: 2 });
+      expect(gameCalls()).toEqual(["/public/game/g0?turns=false"]);
+      expect(readIds()).toEqual(["g2", "g1", "g0"]);
+    });
+
+    it.each([
+      ["une partie inconnue de l'API", { status: 404 }],
+      ["une erreur du serveur", { status: 500 }],
+      ["une réponse qui n'est pas du JSON", { raw: "<html>panne</html>" }],
+      ["une réponse au mauvais format", { body: { info: "cassé" } }],
+    ])("passe à la suite sans annoncer de panne, puis relit la partie : %s", async (_label, failure) => {
+      const route = withSessions(3, gamesExcept((name) => (name === "g1" ? failure : undefined)));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors).toEqual(["parties sans réponse lisible, à relire : 1"]);
+      expect(readIds()).toEqual(["g2", "g0"]);
+      const meta = read("meta.json");
+      expect(meta.games.lastError).toBeNull();
+      expect(meta.games.lastSuccessAt).toBe(now.toISOString());
+
+      calls = [];
+      await runPipeline(deps(withSessions(3, allAnswer)));
+      expect(gameCalls()).toEqual(["/public/game/g1?turns=false"]);
+      expect(readIds()).toEqual(["g2", "g0", "g1"]);
+    });
+
+    it("ne perd aucune partie si l'API répond 404 partout quand il n'en reste que quelques-unes à lire, et finit par le signaler", async () => {
+      sameEvening("23:00");
+      const down = gamesExcept(() => ({ status: 404 }));
+      const first = await runPipeline(deps(withSessions(3, down)));
+      expect(first.errors).toEqual(["parties sans réponse lisible, à relire : 3"]);
+      expect(read("meta.json").games.lastError).toBeNull();
+      expect(existsSync(gamesFile())).toBe(false);
+
+      sameEvening("23:30");
+      const second = await runPipeline(deps(withSessions(6, down)));
+      expect(second.errors[0]).toContain("parties : 6 parties sans réponse lisible, 0 lues");
+      expect(read("meta.json").games.lastError).toContain("HTTP 404");
+      expect(existsSync(gamesFile())).toBe(false);
+
+      sameEvening("23:45");
+      await runPipeline(deps(withSessions(6, allAnswer)));
+      expect(readIds()).toHaveLength(6);
+      expect(read("meta.json").games.lastError).toBeNull();
+    });
+
+    it("ne perd aucune partie si une réponse sur trois est un 404", async () => {
+      const route = withSessions(9, gamesExcept((name) => (Number(name.slice(1)) % 3 === 0 ? { status: 404 } : undefined)));
+      await runPipeline(deps(route));
+      expect(readIds()).toHaveLength(6);
+      calls = [];
+      await runPipeline(deps(withSessions(9, allAnswer)));
+      expect(gameCalls()).toHaveLength(3);
+      expect(readIds()).toHaveLength(9);
+    });
+
+    it("n'est pas bloquée par des parties cassées qui restent en tête de file", async () => {
+      const route = withSessions(10, gamesExcept((name) => (Number(name.slice(1)) >= 3 ? { status: 500 } : undefined)));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors).toEqual(["parties sans réponse lisible, à relire : 7"]);
+      expect(readIds()).toEqual(["g2", "g1", "g0"]);
+      expect(read("meta.json").games.lastError).toBeNull();
+    });
+
+    it("s'arrête à 25 échecs dans un passage, garde ce qui est lu et le signale", async () => {
+      const route = withSessions(30, gamesExcept((name) => (Number(name.slice(1)) >= 27 ? undefined : { status: 404 })));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors[0]).toContain("parties : 25 parties sans réponse lisible, 3 lues");
+      expect(gameCalls()).toHaveLength(28);
+      expect(readIds()).toEqual(["g29", "g28", "g27"]);
+      const meta = read("meta.json");
+      expect(meta.games.lastError).toContain("HTTP 404");
+      expect(meta.games.lastSuccessAt).toBeNull();
+      expect(meta.sessions.lastError).toBeNull();
+    });
+
+    it("ne change pas la date de mise à jour si rien n'a pu être lu, sans annoncer de panne pour autant", async () => {
+      sameEvening("23:00");
+      await runPipeline(deps(withSessions(1, allAnswer)));
+      sameEvening("23:30");
+      await runPipeline(deps(withSessions(3, gamesExcept((name) => (name === "g0" ? undefined : { status: 500 })))));
+      const meta = read("meta.json");
+      expect(meta.games.lastSuccessAt).toBe("2026-11-04T23:00:00.000Z");
+      expect(meta.games.lastError).toBeNull();
+    });
+
+    it("garde le dernier état valide si toute la route tombe après un premier passage réussi", async () => {
+      await runPipeline({ ...deps(withSessions(7, allAnswer)), gamesPerRun: 1 });
+      const before = read("games/2026-11.json");
+      expect(before.games).toHaveLength(1);
+      now = new Date("2026-11-05T11:00:00.000Z");
+      await runPipeline(deps(withSessions(7, gamesExcept(() => ({ status: 500 })))));
+      expect(read("games/2026-11.json")).toEqual(before);
+      const meta = read("meta.json");
+      expect(meta.games.lastError).toContain("HTTP 500");
+      expect(meta.games.lastSuccessAt).toBe("2026-11-05T10:00:00.000Z");
+    });
+
+    it("n'écrit pas une partie dont le résumé serait invalide : le fichier du mois reste lisible", async () => {
+      const route = withSessions(2, gamesExcept((name) => (name === "g1" ? { body: game(1e300) } : undefined)));
+      const { errors } = await runPipeline(deps(route));
+      expect(errors).toEqual(["parties sans réponse lisible, à relire : 1"]);
+      expect(readIds()).toEqual(["g0"]);
+      expect(StoredGameFile.safeParse(read("games/2026-11.json")).success).toBe(true);
+    });
+
+    it("n'appelle aucune partie si le tag n'existe pas", async () => {
+      await runPipeline(deps((url) => (url.pathname.endsWith("/exists") ? { body: { exists: false } } : undefined)));
+      expect(gameCalls()).toEqual([]);
+    });
   });
 
   it("n'interroge jamais une fenêtre de plus d'un jour ni une date future", async () => {

@@ -675,6 +675,22 @@ th.fx-cross {
   /* Le rouge seul se perd sur le dégradé de la jauge : un liseré sombre le détache. */
   box-shadow: 0 0 0 1px var(--color-night);
 }
+/* Les issues d'un face-à-face, sur un même total : chacune est écrite à côté, en texte. */
+.split-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.14);
+}
+.split-bar > i {
+  display: block;
+  width: var(--v);
+}
+.split-other {
+  background: var(--color-line);
+}
 .score-bar {
   position: absolute;
   top: 0.25rem;

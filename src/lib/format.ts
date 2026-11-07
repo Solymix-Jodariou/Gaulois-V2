@@ -21,6 +21,9 @@ export const fmtScore = (n: number | null | undefined) => (n === null || n === u
 export const fmtPct = (n: number | null | undefined) =>
   n === null || n === undefined ? NO_DATA : `${dec1.format(n)} %`;
 export const fmtDec1 = (n: number) => dec1.format(n);
+/** Un nombre et son nom, accordé : 1 partie, 2 parties. */
+export const fmtCount = (n: number, word: string) => `${int.format(n)} ${word}${n > 1 ? "s" : ""}`;
+export const fmtMinutes = (seconds: number) => `${int.format(Math.round(seconds / 60))} min`;
 export const fmtDateTime = (iso: string) => dateTime.format(new Date(iso));
 export const fmtClock = (iso: string) => clock.format(new Date(iso));
 export const fmtDate = (iso: string) => dateOnly.format(new Date(iso));

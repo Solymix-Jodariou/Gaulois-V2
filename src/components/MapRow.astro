@@ -1,0 +1,25 @@
+---
+import { clan } from "../../config/clan";
+import { fmtCount, fmtDate, fmtMinutes, fmtPct } from "../lib/format";
+import type { MapResult } from "../lib/games";
+import { mapLabel } from "../lib/map-names";
+
+interface Props {
+  row: MapResult;
+}
+const { row } = Astro.props;
+---
+
+<li data-testid="map-row">
+  <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+    <span class="font-semibold">{mapLabel(row.map)}</span>
+    <span class="tnum font-display text-xl font-extrabold">{fmtPct(row.winRate)}</span>
+  </div>
+  <div class="meter relative mt-1" aria-hidden="true">
+    <i style={{ "--v": `${row.winRate}%` }}></i>
+    <b class="meter-tick" style={{ left: `${row.usual}%` }}></b>
+  </div>
+  <p class="tnum mt-1 text-xs text-muted">{fmtCount(row.wins, "victoire")} sur {fmtCount(row.games, "partie")} · d'habitude : {fmtPct(row.usual)}</p>
+  <p class="tnum mt-0.5 text-xs text-muted">Durée médiane : {fmtMinutes(row.medianSeconds)}</p>
+  {row.allTime && <p class="tnum mt-0.5 text-xs text-muted">Depuis le {fmtDate(`${clan.archiveStart}T12:00:00Z`)} : {fmtPct(row.allTime.winRate)} sur {fmtCount(row.allTime.games, "partie")}</p>}
+</li>

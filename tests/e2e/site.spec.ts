@@ -1,6 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { loadGames, loadMeta, loadSessions } from "../../src/lib/data";
+import { fmtCount } from "../../src/lib/format";
+import { faceOffs, mapResults } from "../../src/lib/games";
+import { mapLabel } from "../../src/lib/map-names";
 
 const PAGES = ["/", "/classement", "/progression", "/membres", "/activite", "/carte", "/debuter", "/rejoindre"];
 const lb = JSON.parse(readFileSync("data/leaderboard.json", "utf8"));
@@ -181,6 +185,54 @@ test("les résultats par format donnent le repère du hasard et les records", as
   await expect(formats).toContainText("à 2 équipes, le hasard donne déjà 50 %");
   await expect(page.getByTestId("clan-record")).toHaveCount(4);
   await expect(page.getByTestId("clan-records")).toContainText("n'est pas comptée");
+});
+
+// Le détail des parties se lit petit à petit : tant qu'aucune carte ni aucun clan n'atteint son seuil, rien ne s'affiche.
+test("les résultats par carte de jeu se comparent aux habitudes du clan et disent ce qui est lu", async ({ page }) => {
+  await page.goto("/progression");
+  const block = page.getByTestId("map-results");
+  const results = mapResults(loadSessions(), loadGames(), loadMeta().sessions.coveredUntil);
+  if (!results || results.rows.length === 0) {
+    await expect(block.getByTestId("map-row")).toHaveCount(0);
+    return;
+  }
+  await expect(block).toContainText("à ne pas confondre avec la carte des clans");
+  await expect(block).toContainText("CC BY-SA 4.0");
+  await expect(block).toContainText("Dernière mise à jour");
+  expect(digits(await block.getByTestId("games-coverage").textContent())).toContain(String(results.coverage.read));
+  const signals = results.strong.length + results.weak.length;
+  await expect(block.getByTestId("map-row")).toHaveCount(results.rows.length + signals);
+  // Aucune carte n'est dite forte ou faible sans écart que le hasard n'explique pas.
+  await expect(block.getByTestId("maps-strong").getByTestId("map-row")).toHaveCount(results.strong.length);
+  await expect(block.getByTestId("maps-weak").getByTestId("map-row")).toHaveCount(results.weak.length);
+  await expect(block.getByTestId("maps-verdict")).toHaveCount(signals === 0 ? 1 : 0);
+  const mostPlayed = results.rows[0];
+  const row = block.getByTestId("map-row").nth(signals);
+  await expect(row).toContainText(mapLabel(mostPlayed?.map ?? ""));
+  await expect(row).toContainText(`${fmtCount(mostPlayed?.wins ?? 0, "victoire")} sur ${fmtCount(mostPlayed?.games ?? 0, "partie")} · d'habitude`);
+});
+
+test("les face-à-face reprennent les chiffres calculés, sans aucun joueur", async ({ page }) => {
+  await page.goto("/classement");
+  const block = page.getByTestId("face-offs");
+  const panels = block.getByTestId("face-off");
+  const result = faceOffs(loadSessions(), loadGames(), "GAL", lb.clans.map((c: { clanTag: string }) => c.clanTag), loadMeta().sessions.coveredUntil);
+  if (!result?.reliable || result.rows.length === 0) {
+    await expect(panels).toHaveCount(0);
+    return;
+  }
+  await expect(block).toContainText("L'API ne donne pas toujours l'équipe des perdants");
+  await expect(block).toContainText("Dernière mise à jour");
+  await expect(panels).toHaveCount(result.rows.length);
+  for (const [i, row] of result.rows.entries()) {
+    const panel = panels.nth(i);
+    await expect(panel.getByRole("heading")).toHaveText(`[${row.tag}]`);
+    expect(digits(await panel.getByTestId("face-off-meetings").textContent())).toBe(String(row.meetings));
+    expect(digits(await panel.getByTestId("face-off-ours").textContent())).toBe(String(row.ours));
+    expect(digits(await panel.getByTestId("face-off-theirs").textContent())).toBe(String(row.theirs));
+    expect(digits(await panel.getByTestId("face-off-others").textContent())).toBe(String(row.others));
+  }
+  await expect(block.getByRole("link")).toHaveCount(0);
 });
 
 test("signale les données périmées au visiteur", async ({ page }) => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   Announcements,
   ApiLeaderboard,
+  ApiGame,
   ApiMembersPage,
   ApiRankedPage,
   ApiSessionsPage,
@@ -77,6 +78,40 @@ describe("schémas de l'API", () => {
   });
   it("refuse un classement classé sans l'un de ses modes", () => {
     expect(ApiRankedPage.safeParse({ "1v1": [rankedEntry], "2v2": [] }).success).toBe(false);
+  });
+  // Forme relevée le 7 novembre 2026, valeurs remplacées.
+  const gameBody = {
+    version: "v0",
+    gitCommit: "abc",
+    info: {
+      gameID: "g1",
+      config: { gameMap: "World", gameMode: "Team", playerTeams: 2 },
+      duration: 1117,
+      winner: ["team", "Red", "c1"],
+      players: [
+        { clientID: "c1", username: "Nom", publicID: "IdPublic", persistentID: "IdSecret", clanTag: "GAL", stats: { gold: ["1"] } },
+        // Sans tag ni stats, comme un joueur resté dans le salon sans jouer.
+        { clientID: "c2", username: "Autre", publicID: null, persistentID: "IdSecret2" },
+      ],
+    },
+  };
+  it("accepte le détail d'une partie et n'en garde aucun joueur", () => {
+    const { info } = ApiGame.parse(gameBody);
+    expect(info.players).toEqual([
+      { clientID: "c1", clanTag: "GAL", team: null, hasStats: true },
+      { clientID: "c2", clanTag: null, team: null, hasStats: false },
+    ]);
+    expect(JSON.stringify(info)).not.toContain("IdPublic");
+    expect(JSON.stringify(info)).not.toContain("Nom");
+  });
+  it("lit l'équipe d'un joueur quand la fiche la donne, et ignore une valeur qui n'est pas un texte", () => {
+    const player = { clientID: "c1", clanTag: "GAL", team: "Team 12", stats: {} };
+    const { info } = ApiGame.parse({ info: { ...gameBody.info, players: [player, { ...player, team: 12 }] } });
+    expect(info.players.map((p) => p.team)).toEqual(["Team 12", null]);
+  });
+  it("accepte une partie sans vainqueur et refuse une partie sans carte", () => {
+    expect(ApiGame.safeParse({ info: { ...gameBody.info, winner: undefined } }).success).toBe(true);
+    expect(ApiGame.safeParse({ info: { ...gameBody.info, config: {} } }).success).toBe(false);
   });
   it("refuse un rôle inconnu", () => {
     const bad = { ...members, results: [{ ...members.results[1], role: "roi" }] };

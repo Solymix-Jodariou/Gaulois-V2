@@ -75,6 +75,29 @@ export const ApiRankedPage = z.object({
 export type ApiRankedPage = z.infer<typeof ApiRankedPage>;
 export type RankedMode = keyof ApiRankedPage;
 
+/** D'un joueur, seuls son tag, son identifiant de partie, son équipe et le fait d'avoir des stats sont lus : ni pseudo ni `publicID` n'entrent dans le programme. */
+const ApiGamePlayer = z
+  .object({
+    clientID: z.string().nullable().optional(),
+    clanTag: z.string().nullable().optional(),
+    // Ajouté au jeu le 3 novembre 2026 (commit a3d8787), pas encore servi par l'API le 7 novembre, donc jamais vu en vrai : seul un texte est gardé.
+    team: z.unknown().optional(),
+    // Absent : le jeu n'a rien enregistré pour ce joueur, parti tôt ou jamais apparu.
+    stats: z.unknown().optional(),
+  })
+  .transform(({ clientID, clanTag, team, stats }) => ({ clientID: clientID ?? null, clanTag: clanTag ?? null, team: typeof team === "string" ? team : null, hasStats: stats !== undefined && stats !== null }));
+/** `GET /public/game/:id?turns=false`. Voir docs/API_AUDIT.md. */
+export const ApiGame = z.object({
+  info: z.object({
+    config: z.object({ gameMap: z.string().min(1) }),
+    duration: z.number().nonnegative(),
+    // ["team", "Red", ...clientID des vainqueurs]. Absent : la partie n'a pas de vainqueur.
+    winner: z.array(z.string()).nullable().optional(),
+    players: z.array(ApiGamePlayer),
+  }),
+});
+export type ApiGame = z.output<typeof ApiGame>;
+
 /* ---------- Carte officielle des clans (voir docs/API_AUDIT.md, section 8) ---------- */
 
 const numericId = z.string().regex(/^\d+$/);
@@ -180,6 +203,23 @@ export const StoredRanked = z.object({
 });
 export type StoredRanked = z.infer<typeof StoredRanked>;
 
+/** Ce que le site garde d'une partie : des tags et des nombres, aucun joueur. */
+export const StoredGame = z.object({
+  id: z.string().min(1),
+  map: z.string().min(1),
+  seconds: count,
+  // Numéro de l'équipe gagnante, comparable à celui de `clans`. `null` : impossible de dire qui jouait contre qui.
+  win: count.nullable(),
+  // [tag, joueurs avec des stats, numéro d'équipe] : le clan du site, et les clans d'au moins 2 de ces joueurs.
+  clans: z.array(z.tuple([z.string().min(1), count, count])),
+});
+export type StoredGame = z.infer<typeof StoredGame>;
+export const StoredGameFile = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  games: z.array(StoredGame),
+});
+export type StoredGameFile = z.infer<typeof StoredGameFile>;
+
 export const StoredClanMapFilm = z.object({
   // 2 : film sans `neutralBorder`, refait au passage suivant de la collecte.
   version: z.union([z.literal(2), z.literal(3)]),
@@ -282,6 +322,7 @@ export const Meta = z.object({
   // Valeur par défaut : un meta.json plus ancien reste valide et garde tout son état.
   clanmap: DatasetState.default(EMPTY_STATE),
   ranked: DatasetState.default(EMPTY_STATE),
+  games: DatasetState.default(EMPTY_STATE),
 });
 export type Meta = z.infer<typeof Meta>;
 
@@ -293,6 +334,7 @@ export function emptyMeta(): Meta {
     sessions: { ...EMPTY_STATE, completeThrough: null, coveredUntil: null },
     clanmap: { ...EMPTY_STATE },
     ranked: { ...EMPTY_STATE },
+    games: { ...EMPTY_STATE },
   };
 }
 

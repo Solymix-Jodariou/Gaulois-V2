@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import DataStatus from "../components/DataStatus.astro";
 import Empty from "../components/Empty.astro";
+import FaceOffs from "../components/FaceOffs.astro";
 import PageHeader from "../components/PageHeader.astro";
 import LeaderboardTable from "../components/LeaderboardTable.tsx";
 import RankedPlayers from "../components/RankedPlayers.astro";
@@ -103,6 +104,7 @@ const race = leaderboard && snapshots.length > 0 ? rivalSeries(leaderboard.clans
           <p class="mt-4 text-sm text-muted">
             Stats des parties publiques en équipe, hors classé et hors Humains contre Nations. L'API liste environ les 100 premiers clans.
           </p>
+          <FaceOffs />
           <RankedPlayers />
         </>
       )

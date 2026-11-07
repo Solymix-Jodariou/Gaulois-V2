@@ -1,0 +1,17 @@
+---
+import { clan } from "../../config/clan";
+import { fmtDate, fmtInt } from "../lib/format";
+import type { ReadingState } from "../lib/games";
+
+interface Props {
+  state: ReadingState;
+}
+const { coverage, archive, reading } = Astro.props.state;
+const start = fmtDate(`${clan.archiveStart}T12:00:00Z`);
+---
+
+<p class="tnum mt-2 max-w-3xl text-sm text-muted" data-testid="games-coverage">
+  {coverage.read === coverage.total ? `Détail lu pour toutes les parties de cette période : ${fmtInt(coverage.total)}.` : `Détail lu pour ${fmtInt(coverage.read)} parties sur les ${fmtInt(coverage.total)} de cette période.`}
+  {archive.read < archive.total && ` Depuis le ${start} : ${fmtInt(archive.read)} sur ${fmtInt(archive.total)}.`}
+  {reading && " La lecture se fait petit à petit, des plus récentes aux plus anciennes : ces chiffres vont encore changer."}
+</p>

@@ -1,0 +1,90 @@
+---
+import DataStatus from "./DataStatus.astro";
+import GamesCoverage from "./GamesCoverage.astro";
+import { clan } from "../../config/clan";
+import { loadGames, loadLeaderboard, loadMeta, loadSessions } from "../lib/data";
+import { fmtCount, fmtDate, fmtInt, fmtPct } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { FACE_OFF_MAX_ROWS, FACE_OFF_MIN_MEETINGS, faceOffs, MIN_CLAN_PLAYERS } from "../lib/games";
+import { RESULTS_DAYS } from "../lib/results";
+
+const meta = loadMeta();
+const leaderboard = loadLeaderboard();
+const result = leaderboard ? faceOffs(loadSessions(), loadGames(), clan.tag, leaderboard.clans.map((c) => c.clanTag), meta.sessions.coveredUntil) : null;
+const rows = result?.reliable ? result.rows : [];
+const show = rows.length > 0 || (result !== null && !result.reliable) || meta.games.lastError;
+const part = (n: number, total: number) => ({ "--v": `${(n / total) * 100}%` });
+const start = fmtDate(`${clan.archiveStart}T12:00:00Z`);
+---
+
+{
+  show && (
+    <section class="stage stage-indigo reveal mt-8" aria-labelledby="face-offs-title" data-testid="face-offs">
+      <h2 id="face-offs-title" class="section-title">Face-à-face avec les autres clans</h2>
+      <p class="mt-4 max-w-3xl text-lg text-muted">
+        Les parties publiques en équipe, hors classé, où [{clan.tag}] et un autre clan de la liste officielle avaient chacun au moins {MIN_CLAN_PLAYERS} joueurs, dans des équipes différentes. Un clan n'est pas seul dans son équipe, et dans une partie à plusieurs équipes, c'est souvent une troisième qui gagne.
+      </p>
+      {
+        rows.length > 0 ? (
+          <ul class="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {rows.map((row) => (
+              <li class="panel" data-testid="face-off">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <h3 class="text-2xl">[{row.tag}]</h3>
+                  <span class="tnum text-sm text-muted" data-testid="face-off-meetings">{fmtCount(row.meetings, "partie")}</span>
+                </div>
+                <div class="split-bar mt-3" aria-hidden="true">
+                  <i class="bg-win" style={part(row.ours, row.meetings)}></i>
+                  <i class="bg-loss" style={part(row.theirs, row.meetings)}></i>
+                  <i class="split-other" style={part(row.others, row.meetings)}></i>
+                </div>
+                <dl class="tnum mt-3 space-y-1 text-sm">
+                  <div class="flex justify-between gap-4">
+                    <dt class="flex items-center gap-1.5"><i class="inline-block size-3 shrink-0 rounded-sm bg-win" aria-hidden="true"></i>L'équipe de [{clan.tag}] gagne</dt>
+                    <dd class="font-semibold" data-testid="face-off-ours">{fmtInt(row.ours)}</dd>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <dt class="flex items-center gap-1.5"><i class="inline-block size-3 shrink-0 rounded-sm bg-loss" aria-hidden="true"></i>L'équipe de [{row.tag}] gagne</dt>
+                    <dd class="font-semibold" data-testid="face-off-theirs">{fmtInt(row.theirs)}</dd>
+                  </div>
+                  <div class="flex justify-between gap-4">
+                    <dt class="flex items-center gap-1.5"><i class="split-other inline-block size-3 shrink-0 rounded-sm" aria-hidden="true"></i>Une autre équipe gagne</dt>
+                    <dd class="font-semibold" data-testid="face-off-others">{fmtInt(row.others)}</dd>
+                  </div>
+                </dl>
+                {row.share !== null && (
+                  <p class="tnum mt-3 text-sm text-muted">
+                    Quand l'équipe de l'un des deux gagne, c'est celle de [{clan.tag}] : {fmtInt(row.ours)} fois sur {fmtInt(row.ours + row.theirs)}, soit {fmtPct(row.share)}.
+                  </p>
+                )}
+                {row.allTime && <p class="tnum mt-1 text-xs text-muted">Depuis le {start} : {fmtCount(row.allTime.meetings, "partie")}, équipe de [{clan.tag}] {fmtInt(row.allTime.ours)}, équipe de [{row.tag}] {fmtInt(row.allTime.theirs)}.</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p class="mt-6 font-display text-lg font-bold">Pas de données</p>
+        )
+      }
+      {
+        result && !result.reliable && (
+          <p class="mt-4 max-w-3xl font-semibold text-warn" role="status">
+            Les chiffres sont suspendus : {fmtInt(result.checkedDoubtful)} des {fmtCount(result.checked, "partie")} les plus récentes ne concordent pas avec les vainqueurs officiels. La façon dont le jeu forme les équipes a peut-être changé.
+          </p>
+        )
+      }
+      {
+        result && (
+          <>
+            <p class="mt-4 max-w-3xl text-sm text-muted">
+              Sur {RESULTS_DAYS} jours, du {fmtDate(`${result.from}T12:00:00Z`)} au {fmtDate(`${result.to}T12:00:00Z`)}. Un clan rencontré moins de {FACE_OFF_MIN_MEETINGS} fois sur cette période n'est pas affiché, et la liste s'arrête aux {FACE_OFF_MAX_ROWS} clans les plus rencontrés. L'API ne donne pas toujours l'équipe des perdants : le site la retrouve alors avec la règle du jeu, qui place tout un clan dans une seule équipe, le plus gros clan d'abord, dans l'équipe la moins remplie. Une partie est écartée si ce calcul ne concorde pas avec les résultats officiels : {fmtInt(result.doubtful)} sur {fmtCount(result.considered, "partie")} du clan à {MIN_CLAN_PLAYERS} joueurs ou plus.
+            </p>
+            <GamesCoverage state={result} />
+          </>
+        )
+      }
+      <div class="mt-4">
+        <DataStatus state={meta.games} maxAgeHours={MAX_AGE_HOURS.games} />
+      </div>
+    </section>
+  )
+}

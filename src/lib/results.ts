@@ -46,6 +46,17 @@ function tally(sessions: readonly StoredSession[]) {
   return rows;
 }
 
+/** Les `RESULTS_DAYS` derniers jours couverts, en jours de Paris, et le test d'appartenance d'une partie. */
+export function resultsWindow(coveredUntil: string) {
+  const to = parisParts(coveredUntil).date;
+  const from = addDays(to, -(RESULTS_DAYS - 1));
+  const includes = (gameStart: string) => {
+    const day = parisParts(gameStart).date;
+    return day >= from && day <= to;
+  };
+  return { from, to, includes };
+}
+
 /**
  * Taux de victoire par format, sur les `RESULTS_DAYS` derniers jours couverts.
  * Un format sous `minGames` parties sur cette fenêtre n'est pas retenu.
@@ -53,14 +64,8 @@ function tally(sessions: readonly StoredSession[]) {
  */
 export function formatResults(sessions: readonly StoredSession[], coveredUntil: string | null, minGames = 30): FormatResults | null {
   if (!coveredUntil) return null;
-  const to = parisParts(coveredUntil).date;
-  const from = addDays(to, -(RESULTS_DAYS - 1));
-  const recent = tally(
-    sessions.filter((s) => {
-      const day = parisParts(s.gameStart).date;
-      return day >= from && day <= to;
-    }),
-  );
+  const { from, to, includes } = resultsWindow(coveredUntil);
+  const recent = tally(sessions.filter((s) => includes(s.gameStart)));
   const allTime = tally(sessions);
   const rows = [...recent].flatMap(([key, r]) => {
     const rate = winRate(r.wins, r.games);
@@ -98,7 +103,7 @@ export interface ClanRecords {
 /**
  * Records du clan sur l'archive. Une partie jouée seul contre des robots ne compte pas : elle fausserait
  * les records. Aucun record de score : ces parties y arrivaient en tête.
- * `clanPlayerCount` compte tous les joueurs du clan de la partie, même dans une équipe perdante.
+ * Le jeu place tout un clan dans une seule équipe : `clanPlayerCount` compte donc des coéquipiers, y compris ceux partis avant la fin.
  * `null` sans victoire : pas de records à montrer.
  */
 export function clanRecords(sessions: readonly StoredSession[]): ClanRecords | null {

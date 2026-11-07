@@ -11,11 +11,13 @@ import {
   Meta,
   RivalsSnapshot,
   StoredClanMapFilm,
+  StoredGameFile,
   StoredLeaderboard,
   StoredMembers,
   StoredRanked,
   StoredSessionFile,
   emptyMeta,
+  type StoredGame,
   type StoredSession,
 } from "./schemas";
 
@@ -53,6 +55,10 @@ export const loadMapHeroes = () => read("content/carte-heros.json", MapHeroes) ?
 
 export function loadSessions(): StoredSession[] {
   return listJson("data/sessions").flatMap((f) => read(`data/sessions/${f}`, StoredSessionFile)?.sessions ?? []);
+}
+
+export function loadGames(): StoredGame[] {
+  return listJson("data/games").flatMap((f) => read(`data/games/${f}`, StoredGameFile)?.games ?? []);
 }
 
 export function loadHistory(): HistorySnapshot[] {

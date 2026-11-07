@@ -1,0 +1,96 @@
+---
+import DataStatus from "./DataStatus.astro";
+import GamesCoverage from "./GamesCoverage.astro";
+import MapRow from "./MapRow.astro";
+import { loadGames, loadMeta, loadSessions } from "../lib/data";
+import { fmtDate, fmtInt } from "../lib/format";
+import { MAX_AGE_HOURS } from "../lib/freshness";
+import { MAP_MIN_GAMES, mapResults } from "../lib/games";
+import { RESULTS_DAYS } from "../lib/results";
+
+/** Cartes visibles d'emblée : les autres sont repliées. */
+const VISIBLE = 9;
+
+const meta = loadMeta();
+const results = mapResults(loadSessions(), loadGames(), meta.sessions.coveredUntil);
+const rows = results?.rows ?? [];
+const signals = results
+  ? [
+      { title: "Nos cartes fortes", hint: "Au-dessus de nos habitudes, de bien plus que ce que le hasard produit d'ordinaire.", rows: results.strong, testId: "maps-strong" },
+      { title: "Nos cartes faibles", hint: "En dessous de nos habitudes, de bien plus que ce que le hasard produit d'ordinaire.", rows: results.weak, testId: "maps-weak" },
+    ].filter((g) => g.rows.length > 0)
+  : [];
+---
+
+{
+  (rows.length > 0 || meta.games.lastError) && (
+    <section class="stage stage-blue reveal mt-6" aria-labelledby="maps-title" data-testid="map-results">
+      <h2 id="maps-title" class="section-title">Nos résultats par carte de jeu</h2>
+      <p class="mt-4 max-w-3xl text-lg text-muted">
+        Les cartes des parties, à ne pas confondre avec la carte des clans. Le taux d'une carte dépend aussi du nombre de Gaulois, du format et de la taille du salon, et ces deux derniers changent d'une carte à l'autre. Le trait rouge marque donc ce que le clan gagne d'habitude dans les mêmes conditions.
+      </p>
+      {
+        rows.length === 0 ? (
+          <p class="mt-6 font-display text-lg font-bold">Pas de données</p>
+        ) : (
+          <div class="mt-6 space-y-4">
+            {signals.length === 0 ? (
+              <div class="panel" data-testid="maps-verdict">
+                <h3 class="text-xl">Aucune carte ne se détache pour l'instant</h3>
+                <p class="mt-1 text-sm text-muted">Sur ce nombre de parties, tous les écarts avec nos habitudes restent dans ce que le hasard peut produire : le site ne désigne donc ni carte forte ni carte faible.</p>
+              </div>
+            ) : (
+              <div class="grid gap-4 lg:grid-cols-2">
+                {signals.map((group) => (
+                  <div class="panel" data-testid={group.testId}>
+                    <h3 class="text-xl">{group.title}</h3>
+                    <p class="mt-1 text-xs text-muted">{group.hint}</p>
+                    <ul class="mt-4 space-y-5">
+                      {group.rows.map((row) => (
+                        <MapRow row={row} />
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div class="panel">
+              <h3 class="text-xl">Les cartes les plus jouées</h3>
+              <ul class="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
+                {rows.slice(0, VISIBLE).map((row) => (
+                  <MapRow row={row} />
+                ))}
+              </ul>
+              {rows.length > VISIBLE && (
+                <details class="mt-5">
+                  <summary class="cursor-pointer font-semibold">Voir les {fmtInt(rows.length - VISIBLE)} autres</summary>
+                  <ul class="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
+                    {rows.slice(VISIBLE).map((row) => (
+                      <MapRow row={row} />
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </div>
+          </div>
+        )
+      }
+      {
+        results && (
+          <>
+            <p class="mt-4 max-w-3xl text-sm text-muted">
+              Sur {RESULTS_DAYS} jours, du {fmtDate(`${results.from}T12:00:00Z`)} au {fmtDate(`${results.to}T12:00:00Z`)}, parties publiques en équipe jouées avec le tag, sans celles jouées seul contre des robots. « D'habitude » : le taux du clan sur cette période, pour le même format, le même nombre de Gaulois (1, 2, 3, ou 4 et plus) et un salon de taille proche (jusqu'à 20, 40 ou 80 joueurs, ou plus), appliqué aux parties de cette carte. Une carte sous {MAP_MIN_GAMES} parties n'est pas affichée. Sur 50 parties, le hasard seul peut déjà faire varier un taux d'environ 14 points dans un sens ou dans l'autre. Une carte n'est dite forte ou faible que si, avec le seul hasard, un tel écart arriverait moins d'une fois sur 1 000. Avec une quarantaine de cartes recalculées chaque jour, une fausse alerte reste possible, mais rare.
+            </p>
+            <GamesCoverage state={results} />
+          </>
+        )
+      }
+      <p class="mt-2 max-w-3xl text-sm text-muted">
+        Noms français des cartes : extraits de la <a href="https://github.com/openfrontio/OpenFrontIO/blob/main/resources/lang/fr.json" rel="noopener" class="font-semibold underline underline-offset-2">traduction du jeu OpenFront</a>, sous licence <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.fr" rel="noopener" class="font-semibold underline underline-offset-2">CC BY-SA 4.0</a>.
+      </p>
+      <div class="mt-4">
+        <DataStatus state={meta.games} maxAgeHours={MAX_AGE_HOURS.games} />
+      </div>
+    </section>
+  )
+}
